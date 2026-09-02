@@ -317,6 +317,23 @@ public sealed class LinguistRuntimeTests
         Assert.True(typeof(SafeHandle).IsAssignableFrom(typeof(NativeErrorHandle)));
     }
 
+    [Fact]
+    public void NativeImportsUseTheGhlinguistAbi()
+    {
+        LibraryImportAttribute[] imports = typeof(NativeMethods)
+            .GetMethods(BindingFlags.Static | BindingFlags.NonPublic)
+            .SelectMany(method => method.GetCustomAttributes<LibraryImportAttribute>())
+            .ToArray();
+
+        Assert.NotEmpty(imports);
+        Assert.All(imports, import => Assert.Equal("ghlinguist", import.LibraryName));
+        Assert.All(imports, import =>
+        {
+            Assert.NotNull(import.EntryPoint);
+            Assert.StartsWith("ghl_", import.EntryPoint, StringComparison.Ordinal);
+        });
+    }
+
     private sealed class FakeBackend : ILinguistRuntimeBackend
     {
         private readonly bool _blockAnalysis;

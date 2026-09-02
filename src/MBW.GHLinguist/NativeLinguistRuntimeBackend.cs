@@ -855,145 +855,145 @@ internal enum NativeLookupKind : uint
 
 internal static unsafe partial class NativeMethods
 {
-    private const string LibraryName = "originary_linguist";
+    private const string LibraryName = "ghlinguist";
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_abi_version_major")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_abi_version_major")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint AbiVersionMajor();
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_abi_version_minor")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_abi_version_minor")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint AbiVersionMinor();
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_runtime_create")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_runtime_create")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStatus RuntimeCreate(NativeRuntimeOptions* options, nint* runtime, nint* error);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_runtime_release")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_runtime_release")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial void RuntimeRelease(nint runtime);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_runtime_capabilities")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_runtime_capabilities")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial ulong RuntimeCapabilities(NativeRuntimeHandle runtime);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_runtime_version")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_runtime_version")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStatus RuntimeVersion(NativeRuntimeHandle runtime, NativeVersionInfo* version);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_runtime_language_count")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_runtime_language_count")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial nuint RuntimeLanguageCount(NativeRuntimeHandle runtime);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_runtime_language_id_at")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_runtime_language_id_at")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStatus RuntimeLanguageIdAt(NativeRuntimeHandle runtime, nuint index, ulong* languageId);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_runtime_language_info")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_runtime_language_info")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStatus RuntimeLanguageInfo(NativeRuntimeHandle runtime, ulong languageId, NativeLanguageInfo* info);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_runtime_language_collection_value")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_runtime_language_collection_value")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStatus RuntimeLanguageCollectionValue(NativeRuntimeHandle runtime, ulong languageId, NativeLanguageCollection collection, nuint index, NativeStringView* value);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_runtime_lookup_languages")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_runtime_lookup_languages")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStatus RuntimeLookupLanguages(NativeRuntimeHandle runtime, NativeLookupKind kind, NativeStringView value, nint* languages, nint* error);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_runtime_analyze")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_runtime_analyze")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStatus RuntimeAnalyze(NativeRuntimeHandle runtime, NativeBlobInput* blob, NativeAnalysisOptions* options, nint* analysis, nint* error);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_runtime_classify")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_runtime_classify")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStatus RuntimeClassify(NativeRuntimeHandle runtime, NativeBytesView data, NativeClassifyOptions* options, nint* classification, nint* error);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_analysis_release")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_analysis_release")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial void AnalysisRelease(nint analysis);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_analysis_language_id")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_analysis_language_id")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial ulong AnalysisLanguageId(NativeAnalysisHandle analysis);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_analysis_strategy")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_analysis_strategy")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint AnalysisStrategy(NativeAnalysisHandle analysis);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_analysis_flags")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_analysis_flags")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial ulong AnalysisFlags(NativeAnalysisHandle analysis);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_analysis_loc")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_analysis_loc")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial ulong AnalysisLoc(NativeAnalysisHandle analysis);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_analysis_sloc")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_analysis_sloc")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial ulong AnalysisSloc(NativeAnalysisHandle analysis);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_analysis_text")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_analysis_text")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStatus AnalysisText(NativeAnalysisHandle analysis, NativeAnalysisTextField field, NativeStringView* value);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_analysis_trace_count")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_analysis_trace_count")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial nuint AnalysisTraceCount(NativeAnalysisHandle analysis);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_analysis_trace_entry")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_analysis_trace_entry")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStatus AnalysisTraceEntry(NativeAnalysisHandle analysis, nuint index, NativeStrategyTraceEntry* entry);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_analysis_trace_candidate")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_analysis_trace_candidate")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStatus AnalysisTraceCandidate(NativeAnalysisHandle analysis, nuint traceIndex, nuint candidateIndex, ulong* languageId);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_classification_release")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_classification_release")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial void ClassificationRelease(nint classification);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_classification_count")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_classification_count")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial nuint ClassificationCount(NativeClassificationHandle classification);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_classification_considered_bytes")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_classification_considered_bytes")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial uint ClassificationConsideredBytes(NativeClassificationHandle classification);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_classification_result")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_classification_result")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStatus ClassificationResult(NativeClassificationHandle classification, nuint index, ulong* languageId, double* score);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_language_id_list_release")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_language_id_list_release")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial void LanguageIdListRelease(nint languages);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_language_id_list_count")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_language_id_list_count")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial nuint LanguageIdListCount(NativeLanguageIdListHandle languages);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_language_id_list_at")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_language_id_list_at")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStatus LanguageIdListAt(NativeLanguageIdListHandle languages, nuint index, ulong* languageId);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_error_status")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_error_status")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStatus ErrorStatus(NativeErrorHandle error);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_error_message")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_error_message")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStringView ErrorMessage(NativeErrorHandle error);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_error_ruby_class")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_error_ruby_class")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStringView ErrorRubyClass(NativeErrorHandle error);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_error_ruby_backtrace")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_error_ruby_backtrace")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial NativeStringView ErrorRubyBacktrace(NativeErrorHandle error);
 
-    [LibraryImport(LibraryName, EntryPoint = "ol_error_release")]
+    [LibraryImport(LibraryName, EntryPoint = "ghl_error_release")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial void ErrorRelease(nint error);
 }

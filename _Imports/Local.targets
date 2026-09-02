@@ -12,9 +12,9 @@
   <Target Name="ValidateStandaloneNativeAssets"
           BeforeTargets="GenerateNuspec"
           Condition="'$(ValidateRidAssets)' == 'true' and '$(IsPackable)' == 'true' and '$(RidNativeAssetRoot)' != ''">
-    <Error Condition="!Exists('$(RidNativeAssetRoot)/linux-x64/originary_linguist.so')"
-           Text="Missing linux-x64 native bridge at $(RidNativeAssetRoot)/linux-x64/originary_linguist.so." />
-    <Error Condition="!Exists('$(RidNativeAssetRoot)/win-x64/originary_linguist.dll')"
-           Text="Missing win-x64 native bridge at $(RidNativeAssetRoot)/win-x64/originary_linguist.dll." />
+    <Error Condition="!Exists('$(RidNativeAssetRoot)/linux-x64/ghlinguist.so')"
+           Text="Missing linux-x64 native bridge at $(RidNativeAssetRoot)/linux-x64/ghlinguist.so." />
+    <Error Condition="!Exists('$(RidNativeAssetRoot)/win-x64/ghlinguist.dll')"
+           Text="Missing win-x64 native bridge at $(RidNativeAssetRoot)/win-x64/ghlinguist.dll." />
   </Target>
 </Project>

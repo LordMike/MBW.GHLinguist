@@ -8,7 +8,7 @@ Ruby or native handles to callers.
 ## Status
 
 The managed API and native ABI projection are implemented, but the
-`originary_linguist` native bridge and its CRuby dependency closure are not yet
+`ghlinguist` native bridge and its CRuby dependency closure are not yet
 packaged. Until that bridge is available, `LinguistRuntime.Create()` throws
 `DllNotFoundException`. The existing `linguist.so` assets are Linguist's Ruby
 tokenizer extension, not the public C ABI library.

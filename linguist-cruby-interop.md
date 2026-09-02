@@ -30,211 +30,211 @@ CRuby's embedding APIs support a hosted interpreter, but its documented GVL entr
 
 ## C ABI
 
-The public header is `include/originary_linguist.h`. Only symbols with the `ol_` prefix are exported.
+The public header is `include/ghlinguist.h`. Only symbols with the `ghl_` prefix are exported.
 
 ```c
-#ifndef ORIGINARY_LINGUIST_H
-#define ORIGINARY_LINGUIST_H
+#ifndef GHLINGUIST_H
+#define GHLINGUIST_H
 
 #include <stddef.h>
 #include <stdint.h>
 
 #if defined(_WIN32)
-#define OL_API __declspec(dllexport)
-#define OL_CALL __cdecl
+#define GHL_API __declspec(dllexport)
+#define GHL_CALL __cdecl
 #else
-#define OL_API __attribute__((visibility("default")))
-#define OL_CALL
+#define GHL_API __attribute__((visibility("default")))
+#define GHL_CALL
 #endif
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define OL_ABI_VERSION_MAJOR 1u
-#define OL_ABI_VERSION_MINOR 0u
+#define GHL_ABI_VERSION_MAJOR 1u
+#define GHL_ABI_VERSION_MINOR 0u
 
-typedef struct ol_runtime ol_runtime;
-typedef struct ol_analysis ol_analysis;
-typedef struct ol_classification ol_classification;
-typedef struct ol_language_id_list ol_language_id_list;
-typedef struct ol_error ol_error;
+typedef struct ghl_runtime ghl_runtime;
+typedef struct ghl_analysis ghl_analysis;
+typedef struct ghl_classification ghl_classification;
+typedef struct ghl_language_id_list ghl_language_id_list;
+typedef struct ghl_error ghl_error;
 
-typedef int32_t ol_status;
-#define OL_STATUS_OK                 ((ol_status)0)
-#define OL_STATUS_INVALID_ARGUMENT   ((ol_status)1)
-#define OL_STATUS_ABI_MISMATCH       ((ol_status)2)
-#define OL_STATUS_UNSUPPORTED        ((ol_status)3)
-#define OL_STATUS_NOT_FOUND          ((ol_status)4)
-#define OL_STATUS_INVALID_UTF8       ((ol_status)5)
-#define OL_STATUS_RUBY_EXCEPTION     ((ol_status)6)
-#define OL_STATUS_NATIVE_FAILURE     ((ol_status)7)
-#define OL_STATUS_OUT_OF_MEMORY      ((ol_status)8)
-#define OL_STATUS_INTERNAL_ERROR     ((ol_status)9)
+typedef int32_t ghl_status;
+#define GHL_STATUS_OK                 ((ghl_status)0)
+#define GHL_STATUS_INVALID_ARGUMENT   ((ghl_status)1)
+#define GHL_STATUS_ABI_MISMATCH       ((ghl_status)2)
+#define GHL_STATUS_UNSUPPORTED        ((ghl_status)3)
+#define GHL_STATUS_NOT_FOUND          ((ghl_status)4)
+#define GHL_STATUS_INVALID_UTF8       ((ghl_status)5)
+#define GHL_STATUS_RUBY_EXCEPTION     ((ghl_status)6)
+#define GHL_STATUS_NATIVE_FAILURE     ((ghl_status)7)
+#define GHL_STATUS_OUT_OF_MEMORY      ((ghl_status)8)
+#define GHL_STATUS_INTERNAL_ERROR     ((ghl_status)9)
 
-typedef struct ol_string_view {
+typedef struct ghl_string_view {
     const char* data;
     size_t length;
-} ol_string_view;
+} ghl_string_view;
 
-typedef struct ol_bytes_view {
+typedef struct ghl_bytes_view {
     const uint8_t* data;
     size_t length;
-} ol_bytes_view;
+} ghl_bytes_view;
 
-typedef uint64_t ol_capabilities;
-#define OL_CAP_LANGUAGE_REGISTRY     (UINT64_C(1) << 0)
-#define OL_CAP_STANDARD_DETECTION    (UINT64_C(1) << 1)
-#define OL_CAP_CONTENT_CLASSIFIER    (UINT64_C(1) << 2)
-#define OL_CAP_STRATEGY_TRACE        (UINT64_C(1) << 3)
-#define OL_CAP_ENCODING_BINARY       (UINT64_C(1) << 4)
-#define OL_CAP_GENERATED_DETECTION   (UINT64_C(1) << 5)
-#define OL_CAP_PATH_CLASSIFICATION   (UINT64_C(1) << 6)
+typedef uint64_t ghl_capabilities;
+#define GHL_CAP_LANGUAGE_REGISTRY     (UINT64_C(1) << 0)
+#define GHL_CAP_STANDARD_DETECTION    (UINT64_C(1) << 1)
+#define GHL_CAP_CONTENT_CLASSIFIER    (UINT64_C(1) << 2)
+#define GHL_CAP_STRATEGY_TRACE        (UINT64_C(1) << 3)
+#define GHL_CAP_ENCODING_BINARY       (UINT64_C(1) << 4)
+#define GHL_CAP_GENERATED_DETECTION   (UINT64_C(1) << 5)
+#define GHL_CAP_PATH_CLASSIFICATION   (UINT64_C(1) << 6)
 
-typedef uint32_t ol_language_type;
-#define OL_LANGUAGE_TYPE_UNKNOWN      0u
-#define OL_LANGUAGE_TYPE_DATA         1u
-#define OL_LANGUAGE_TYPE_MARKUP       2u
-#define OL_LANGUAGE_TYPE_PROGRAMMING  3u
-#define OL_LANGUAGE_TYPE_PROSE        4u
+typedef uint32_t ghl_language_type;
+#define GHL_LANGUAGE_TYPE_UNKNOWN      0u
+#define GHL_LANGUAGE_TYPE_DATA         1u
+#define GHL_LANGUAGE_TYPE_MARKUP       2u
+#define GHL_LANGUAGE_TYPE_PROGRAMMING  3u
+#define GHL_LANGUAGE_TYPE_PROSE        4u
 
-typedef uint32_t ol_language_type_mask;
-#define OL_LANGUAGE_MASK_DATA         (1u << 0)
-#define OL_LANGUAGE_MASK_MARKUP       (1u << 1)
-#define OL_LANGUAGE_MASK_PROGRAMMING  (1u << 2)
-#define OL_LANGUAGE_MASK_PROSE        (1u << 3)
-#define OL_LANGUAGE_MASK_ALL          UINT32_C(0x0f)
+typedef uint32_t ghl_language_type_mask;
+#define GHL_LANGUAGE_MASK_DATA         (1u << 0)
+#define GHL_LANGUAGE_MASK_MARKUP       (1u << 1)
+#define GHL_LANGUAGE_MASK_PROGRAMMING  (1u << 2)
+#define GHL_LANGUAGE_MASK_PROSE        (1u << 3)
+#define GHL_LANGUAGE_MASK_ALL          UINT32_C(0x0f)
 
-typedef uint32_t ol_strategy;
-#define OL_STRATEGY_NONE        0u
-#define OL_STRATEGY_MODELINE    1u
-#define OL_STRATEGY_FILENAME    2u
-#define OL_STRATEGY_SHEBANG     3u
-#define OL_STRATEGY_EXTENSION   4u
-#define OL_STRATEGY_XML         5u
-#define OL_STRATEGY_MANPAGE     6u
-#define OL_STRATEGY_HEURISTICS  7u
-#define OL_STRATEGY_CLASSIFIER  8u
+typedef uint32_t ghl_strategy;
+#define GHL_STRATEGY_NONE        0u
+#define GHL_STRATEGY_MODELINE    1u
+#define GHL_STRATEGY_FILENAME    2u
+#define GHL_STRATEGY_SHEBANG     3u
+#define GHL_STRATEGY_EXTENSION   4u
+#define GHL_STRATEGY_XML         5u
+#define GHL_STRATEGY_MANPAGE     6u
+#define GHL_STRATEGY_HEURISTICS  7u
+#define GHL_STRATEGY_CLASSIFIER  8u
 
-typedef uint32_t ol_strategy_mask;
-#define OL_STRATEGY_MASK_MODELINE    (1u << 0)
-#define OL_STRATEGY_MASK_FILENAME    (1u << 1)
-#define OL_STRATEGY_MASK_SHEBANG     (1u << 2)
-#define OL_STRATEGY_MASK_EXTENSION   (1u << 3)
-#define OL_STRATEGY_MASK_XML         (1u << 4)
-#define OL_STRATEGY_MASK_MANPAGE     (1u << 5)
-#define OL_STRATEGY_MASK_HEURISTICS  (1u << 6)
-#define OL_STRATEGY_MASK_CLASSIFIER  (1u << 7)
-#define OL_STRATEGY_MASK_DEFAULT     UINT32_C(0xff)
+typedef uint32_t ghl_strategy_mask;
+#define GHL_STRATEGY_MASK_MODELINE    (1u << 0)
+#define GHL_STRATEGY_MASK_FILENAME    (1u << 1)
+#define GHL_STRATEGY_MASK_SHEBANG     (1u << 2)
+#define GHL_STRATEGY_MASK_EXTENSION   (1u << 3)
+#define GHL_STRATEGY_MASK_XML         (1u << 4)
+#define GHL_STRATEGY_MASK_MANPAGE     (1u << 5)
+#define GHL_STRATEGY_MASK_HEURISTICS  (1u << 6)
+#define GHL_STRATEGY_MASK_CLASSIFIER  (1u << 7)
+#define GHL_STRATEGY_MASK_DEFAULT     UINT32_C(0xff)
 
-typedef uint32_t ol_blob_input_flags;
-#define OL_BLOB_INPUT_SYMLINK      (1u << 0)
-#define OL_BLOB_INPUT_LFS_TRACKED  (1u << 1)
+typedef uint32_t ghl_blob_input_flags;
+#define GHL_BLOB_INPUT_SYMLINK      (1u << 0)
+#define GHL_BLOB_INPUT_LFS_TRACKED  (1u << 1)
 
-typedef uint64_t ol_blob_result_flags;
-#define OL_BLOB_LIKELY_BINARY          (UINT64_C(1) << 0)
-#define OL_BLOB_BINARY                 (UINT64_C(1) << 1)
-#define OL_BLOB_TEXT                   (UINT64_C(1) << 2)
-#define OL_BLOB_IMAGE                  (UINT64_C(1) << 3)
-#define OL_BLOB_SOLID                  (UINT64_C(1) << 4)
-#define OL_BLOB_CSV                    (UINT64_C(1) << 5)
-#define OL_BLOB_PDF                    (UINT64_C(1) << 6)
-#define OL_BLOB_LARGE                  (UINT64_C(1) << 7)
-#define OL_BLOB_VIEWABLE               (UINT64_C(1) << 8)
-#define OL_BLOB_SAFE_TO_COLORIZE       (UINT64_C(1) << 9)
-#define OL_BLOB_HIGH_LONG_LINE_RATIO   (UINT64_C(1) << 10)
-#define OL_BLOB_LFS_POINTER            (UINT64_C(1) << 11)
-#define OL_BLOB_VENDORED               (UINT64_C(1) << 12)
-#define OL_BLOB_DOCUMENTATION          (UINT64_C(1) << 13)
-#define OL_BLOB_GENERATED              (UINT64_C(1) << 14)
-#define OL_BLOB_DETECTABLE             (UINT64_C(1) << 15)
-#define OL_BLOB_INCLUDE_IN_STATS       (UINT64_C(1) << 16)
+typedef uint64_t ghl_blob_result_flags;
+#define GHL_BLOB_LIKELY_BINARY          (UINT64_C(1) << 0)
+#define GHL_BLOB_BINARY                 (UINT64_C(1) << 1)
+#define GHL_BLOB_TEXT                   (UINT64_C(1) << 2)
+#define GHL_BLOB_IMAGE                  (UINT64_C(1) << 3)
+#define GHL_BLOB_SOLID                  (UINT64_C(1) << 4)
+#define GHL_BLOB_CSV                    (UINT64_C(1) << 5)
+#define GHL_BLOB_PDF                    (UINT64_C(1) << 6)
+#define GHL_BLOB_LARGE                  (UINT64_C(1) << 7)
+#define GHL_BLOB_VIEWABLE               (UINT64_C(1) << 8)
+#define GHL_BLOB_SAFE_TO_COLORIZE       (UINT64_C(1) << 9)
+#define GHL_BLOB_HIGH_LONG_LINE_RATIO   (UINT64_C(1) << 10)
+#define GHL_BLOB_LFS_POINTER            (UINT64_C(1) << 11)
+#define GHL_BLOB_VENDORED               (UINT64_C(1) << 12)
+#define GHL_BLOB_DOCUMENTATION          (UINT64_C(1) << 13)
+#define GHL_BLOB_GENERATED              (UINT64_C(1) << 14)
+#define GHL_BLOB_DETECTABLE             (UINT64_C(1) << 15)
+#define GHL_BLOB_INCLUDE_IN_STATS       (UINT64_C(1) << 16)
 
-typedef uint32_t ol_analysis_flags;
-#define OL_ANALYSIS_ALLOW_EMPTY          (1u << 0)
-#define OL_ANALYSIS_INCLUDE_TRACE        (1u << 1)
-#define OL_ANALYSIS_INCLUDE_LINE_COUNTS  (1u << 2)
+typedef uint32_t ghl_analysis_flags;
+#define GHL_ANALYSIS_ALLOW_EMPTY          (1u << 0)
+#define GHL_ANALYSIS_INCLUDE_TRACE        (1u << 1)
+#define GHL_ANALYSIS_INCLUDE_LINE_COUNTS  (1u << 2)
 
-typedef uint32_t ol_analysis_text_field;
-#define OL_ANALYSIS_TEXT_MIME_TYPE       1u
-#define OL_ANALYSIS_TEXT_CONTENT_TYPE    2u
-#define OL_ANALYSIS_TEXT_DISPOSITION     3u
-#define OL_ANALYSIS_TEXT_ENCODING        4u
-#define OL_ANALYSIS_TEXT_RUBY_ENCODING   5u
-#define OL_ANALYSIS_TEXT_TM_SCOPE        6u
+typedef uint32_t ghl_analysis_text_field;
+#define GHL_ANALYSIS_TEXT_MIME_TYPE       1u
+#define GHL_ANALYSIS_TEXT_CONTENT_TYPE    2u
+#define GHL_ANALYSIS_TEXT_DISPOSITION     3u
+#define GHL_ANALYSIS_TEXT_ENCODING        4u
+#define GHL_ANALYSIS_TEXT_RUBY_ENCODING   5u
+#define GHL_ANALYSIS_TEXT_TM_SCOPE        6u
 
-typedef uint32_t ol_language_text_field;
-#define OL_LANGUAGE_TEXT_NAME                    1u
-#define OL_LANGUAGE_TEXT_FS_NAME                 2u
-#define OL_LANGUAGE_TEXT_COLOR                   3u
-#define OL_LANGUAGE_TEXT_TM_SCOPE                4u
-#define OL_LANGUAGE_TEXT_ACE_MODE                5u
-#define OL_LANGUAGE_TEXT_CODEMIRROR_MODE         6u
-#define OL_LANGUAGE_TEXT_CODEMIRROR_MIME_TYPE    7u
+typedef uint32_t ghl_language_text_field;
+#define GHL_LANGUAGE_TEXT_NAME                    1u
+#define GHL_LANGUAGE_TEXT_FS_NAME                 2u
+#define GHL_LANGUAGE_TEXT_COLOR                   3u
+#define GHL_LANGUAGE_TEXT_TM_SCOPE                4u
+#define GHL_LANGUAGE_TEXT_ACE_MODE                5u
+#define GHL_LANGUAGE_TEXT_CODEMIRROR_MODE         6u
+#define GHL_LANGUAGE_TEXT_CODEMIRROR_MIME_TYPE    7u
 
-typedef uint32_t ol_language_collection;
-#define OL_LANGUAGE_COLLECTION_ALIASES       1u
-#define OL_LANGUAGE_COLLECTION_EXTENSIONS    2u
-#define OL_LANGUAGE_COLLECTION_INTERPRETERS  3u
-#define OL_LANGUAGE_COLLECTION_FILENAMES     4u
+typedef uint32_t ghl_language_collection;
+#define GHL_LANGUAGE_COLLECTION_ALIASES       1u
+#define GHL_LANGUAGE_COLLECTION_EXTENSIONS    2u
+#define GHL_LANGUAGE_COLLECTION_INTERPRETERS  3u
+#define GHL_LANGUAGE_COLLECTION_FILENAMES     4u
 
-typedef uint32_t ol_lookup_kind;
-#define OL_LOOKUP_NAME         1u
-#define OL_LOOKUP_ALIAS        2u
-#define OL_LOOKUP_FILENAME     3u
-#define OL_LOOKUP_EXTENSION    4u
-#define OL_LOOKUP_INTERPRETER  5u
+typedef uint32_t ghl_lookup_kind;
+#define GHL_LOOKUP_NAME         1u
+#define GHL_LOOKUP_ALIAS        2u
+#define GHL_LOOKUP_FILENAME     3u
+#define GHL_LOOKUP_EXTENSION    4u
+#define GHL_LOOKUP_INTERPRETER  5u
 
-typedef struct ol_runtime_options {
+typedef struct ghl_runtime_options {
     uint32_t struct_size;
     uint32_t flags;
-    ol_string_view asset_root;
+    ghl_string_view asset_root;
     uint64_t reserved[4];
-} ol_runtime_options;
+} ghl_runtime_options;
 
-typedef struct ol_blob_input {
+typedef struct ghl_blob_input {
     uint32_t struct_size;
-    ol_blob_input_flags flags;
-    ol_string_view path;
-    ol_string_view name;
-    ol_bytes_view data;
+    ghl_blob_input_flags flags;
+    ghl_string_view path;
+    ghl_string_view name;
+    ghl_bytes_view data;
     uint64_t reserved[4];
-} ol_blob_input;
+} ghl_blob_input;
 
-typedef struct ol_analysis_options {
+typedef struct ghl_analysis_options {
     uint32_t struct_size;
-    ol_analysis_flags flags;
-    ol_strategy_mask strategies;
+    ghl_analysis_flags flags;
+    ghl_strategy_mask strategies;
     uint32_t reserved32;
     uint64_t reserved[4];
-} ol_analysis_options;
+} ghl_analysis_options;
 
-typedef struct ol_classify_options {
+typedef struct ghl_classify_options {
     uint32_t struct_size;
     uint32_t flags;
-    ol_language_type_mask allowed_types;
+    ghl_language_type_mask allowed_types;
     uint32_t maximum_bytes;
     const uint64_t* candidate_language_ids;
     size_t candidate_language_count;
     uint64_t reserved[4];
-} ol_classify_options;
+} ghl_classify_options;
 
-typedef struct ol_version_info {
+typedef struct ghl_version_info {
     uint32_t struct_size;
     uint32_t abi_major;
     uint32_t abi_minor;
     uint32_t reserved32;
-    ol_string_view wrapper_version;
-    ol_string_view ruby_version;
-    ol_string_view linguist_version;
-    ol_string_view linguist_revision;
-    ol_string_view classifier_sha256;
+    ghl_string_view wrapper_version;
+    ghl_string_view ruby_version;
+    ghl_string_view linguist_version;
+    ghl_string_view linguist_revision;
+    ghl_string_view classifier_sha256;
     uint64_t reserved[4];
-} ol_version_info;
+} ghl_version_info;
 
-typedef struct ol_language_info {
+typedef struct ghl_language_info {
     uint32_t struct_size;
-    ol_language_type type;
+    ghl_language_type type;
     uint64_t language_id;
     uint64_t group_language_id;
     uint32_t flags;
@@ -242,160 +242,160 @@ typedef struct ol_language_info {
     uint32_t extension_count;
     uint32_t interpreter_count;
     uint32_t filename_count;
-    ol_string_view name;
-    ol_string_view fs_name;
-    ol_string_view color;
-    ol_string_view tm_scope;
-    ol_string_view ace_mode;
-    ol_string_view codemirror_mode;
-    ol_string_view codemirror_mime_type;
+    ghl_string_view name;
+    ghl_string_view fs_name;
+    ghl_string_view color;
+    ghl_string_view tm_scope;
+    ghl_string_view ace_mode;
+    ghl_string_view codemirror_mode;
+    ghl_string_view codemirror_mime_type;
     uint64_t reserved[4];
-} ol_language_info;
+} ghl_language_info;
 
-#define OL_LANGUAGE_POPULAR  (1u << 0)
-#define OL_LANGUAGE_WRAP     (1u << 1)
+#define GHL_LANGUAGE_POPULAR  (1u << 0)
+#define GHL_LANGUAGE_WRAP     (1u << 1)
 
-typedef struct ol_strategy_trace_entry {
+typedef struct ghl_strategy_trace_entry {
     uint32_t struct_size;
-    ol_strategy strategy;
+    ghl_strategy strategy;
     uint32_t candidate_count;
     uint32_t reserved32;
     uint64_t reserved[4];
-} ol_strategy_trace_entry;
+} ghl_strategy_trace_entry;
 
-OL_API uint32_t OL_CALL ol_abi_version_major(void);
-OL_API uint32_t OL_CALL ol_abi_version_minor(void);
+GHL_API uint32_t GHL_CALL ghl_abi_version_major(void);
+GHL_API uint32_t GHL_CALL ghl_abi_version_minor(void);
 
-OL_API ol_status OL_CALL ol_runtime_create(
-    const ol_runtime_options* options,
-    ol_runtime** out_runtime,
-    ol_error** out_error);
+GHL_API ghl_status GHL_CALL ghl_runtime_create(
+    const ghl_runtime_options* options,
+    ghl_runtime** out_runtime,
+    ghl_error** out_error);
 
-OL_API void OL_CALL ol_runtime_release(ol_runtime* runtime);
+GHL_API void GHL_CALL ghl_runtime_release(ghl_runtime* runtime);
 
-OL_API ol_capabilities OL_CALL ol_runtime_capabilities(
-    const ol_runtime* runtime);
+GHL_API ghl_capabilities GHL_CALL ghl_runtime_capabilities(
+    const ghl_runtime* runtime);
 
-OL_API ol_status OL_CALL ol_runtime_version(
-    const ol_runtime* runtime,
-    ol_version_info* out_version);
+GHL_API ghl_status GHL_CALL ghl_runtime_version(
+    const ghl_runtime* runtime,
+    ghl_version_info* out_version);
 
-OL_API size_t OL_CALL ol_runtime_language_count(
-    const ol_runtime* runtime);
+GHL_API size_t GHL_CALL ghl_runtime_language_count(
+    const ghl_runtime* runtime);
 
-OL_API ol_status OL_CALL ol_runtime_language_id_at(
-    const ol_runtime* runtime,
+GHL_API ghl_status GHL_CALL ghl_runtime_language_id_at(
+    const ghl_runtime* runtime,
     size_t index,
     uint64_t* out_language_id);
 
-OL_API ol_status OL_CALL ol_runtime_language_info(
-    const ol_runtime* runtime,
+GHL_API ghl_status GHL_CALL ghl_runtime_language_info(
+    const ghl_runtime* runtime,
     uint64_t language_id,
-    ol_language_info* out_info);
+    ghl_language_info* out_info);
 
-OL_API ol_status OL_CALL ol_runtime_language_collection_value(
-    const ol_runtime* runtime,
+GHL_API ghl_status GHL_CALL ghl_runtime_language_collection_value(
+    const ghl_runtime* runtime,
     uint64_t language_id,
-    ol_language_collection collection,
+    ghl_language_collection collection,
     size_t index,
-    ol_string_view* out_value);
+    ghl_string_view* out_value);
 
-OL_API ol_status OL_CALL ol_runtime_lookup_languages(
-    const ol_runtime* runtime,
-    ol_lookup_kind kind,
-    ol_string_view value,
-    ol_language_id_list** out_languages,
-    ol_error** out_error);
+GHL_API ghl_status GHL_CALL ghl_runtime_lookup_languages(
+    const ghl_runtime* runtime,
+    ghl_lookup_kind kind,
+    ghl_string_view value,
+    ghl_language_id_list** out_languages,
+    ghl_error** out_error);
 
-OL_API ol_status OL_CALL ol_runtime_analyze(
-    const ol_runtime* runtime,
-    const ol_blob_input* blob,
-    const ol_analysis_options* options,
-    ol_analysis** out_analysis,
-    ol_error** out_error);
+GHL_API ghl_status GHL_CALL ghl_runtime_analyze(
+    const ghl_runtime* runtime,
+    const ghl_blob_input* blob,
+    const ghl_analysis_options* options,
+    ghl_analysis** out_analysis,
+    ghl_error** out_error);
 
-OL_API ol_status OL_CALL ol_runtime_classify(
-    const ol_runtime* runtime,
-    ol_bytes_view data,
-    const ol_classify_options* options,
-    ol_classification** out_classification,
-    ol_error** out_error);
+GHL_API ghl_status GHL_CALL ghl_runtime_classify(
+    const ghl_runtime* runtime,
+    ghl_bytes_view data,
+    const ghl_classify_options* options,
+    ghl_classification** out_classification,
+    ghl_error** out_error);
 
-OL_API void OL_CALL ol_analysis_release(ol_analysis* analysis);
+GHL_API void GHL_CALL ghl_analysis_release(ghl_analysis* analysis);
 
-OL_API uint64_t OL_CALL ol_analysis_language_id(
-    const ol_analysis* analysis);
+GHL_API uint64_t GHL_CALL ghl_analysis_language_id(
+    const ghl_analysis* analysis);
 
-OL_API ol_strategy OL_CALL ol_analysis_strategy(
-    const ol_analysis* analysis);
+GHL_API ghl_strategy GHL_CALL ghl_analysis_strategy(
+    const ghl_analysis* analysis);
 
-OL_API ol_blob_result_flags OL_CALL ol_analysis_flags(
-    const ol_analysis* analysis);
+GHL_API ghl_blob_result_flags GHL_CALL ghl_analysis_flags(
+    const ghl_analysis* analysis);
 
-OL_API uint64_t OL_CALL ol_analysis_loc(
-    const ol_analysis* analysis);
+GHL_API uint64_t GHL_CALL ghl_analysis_loc(
+    const ghl_analysis* analysis);
 
-OL_API uint64_t OL_CALL ol_analysis_sloc(
-    const ol_analysis* analysis);
+GHL_API uint64_t GHL_CALL ghl_analysis_sloc(
+    const ghl_analysis* analysis);
 
-OL_API ol_status OL_CALL ol_analysis_text(
-    const ol_analysis* analysis,
-    ol_analysis_text_field field,
-    ol_string_view* out_value);
+GHL_API ghl_status GHL_CALL ghl_analysis_text(
+    const ghl_analysis* analysis,
+    ghl_analysis_text_field field,
+    ghl_string_view* out_value);
 
-OL_API size_t OL_CALL ol_analysis_trace_count(
-    const ol_analysis* analysis);
+GHL_API size_t GHL_CALL ghl_analysis_trace_count(
+    const ghl_analysis* analysis);
 
-OL_API ol_status OL_CALL ol_analysis_trace_entry(
-    const ol_analysis* analysis,
+GHL_API ghl_status GHL_CALL ghl_analysis_trace_entry(
+    const ghl_analysis* analysis,
     size_t index,
-    ol_strategy_trace_entry* out_entry);
+    ghl_strategy_trace_entry* out_entry);
 
-OL_API ol_status OL_CALL ol_analysis_trace_candidate(
-    const ol_analysis* analysis,
+GHL_API ghl_status GHL_CALL ghl_analysis_trace_candidate(
+    const ghl_analysis* analysis,
     size_t trace_index,
     size_t candidate_index,
     uint64_t* out_language_id);
 
-OL_API void OL_CALL ol_classification_release(
-    ol_classification* classification);
+GHL_API void GHL_CALL ghl_classification_release(
+    ghl_classification* classification);
 
-OL_API size_t OL_CALL ol_classification_count(
-    const ol_classification* classification);
+GHL_API size_t GHL_CALL ghl_classification_count(
+    const ghl_classification* classification);
 
-OL_API uint32_t OL_CALL ol_classification_considered_bytes(
-    const ol_classification* classification);
+GHL_API uint32_t GHL_CALL ghl_classification_considered_bytes(
+    const ghl_classification* classification);
 
-OL_API ol_status OL_CALL ol_classification_result(
-    const ol_classification* classification,
+GHL_API ghl_status GHL_CALL ghl_classification_result(
+    const ghl_classification* classification,
     size_t index,
     uint64_t* out_language_id,
     double* out_score);
 
-OL_API void OL_CALL ol_language_id_list_release(
-    ol_language_id_list* languages);
+GHL_API void GHL_CALL ghl_language_id_list_release(
+    ghl_language_id_list* languages);
 
-OL_API size_t OL_CALL ol_language_id_list_count(
-    const ol_language_id_list* languages);
+GHL_API size_t GHL_CALL ghl_language_id_list_count(
+    const ghl_language_id_list* languages);
 
-OL_API ol_status OL_CALL ol_language_id_list_at(
-    const ol_language_id_list* languages,
+GHL_API ghl_status GHL_CALL ghl_language_id_list_at(
+    const ghl_language_id_list* languages,
     size_t index,
     uint64_t* out_language_id);
 
-OL_API ol_status OL_CALL ol_error_status(
-    const ol_error* error);
+GHL_API ghl_status GHL_CALL ghl_error_status(
+    const ghl_error* error);
 
-OL_API ol_string_view OL_CALL ol_error_message(
-    const ol_error* error);
+GHL_API ghl_string_view GHL_CALL ghl_error_message(
+    const ghl_error* error);
 
-OL_API ol_string_view OL_CALL ol_error_ruby_class(
-    const ol_error* error);
+GHL_API ghl_string_view GHL_CALL ghl_error_ruby_class(
+    const ghl_error* error);
 
-OL_API ol_string_view OL_CALL ol_error_ruby_backtrace(
-    const ol_error* error);
+GHL_API ghl_string_view GHL_CALL ghl_error_ruby_backtrace(
+    const ghl_error* error);
 
-OL_API void OL_CALL ol_error_release(ol_error* error);
+GHL_API void GHL_CALL ghl_error_release(ghl_error* error);
 
 #ifdef __cplusplus
 }
@@ -410,18 +410,18 @@ OL_API void OL_CALL ol_error_release(ol_error* error);
 - Output string views live until their containing runtime, result, list, or error handle is released.
 - A null pointer with nonzero length is invalid.
 - All input paths, names, and lookup values are strict UTF-8.
-- Analysis receives complete blob bytes; prefix-only operation belongs to `ol_runtime_classify`.
+- Analysis receives complete blob bytes; prefix-only operation belongs to `ghl_runtime_classify`.
 - `maximum_bytes == 0` uses Linguist's 50 KiB default.
 - A nonzero classifier bound cannot exceed 50 KiB in ABI v1.
 - Classification scores are similarity scores, not probabilities or confidence.
 - `language_id == 0` means no detected language.
 - Every exported function is thread-safe.
 - Ruby work is synchronous but serialized through the process worker.
-- `ol_runtime_create` blocks until CRuby, bridge code, language data, heuristics, generated rules, MIME data, and classifier centroids are loaded.
+- `ghl_runtime_create` blocks until CRuby, bridge code, language data, heuristics, generated rules, MIME data, and classifier centroids are loaded.
 - Additional runtime handles share the initialized process runtime.
 - Releasing the final runtime handle does not finalize CRuby.
 - Runtime unloading, reinitialization, collectible-load-context unloading, and post-fork use are unsupported in v1.
-- Ruby exceptions are caught with `rb_protect` and copied into `ol_error`.
+- Ruby exceptions are caught with `rb_protect` and copied into `ghl_error`.
 - No native allocation is returned without an associated release function.
 
 ## Managed facade
@@ -502,7 +502,7 @@ runtimes/linux-x64/native/*
 buildTransitive/MBW.GHLinguist.targets
 LICENSES/*
 THIRD-PARTY-NOTICES.txt
-native/include/originary_linguist.h
+native/include/ghlinguist.h
 ```
 
 Use `buildTransitive` only for non-library Ruby or data files that require preserved subdirectories. Normal build and publish consumption must be automatic after one `PackageReference`.

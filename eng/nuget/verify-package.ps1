@@ -25,8 +25,8 @@ try {
     'README.md'
     'lib/net10.0/MBW.GHLinguist.dll'
     'lib/net10.0/MBW.GHLinguist.xml'
-    'runtimes/linux-x64/native/linguist.so'
-    'runtimes/win-x64/native/linguist.so'
+    'runtimes/linux-x64/native/ghlinguist.so'
+    'runtimes/win-x64/native/ghlinguist.dll'
   )
 
   foreach ($requiredEntry in $requiredEntries) {

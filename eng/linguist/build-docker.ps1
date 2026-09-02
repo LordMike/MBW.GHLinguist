@@ -36,7 +36,7 @@ if ($actualRevision -ne $versions.LINGUIST_REVISION) {
   throw "Expected Linguist revision $($versions.LINGUIST_REVISION), found $actualRevision."
 }
 
-$imageTag = 'originary-linguist-build:linux-x64'
+$imageTag = 'ghlinguist-build:linux-x64'
 & docker build --build-arg "RUBY_IMAGE=$($versions.RUBY_DOCKER_IMAGE)" --tag $imageTag $scriptRoot
 if ($LASTEXITCODE -ne 0) {
   throw 'Failed to build the Linguist build image.'
