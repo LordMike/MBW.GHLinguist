@@ -1,14 +1,15 @@
 # Linguist build scripts
 
-These scripts compile GitHub Linguist's native tokenizer and stage it with the
-Linguist Ruby sources under `.tmp/artifacts/linguist/<rid>`.
+`native-dependencies.json` is the checked-in, non-secret source of truth for
+the CRuby 4.0.1, Linguist 9.6.0, gem, ICU, and exclusion pins. It explicitly
+excludes Rugged and libgit2 because this package does not expose repository
+traversal.
 
-The tokenizer binary is also copied to `.tmp/artifacts/native/<rid>`, which is
-the package-ready RID asset root consumed by `MBW.GHLinguist.csproj`.
-
-The build intentionally does not install Linguist's gem dependencies yet. It
-validates the first native boundary needed by the embedded runtime without
-bringing in the deferred Rugged dependency.
+The scripts create a complete RID-local closure beneath
+`.tmp/artifacts/native/<rid>`. Each closure contains the `ghlinguist` bridge,
+CRuby runtime and standard library, pinned gems, ICU libraries, Linguist Ruby
+sources and data, the tokenizer extension, and a `provenance.json` containing
+SHA-256 hashes for every staged file. No native binaries are checked in.
 
 ## Linux x64
 
@@ -18,11 +19,20 @@ Requires Docker with Linux containers:
 ./eng/linguist/build-docker.ps1
 ```
 
+The image is pinned by digest in the manifest and installs only the compiler,
+CMake, and ICU development files needed to build this closure.
+
 ## Windows x64
 
-Requires RubyInstaller 4.0.1 with its MSYS2 Devkit. The script locates the
-Devkit tools from the Ruby installation when they are not already on `PATH`:
+Requires an existing RubyInstaller 4.0.1 x64-ucrt root with the MSYS2 Devkit,
+the pinned gems, and ICU DLLs. By default the script uses `ruby` on `PATH` and
+`extern/linguist`; pass explicit roots when staging a different installed asset
+root:
 
 ```powershell
 ./eng/linguist/build-windows.ps1
+./eng/linguist/build-windows.ps1 -RubyRoot C:\Ruby40-x64 -LinguistRoot C:\src\linguist
 ```
+
+Both scripts stop before producing an asset when a pinned source, gem, ICU
+library, tokenizer, or bridge binary is absent or has the wrong version.

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "ruby": {
+    "version": "4.0.1",
+    "abiVersion": "4.0.0",
+    "windowsPlatform": "x64-mingw-ucrt",
+    "dockerImage": "ruby:4.0.1-bookworm@sha256:4ca45c63e012dd4ace6d74ef21192591994015a761a59b8b267cde348f937847",
+    "runtimeFiles": [
+      "bin/ruby.exe",
+      "bin/x64-ucrt-ruby400.dll",
+      "lib/ruby"
+    ]
+  },
+  "linguist": {
+    "version": "9.6.0",
+    "revision": "196b2a14418cab005065c72c9759370934c184bc",
+    "paths": [
+      "lib",
+      "vendor"
+    ],
+    "tokenizerExtension": "ext/linguist"
+  },
+  "gems": [
+    {
+      "name": "cgi",
+      "version": "0.4.2",
+      "nativeExtension": false
+    },
+    {
+      "name": "mini_mime",
+      "version": "1.1.5",
+      "nativeExtension": false
+    },
+    {
+      "name": "charlock_holmes",
+      "version": "0.7.9",
+      "nativeExtension": true
+    }
+  ],
+  "icu": {
+    "requiredLibraries": [
+      "icudt",
+      "icuin",
+      "icuuc"
+    ],
+    "windowsSearchPaths": [
+      "bin",
+      "msys64/ucrt64/bin"
+    ],
+    "windowsPatterns": [
+      "icudt*.dll",
+      "icuin*.dll",
+      "icuuc*.dll"
+    ],
+    "linuxPatterns": [
+      "lib/libicudata.so*",
+      "lib/libicui18n.so*",
+      "lib/libicuuc.so*"
+    ]
+  },
+  "excluded": [
+    {
+      "name": "rugged",
+      "reason": "Repository traversal is not part of the embedded blob-analysis surface."
+    },
+    {
+      "name": "libgit2",
+      "reason": "Only required by the explicitly excluded Rugged repository integration."
+    }
+  ]
+}

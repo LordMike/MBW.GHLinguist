@@ -6,38 +6,37 @@ Set-StrictMode -Version Latest
 
 $scriptRoot = $PSScriptRoot
 $repoRoot = (Resolve-Path (Join-Path $scriptRoot '../..')).Path
-$versionsFile = Join-Path $scriptRoot 'versions.env'
-
-function Read-Versions {
-  $values = @{}
-  foreach ($line in Get-Content -LiteralPath $versionsFile) {
-    if ($line -match '^([^#=]+)=(.+)$') {
-      $values[$Matches[1]] = $Matches[2]
-    }
-  }
-  return $values
-}
+$manifestPath = Join-Path $scriptRoot 'native-dependencies.json'
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
   throw 'Required command is unavailable: docker'
 }
+
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+  throw 'Required command is unavailable: git'
+}
+
+if (-not (Test-Path -LiteralPath $manifestPath)) {
+  throw "Native dependency manifest is missing: $manifestPath"
+}
+
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 
 $linguistRoot = Join-Path $repoRoot 'extern/linguist'
 if (-not (Test-Path -LiteralPath (Join-Path $linguistRoot 'ext/linguist/extconf.rb'))) {
   throw 'Linguist is not checked out. Run: git submodule update --init extern/linguist'
 }
 
-$versions = Read-Versions
 $actualRevision = (& git -C $linguistRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) {
   throw 'Unable to read the Linguist revision.'
 }
-if ($actualRevision -ne $versions.LINGUIST_REVISION) {
-  throw "Expected Linguist revision $($versions.LINGUIST_REVISION), found $actualRevision."
+if ($actualRevision -ne $manifest.linguist.revision) {
+  throw "Expected Linguist revision $($manifest.linguist.revision), found $actualRevision."
 }
 
 $imageTag = 'ghlinguist-build:linux-x64'
-& docker build --build-arg "RUBY_IMAGE=$($versions.RUBY_DOCKER_IMAGE)" --tag $imageTag $scriptRoot
+& docker build --build-arg "RUBY_IMAGE=$($manifest.ruby.dockerImage)" --tag $imageTag $scriptRoot
 if ($LASTEXITCODE -ne 0) {
   throw 'Failed to build the Linguist build image.'
 }

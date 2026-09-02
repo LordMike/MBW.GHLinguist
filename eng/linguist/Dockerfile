@@ -1,5 +1,9 @@
-ARG RUBY_IMAGE=ruby:4.0.1-bookworm
+ARG RUBY_IMAGE
 FROM ${RUBY_IMAGE}
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends build-essential cmake libicu-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
 
