@@ -31,9 +31,37 @@ int main(int argc, char** argv) {
         ghl_runtime_release(runtime);
         return 1;
     }
+    if ((ghl_runtime_capabilities(runtime) & GHL_CAP_LANGUAGE_REGISTRY) == 0 || ghl_runtime_language_count(runtime) == 0) {
+        std::fprintf(stderr, "Runtime did not project the Linguist language registry.\n");
+        ghl_runtime_release(runtime);
+        return 1;
+    }
 
-    std::printf("Ruby %.*s initialized; capabilities=%llu\n", static_cast<int>(version.ruby_version.length),
-        version.ruby_version.data, static_cast<unsigned long long>(ghl_runtime_capabilities(runtime)));
+    const ghl_string_view ruby = {"Ruby", 4};
+    ghl_language_id_list* matches = nullptr;
+    if (ghl_runtime_lookup_languages(runtime, GHL_LOOKUP_NAME, ruby, &matches, &error) != GHL_STATUS_OK ||
+        ghl_language_id_list_count(matches) != 1) {
+        std::fprintf(stderr, "Language name lookup failed.\n");
+        ghl_error_release(error);
+        ghl_language_id_list_release(matches);
+        ghl_runtime_release(runtime);
+        return 1;
+    }
+    uint64_t ruby_id = 0;
+    ghl_language_info ruby_info = {};
+    ruby_info.struct_size = sizeof(ruby_info);
+    if (ghl_language_id_list_at(matches, 0, &ruby_id) != GHL_STATUS_OK ||
+        ghl_runtime_language_info(runtime, ruby_id, &ruby_info) != GHL_STATUS_OK ||
+        ruby_info.name.length != ruby.length || std::memcmp(ruby_info.name.data, ruby.data, ruby.length) != 0) {
+        std::fprintf(stderr, "Language metadata projection failed.\n");
+        ghl_language_id_list_release(matches);
+        ghl_runtime_release(runtime);
+        return 1;
+    }
+    ghl_language_id_list_release(matches);
+
+    std::printf("Ruby %.*s initialized; languages=%zu; capabilities=%llu\n", static_cast<int>(version.ruby_version.length),
+        version.ruby_version.data, ghl_runtime_language_count(runtime), static_cast<unsigned long long>(ghl_runtime_capabilities(runtime)));
     ghl_runtime_release(runtime);
     return 0;
 }

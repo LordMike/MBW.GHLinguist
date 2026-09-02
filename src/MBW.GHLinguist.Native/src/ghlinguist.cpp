@@ -1,29 +1,63 @@
 #include "ghlinguist.h"
 
 #include <condition_variable>
+#include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <filesystem>
 #include <functional>
 #include <future>
+#include <memory>
 #include <mutex>
 #include <new>
 #include <queue>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #if defined(GHL_RUBY_EMBEDDING)
 #include <ruby.h>
 #endif
 
+struct NativeLanguage {
+    uint64_t id = 0;
+    uint64_t group_id = 0;
+    ghl_language_type type = GHL_LANGUAGE_TYPE_UNKNOWN;
+    uint32_t flags = 0;
+    std::string name;
+    std::string fs_name;
+    std::string color;
+    std::string tm_scope;
+    std::string ace_mode;
+    std::string codemirror_mode;
+    std::string codemirror_mime_type;
+    std::vector<std::string> aliases;
+    std::vector<std::string> extensions;
+    std::vector<std::string> interpreters;
+    std::vector<std::string> filenames;
+};
+
+struct LanguageRegistry {
+    std::vector<NativeLanguage> languages;
+    std::unordered_map<uint64_t, size_t> by_id;
+    std::unordered_map<std::string, uint64_t> names;
+    std::unordered_map<std::string, uint64_t> aliases;
+    std::unordered_map<std::string, std::vector<uint64_t>> filenames;
+    std::unordered_map<std::string, std::vector<uint64_t>> extensions;
+    std::unordered_map<std::string, std::vector<uint64_t>> interpreters;
+};
+
 struct ghl_runtime {
     uint32_t magic = 0x47484C31u;
     std::string ruby_version;
     std::string linguist_version;
+    std::shared_ptr<const LanguageRegistry> languages;
 };
 struct ghl_analysis { uint32_t unused = 0; };
 struct ghl_classification { uint32_t unused = 0; };
-struct ghl_language_id_list { uint32_t unused = 0; };
+struct ghl_language_id_list { std::vector<uint64_t> ids; };
 struct ghl_error {
     ghl_status status;
     std::string message;
@@ -51,6 +85,11 @@ static_assert(sizeof(ghl_strategy_trace_entry) == 48);
 ghl_string_view view(const char* text) { return {text, std::char_traits<char>::length(text)}; }
 ghl_string_view view(const std::string& text) { return {text.data(), text.size()}; }
 ghl_string_view empty_view() { return {nullptr, 0}; }
+
+std::string lowercase(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    return value;
+}
 
 bool reserved_zero(const uint64_t (&reserved)[4]) {
     return reserved[0] == 0 && reserved[1] == 0 && reserved[2] == 0 && reserved[3] == 0;
@@ -139,6 +178,7 @@ struct WorkerResult {
     std::string ruby_backtrace;
     std::string ruby_version;
     std::string linguist_version;
+    std::shared_ptr<const LanguageRegistry> languages;
 };
 
 #if defined(GHL_RUBY_EMBEDDING)
@@ -150,6 +190,31 @@ struct RubyErrorDetails {
 
 std::string ruby_string(VALUE value) {
     return std::string(RSTRING_PTR(value), static_cast<size_t>(RSTRING_LEN(value)));
+}
+
+std::string ruby_optional_string(VALUE value) {
+    return NIL_P(value) ? std::string() : ruby_string(value);
+}
+
+uint64_t ruby_integer(VALUE value) { return NUM2ULL(value); }
+
+ghl_language_type ruby_language_type(VALUE value) {
+    const std::string type = ruby_optional_string(value);
+    if (type == "data") return GHL_LANGUAGE_TYPE_DATA;
+    if (type == "markup") return GHL_LANGUAGE_TYPE_MARKUP;
+    if (type == "programming") return GHL_LANGUAGE_TYPE_PROGRAMMING;
+    if (type == "prose") return GHL_LANGUAGE_TYPE_PROSE;
+    return GHL_LANGUAGE_TYPE_UNKNOWN;
+}
+
+void append_ruby_strings(VALUE values, std::vector<std::string>* target) {
+    const long count = RARRAY_LEN(values);
+    target->reserve(static_cast<size_t>(count));
+    for (long index = 0; index < count; ++index) target->push_back(ruby_string(rb_ary_entry(values, index)));
+}
+
+void add_lookup(std::unordered_map<std::string, std::vector<uint64_t>>* index, const std::string& key, uint64_t id, bool fold_case) {
+    (*index)[fold_case ? lowercase(key) : key].push_back(id);
 }
 
 struct RubyErrorContext { VALUE exception; RubyErrorDetails* details; };
@@ -185,15 +250,53 @@ struct RubyStartupContext {
     std::string linguist_root;
     std::string ruby_version;
     std::string linguist_version;
+    std::shared_ptr<LanguageRegistry> languages;
 };
+
+std::shared_ptr<LanguageRegistry> project_languages() {
+    auto registry = std::make_shared<LanguageRegistry>();
+    const VALUE language_class = rb_path2class("Linguist::Language");
+    const VALUE languages = rb_funcall(language_class, rb_intern("all"), 0);
+    const long count = RARRAY_LEN(languages);
+    registry->languages.reserve(static_cast<size_t>(count));
+    for (long index = 0; index < count; ++index) {
+        const VALUE language = rb_ary_entry(languages, index);
+        NativeLanguage native;
+        native.id = ruby_integer(rb_funcall(language, rb_intern("language_id"), 0));
+        native.group_id = ruby_integer(rb_funcall(rb_funcall(language, rb_intern("group"), 0), rb_intern("language_id"), 0));
+        native.type = ruby_language_type(rb_funcall(language, rb_intern("type"), 0));
+        native.name = ruby_string(rb_funcall(language, rb_intern("name"), 0));
+        native.fs_name = ruby_optional_string(rb_funcall(language, rb_intern("fs_name"), 0));
+        native.color = ruby_optional_string(rb_funcall(language, rb_intern("color"), 0));
+        native.tm_scope = ruby_optional_string(rb_funcall(language, rb_intern("tm_scope"), 0));
+        native.ace_mode = ruby_optional_string(rb_funcall(language, rb_intern("ace_mode"), 0));
+        native.codemirror_mode = ruby_optional_string(rb_funcall(language, rb_intern("codemirror_mode"), 0));
+        native.codemirror_mime_type = ruby_optional_string(rb_funcall(language, rb_intern("codemirror_mime_type"), 0));
+        if (RTEST(rb_funcall(language, rb_intern("popular?"), 0))) native.flags |= GHL_LANGUAGE_POPULAR;
+        if (RTEST(rb_funcall(language, rb_intern("wrap"), 0))) native.flags |= GHL_LANGUAGE_WRAP;
+        append_ruby_strings(rb_funcall(language, rb_intern("aliases"), 0), &native.aliases);
+        append_ruby_strings(rb_funcall(language, rb_intern("extensions"), 0), &native.extensions);
+        append_ruby_strings(rb_funcall(language, rb_intern("interpreters"), 0), &native.interpreters);
+        append_ruby_strings(rb_funcall(language, rb_intern("filenames"), 0), &native.filenames);
+        const size_t native_index = registry->languages.size();
+        registry->by_id.emplace(native.id, native_index);
+        registry->names.emplace(lowercase(native.name), native.id);
+        if (!native.fs_name.empty()) registry->names.emplace(lowercase(native.fs_name), native.id);
+        for (const std::string& value : native.aliases) registry->aliases.emplace(lowercase(value), native.id);
+        for (const std::string& value : native.extensions) add_lookup(&registry->extensions, value, native.id, true);
+        for (const std::string& value : native.interpreters) add_lookup(&registry->interpreters, value, native.id, false);
+        for (const std::string& value : native.filenames) add_lookup(&registry->filenames, value, native.id, false);
+        registry->languages.push_back(std::move(native));
+    }
+    return registry;
+}
 
 VALUE load_runtime_assets(VALUE opaque) {
     auto* context = reinterpret_cast<RubyStartupContext*>(opaque);
     VALUE load_path = rb_gv_get("$LOAD_PATH");
     rb_ary_unshift(load_path, rb_utf8_str_new(context->linguist_root.data(), static_cast<long>(context->linguist_root.size())));
     rb_ary_unshift(load_path, rb_utf8_str_new(context->asset_root.data(), static_cast<long>(context->asset_root.size())));
-    rb_funcall(rb_mKernel, rb_intern("require"), 1, rb_utf8_str_new_cstr("linguist/version"));
-    rb_funcall(rb_mKernel, rb_intern("require"), 1, rb_utf8_str_new_cstr("linguist/tokenizer"));
+    rb_funcall(rb_mKernel, rb_intern("require"), 1, rb_utf8_str_new_cstr("linguist/language"));
 
     int state = 0;
     VALUE ruby_version = rb_eval_string_protect("RUBY_VERSION", &state);
@@ -202,6 +305,7 @@ VALUE load_runtime_assets(VALUE opaque) {
     VALUE linguist_version = rb_eval_string_protect("Linguist::VERSION", &state);
     if (state != 0) rb_jump_tag(state);
     context->linguist_version = ruby_string(linguist_version);
+    context->languages = project_languages();
     return Qnil;
 }
 #endif
@@ -211,14 +315,20 @@ public:
     RubyWorker() : thread_([this] { run(); }) {}
 
     WorkerResult ensure_initialized(std::string asset_root) {
+        return invoke([this, asset_root = std::move(asset_root)] { return initialize_on_worker(asset_root); });
+    }
+
+private:
+    template <typename F>
+    WorkerResult invoke(F&& operation) {
         auto completion = std::make_shared<std::promise<WorkerResult>>();
         std::future<WorkerResult> result = completion->get_future();
         try {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                jobs_.push([this, asset_root = std::move(asset_root), completion] {
+                jobs_.push([operation = std::forward<F>(operation), completion]() mutable {
                     try {
-                        completion->set_value(initialize_on_worker(asset_root));
+                        completion->set_value(operation());
                     } catch (const std::exception& exception) {
                         completion->set_value({GHL_STATUS_NATIVE_FAILURE, exception.what(), {}, {}, {}, {}});
                     } catch (...) {
@@ -235,7 +345,6 @@ public:
         }
     }
 
-private:
     WorkerResult initialize_on_worker(const std::string& asset_root) {
         if (initialization_attempted_) {
             if (asset_root != asset_root_) {
@@ -262,12 +371,12 @@ private:
         if (state != 0) {
             RubyErrorDetails details = ruby_error_details();
             initialization_result_ = {GHL_STATUS_RUBY_EXCEPTION, std::move(details.message),
-                std::move(details.ruby_class), std::move(details.ruby_backtrace), {}, {}};
+                std::move(details.ruby_class), std::move(details.ruby_backtrace), {}, {}, {}};
         } else {
-            initialization_result_ = {GHL_STATUS_OK, {}, {}, {}, std::move(context.ruby_version), std::move(context.linguist_version)};
+            initialization_result_ = {GHL_STATUS_OK, {}, {}, {}, std::move(context.ruby_version), std::move(context.linguist_version), std::move(context.languages)};
         }
 #else
-        initialization_result_ = {GHL_STATUS_UNSUPPORTED, kUnsupported, {}, {}, {}, {}};
+        initialization_result_ = {GHL_STATUS_UNSUPPORTED, kUnsupported, {}, {}, {}, {}, {}};
 #endif
         return initialization_result_;
     }
@@ -309,8 +418,8 @@ bool validate_asset_root(const ghl_string_view asset_root, std::string* normaliz
     }
     const std::filesystem::path linguist_root = root / "lib" / "linguist";
     if (!std::filesystem::is_regular_file(linguist_root / "version.rb", error) || error ||
-        !std::filesystem::is_regular_file(linguist_root / "tokenizer.rb", error) || error) {
-        *message = "asset_root must contain lib/linguist/version.rb and lib/linguist/tokenizer.rb.";
+        !std::filesystem::is_regular_file(linguist_root / "language.rb", error) || error) {
+        *message = "asset_root must contain lib/linguist/version.rb and lib/linguist/language.rb.";
         return false;
     }
     const std::filesystem::path canonical = std::filesystem::weakly_canonical(root, error);
@@ -320,6 +429,52 @@ bool validate_asset_root(const ghl_string_view asset_root, std::string* normaliz
     }
     *normalized = canonical.u8string();
     return true;
+}
+
+const NativeLanguage* language_by_id(const ghl_runtime* runtime, uint64_t id) {
+    const auto iterator = runtime->languages->by_id.find(id);
+    return iterator == runtime->languages->by_id.end() ? nullptr : &runtime->languages->languages[iterator->second];
+}
+
+const std::vector<std::string>* language_collection(const NativeLanguage& language, ghl_language_collection collection) {
+    switch (collection) {
+    case GHL_LANGUAGE_COLLECTION_ALIASES: return &language.aliases;
+    case GHL_LANGUAGE_COLLECTION_EXTENSIONS: return &language.extensions;
+    case GHL_LANGUAGE_COLLECTION_INTERPRETERS: return &language.interpreters;
+    case GHL_LANGUAGE_COLLECTION_FILENAMES: return &language.filenames;
+    default: return nullptr;
+    }
+}
+
+std::vector<uint64_t> find_languages(const LanguageRegistry& registry, ghl_lookup_kind kind, const std::string& value) {
+    const auto comma = value.find(',');
+    const std::string alternate = comma == std::string::npos ? value : value.substr(0, comma);
+    if (kind == GHL_LOOKUP_NAME || kind == GHL_LOOKUP_ALIAS) {
+        const auto& index = kind == GHL_LOOKUP_NAME ? registry.names : registry.aliases;
+        auto iterator = index.find(lowercase(value));
+        if (iterator == index.end() && alternate != value) iterator = index.find(lowercase(alternate));
+        return iterator == index.end() ? std::vector<uint64_t>() : std::vector<uint64_t>{iterator->second};
+    }
+    if (kind == GHL_LOOKUP_FILENAME) {
+        const size_t separator = value.find_last_of("/\\");
+        const auto iterator = registry.filenames.find(value.substr(separator == std::string::npos ? 0 : separator + 1));
+        return iterator == registry.filenames.end() ? std::vector<uint64_t>() : iterator->second;
+    }
+    if (kind == GHL_LOOKUP_EXTENSION) {
+        const std::string name = lowercase(value.substr(value.find_last_of("/\\") + 1));
+        size_t dot = name.find('.');
+        while (dot != std::string::npos) {
+            const auto iterator = registry.extensions.find(name.substr(dot));
+            if (iterator != registry.extensions.end() && !iterator->second.empty()) return iterator->second;
+            dot = name.find('.', dot + 1);
+        }
+        return {};
+    }
+    if (kind == GHL_LOOKUP_INTERPRETER) {
+        const auto iterator = registry.interpreters.find(value);
+        return iterator == registry.interpreters.end() ? std::vector<uint64_t>() : iterator->second;
+    }
+    return {};
 }
 
 } // namespace
@@ -344,14 +499,16 @@ ghl_status GHL_CALL ghl_runtime_create(const ghl_runtime_options* options, ghl_r
             std::move(worker.ruby_class), std::move(worker.ruby_backtrace));
     }
 
-    ghl_runtime* runtime = new (std::nothrow) ghl_runtime{kRuntimeMagic, std::move(worker.ruby_version), std::move(worker.linguist_version)};
+    ghl_runtime* runtime = new (std::nothrow) ghl_runtime{kRuntimeMagic, std::move(worker.ruby_version), std::move(worker.linguist_version), std::move(worker.languages)};
     if (runtime == nullptr) return fail(GHL_STATUS_OUT_OF_MEMORY, "Unable to allocate runtime handle.", out_error);
     *out_runtime = runtime;
     return GHL_STATUS_OK;
 }
 
 void GHL_CALL ghl_runtime_release(ghl_runtime* runtime) { if (runtime != nullptr) { runtime->magic = 0; delete runtime; } }
-ghl_capabilities GHL_CALL ghl_runtime_capabilities(const ghl_runtime* runtime) { return valid_runtime(runtime) ? 0 : 0; }
+ghl_capabilities GHL_CALL ghl_runtime_capabilities(const ghl_runtime* runtime) {
+    return valid_runtime(runtime) && runtime->languages ? GHL_CAP_LANGUAGE_REGISTRY : 0;
+}
 
 ghl_status GHL_CALL ghl_runtime_version(const ghl_runtime* runtime, ghl_version_info* out_version) {
     if (!valid_runtime(runtime)) return GHL_STATUS_INVALID_ARGUMENT;
@@ -368,29 +525,62 @@ ghl_status GHL_CALL ghl_runtime_version(const ghl_runtime* runtime, ghl_version_
     return GHL_STATUS_OK;
 }
 
-size_t GHL_CALL ghl_runtime_language_count(const ghl_runtime* runtime) { return valid_runtime(runtime) ? 0 : 0; }
-ghl_status GHL_CALL ghl_runtime_language_id_at(const ghl_runtime* runtime, size_t, uint64_t* out_language_id) {
+size_t GHL_CALL ghl_runtime_language_count(const ghl_runtime* runtime) {
+    return valid_runtime(runtime) && runtime->languages ? runtime->languages->languages.size() : 0;
+}
+ghl_status GHL_CALL ghl_runtime_language_id_at(const ghl_runtime* runtime, size_t index, uint64_t* out_language_id) {
     if (out_language_id == nullptr || !valid_runtime(runtime)) return GHL_STATUS_INVALID_ARGUMENT;
     *out_language_id = 0;
-    return GHL_STATUS_UNSUPPORTED;
+    if (!runtime->languages || index >= runtime->languages->languages.size()) return GHL_STATUS_NOT_FOUND;
+    *out_language_id = runtime->languages->languages[index].id;
+    return GHL_STATUS_OK;
 }
-ghl_status GHL_CALL ghl_runtime_language_info(const ghl_runtime* runtime, uint64_t, ghl_language_info* out_info) {
+ghl_status GHL_CALL ghl_runtime_language_info(const ghl_runtime* runtime, uint64_t language_id, ghl_language_info* out_info) {
     if (!valid_runtime(runtime)) return GHL_STATUS_INVALID_ARGUMENT;
     if (!valid_language_output(out_info)) return GHL_STATUS_ABI_MISMATCH;
     *out_info = {};
     out_info->struct_size = sizeof(*out_info);
-    return GHL_STATUS_UNSUPPORTED;
+    if (!runtime->languages) return GHL_STATUS_UNSUPPORTED;
+    const NativeLanguage* language = language_by_id(runtime, language_id);
+    if (language == nullptr) return GHL_STATUS_NOT_FOUND;
+    out_info->type = language->type;
+    out_info->language_id = language->id;
+    out_info->group_language_id = language->group_id;
+    out_info->flags = language->flags;
+    out_info->alias_count = static_cast<uint32_t>(language->aliases.size());
+    out_info->extension_count = static_cast<uint32_t>(language->extensions.size());
+    out_info->interpreter_count = static_cast<uint32_t>(language->interpreters.size());
+    out_info->filename_count = static_cast<uint32_t>(language->filenames.size());
+    out_info->name = view(language->name);
+    out_info->fs_name = view(language->fs_name);
+    out_info->color = view(language->color);
+    out_info->tm_scope = view(language->tm_scope);
+    out_info->ace_mode = view(language->ace_mode);
+    out_info->codemirror_mode = view(language->codemirror_mode);
+    out_info->codemirror_mime_type = view(language->codemirror_mime_type);
+    return GHL_STATUS_OK;
 }
-ghl_status GHL_CALL ghl_runtime_language_collection_value(const ghl_runtime* runtime, uint64_t, ghl_language_collection, size_t, ghl_string_view* out_value) {
+ghl_status GHL_CALL ghl_runtime_language_collection_value(const ghl_runtime* runtime, uint64_t language_id, ghl_language_collection collection, size_t index, ghl_string_view* out_value) {
     if (out_value == nullptr || !valid_runtime(runtime)) return GHL_STATUS_INVALID_ARGUMENT;
     *out_value = empty_view();
-    return GHL_STATUS_UNSUPPORTED;
+    if (!runtime->languages) return GHL_STATUS_UNSUPPORTED;
+    const NativeLanguage* language = language_by_id(runtime, language_id);
+    if (language == nullptr) return GHL_STATUS_NOT_FOUND;
+    const std::vector<std::string>* values = language_collection(*language, collection);
+    if (values == nullptr || index >= values->size()) return GHL_STATUS_NOT_FOUND;
+    *out_value = view((*values)[index]);
+    return GHL_STATUS_OK;
 }
-ghl_status GHL_CALL ghl_runtime_lookup_languages(const ghl_runtime* runtime, ghl_lookup_kind, ghl_string_view value, ghl_language_id_list** out_languages, ghl_error** out_error) {
+ghl_status GHL_CALL ghl_runtime_lookup_languages(const ghl_runtime* runtime, ghl_lookup_kind kind, ghl_string_view value, ghl_language_id_list** out_languages, ghl_error** out_error) {
     clear_error(out_error);
     if (out_languages == nullptr || !valid_runtime(runtime) || !valid_utf8(value)) return invalid("lookup arguments are invalid.", out_error);
     *out_languages = nullptr;
-    return unsupported(out_error);
+    if (kind < GHL_LOOKUP_NAME || kind > GHL_LOOKUP_INTERPRETER) return invalid("lookup kind is invalid.", out_error);
+    if (!runtime->languages) return unsupported(out_error);
+    ghl_language_id_list* languages = new (std::nothrow) ghl_language_id_list{find_languages(*runtime->languages, kind, std::string(value.data, value.length))};
+    if (languages == nullptr) return fail(GHL_STATUS_OUT_OF_MEMORY, "Unable to allocate language lookup results.", out_error);
+    *out_languages = languages;
+    return GHL_STATUS_OK;
 }
 ghl_status GHL_CALL ghl_runtime_analyze(const ghl_runtime* runtime, const ghl_blob_input* blob, const ghl_analysis_options* options, ghl_analysis** out_analysis, ghl_error** out_error) {
     clear_error(out_error);
@@ -422,8 +612,8 @@ uint32_t GHL_CALL ghl_classification_considered_bytes(const ghl_classification*)
 ghl_status GHL_CALL ghl_classification_result(const ghl_classification* classification, size_t, uint64_t* out_language_id, double* out_score) { if (classification == nullptr || out_language_id == nullptr || out_score == nullptr) return GHL_STATUS_INVALID_ARGUMENT; *out_language_id = 0; *out_score = 0; return GHL_STATUS_UNSUPPORTED; }
 
 void GHL_CALL ghl_language_id_list_release(ghl_language_id_list* languages) { delete languages; }
-size_t GHL_CALL ghl_language_id_list_count(const ghl_language_id_list*) { return 0; }
-ghl_status GHL_CALL ghl_language_id_list_at(const ghl_language_id_list* languages, size_t, uint64_t* out_language_id) { if (languages == nullptr || out_language_id == nullptr) return GHL_STATUS_INVALID_ARGUMENT; *out_language_id = 0; return GHL_STATUS_UNSUPPORTED; }
+size_t GHL_CALL ghl_language_id_list_count(const ghl_language_id_list* languages) { return languages == nullptr ? 0 : languages->ids.size(); }
+ghl_status GHL_CALL ghl_language_id_list_at(const ghl_language_id_list* languages, size_t index, uint64_t* out_language_id) { if (languages == nullptr || out_language_id == nullptr) return GHL_STATUS_INVALID_ARGUMENT; *out_language_id = 0; if (index >= languages->ids.size()) return GHL_STATUS_NOT_FOUND; *out_language_id = languages->ids[index]; return GHL_STATUS_OK; }
 
 ghl_status GHL_CALL ghl_error_status(const ghl_error* error) { return error == nullptr ? GHL_STATUS_INVALID_ARGUMENT : error->status; }
 ghl_string_view GHL_CALL ghl_error_message(const ghl_error* error) { return error == nullptr ? empty_view() : view(error->message); }

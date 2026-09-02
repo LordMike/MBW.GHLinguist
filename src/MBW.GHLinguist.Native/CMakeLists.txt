@@ -5,6 +5,7 @@ project(MBW.GHLinguist.Native VERSION 0.1.0 LANGUAGES CXX)
 set(GHL_RUBY_ROOT "" CACHE PATH "RubyInstaller root used to embed CRuby (for example C:/Ruby40-x64)")
 option(GHL_ENABLE_RUBY_EMBEDDING "Build the CRuby embedding runtime" OFF)
 option(GHL_BUILD_SMOKE "Build the native runtime smoke executable" OFF)
+set(GHL_SMOKE_ASSET_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../extern/linguist" CACHE PATH "Full GitHub Linguist asset root used by the runtime smoke test")
 
 if(GHL_RUBY_ROOT)
     set(GHL_ENABLE_RUBY_EMBEDDING ON)
@@ -77,7 +78,7 @@ if(GHL_BUILD_SMOKE)
         include(CTest)
         if(BUILD_TESTING)
             add_test(NAME ghlinguist.runtime-smoke
-                COMMAND ghlinguist_smoke "${CMAKE_CURRENT_SOURCE_DIR}/tests/assets")
+                COMMAND ghlinguist_smoke "${GHL_SMOKE_ASSET_ROOT}")
             set_tests_properties(ghlinguist.runtime-smoke PROPERTIES
                 ENVIRONMENT "PATH=${GHL_RUBY_ROOT}/bin\\;${GHL_RUBY_ROOT}/msys64/ucrt64/bin\\;$ENV{PATH}")
         endif()
