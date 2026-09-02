@@ -150,7 +150,7 @@ typedef uint64_t ghl_blob_result_flags;
 #define GHL_BLOB_DETECTABLE             (UINT64_C(1) << 15)
 #define GHL_BLOB_INCLUDE_IN_STATS       (UINT64_C(1) << 16)
 
-typedef uint32_t ghl_analysis_flags;
+typedef uint32_t ghl_analysis_option_flags;
 #define GHL_ANALYSIS_ALLOW_EMPTY          (1u << 0)
 #define GHL_ANALYSIS_INCLUDE_TRACE        (1u << 1)
 #define GHL_ANALYSIS_INCLUDE_LINE_COUNTS  (1u << 2)
@@ -203,7 +203,7 @@ typedef struct ghl_blob_input {
 
 typedef struct ghl_analysis_options {
     uint32_t struct_size;
-    ghl_analysis_flags flags;
+    ghl_analysis_option_flags flags;
     ghl_strategy_mask strategies;
     uint32_t reserved32;
     uint64_t reserved[4];
