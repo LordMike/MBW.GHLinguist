@@ -1,0 +1,3 @@
+[submodule "extern/linguist"]
+	path = extern/linguist
+	url = https://github.com/github-linguist/linguist.git
