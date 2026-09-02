@@ -29,6 +29,7 @@ public sealed class LinguistRuntimeTests
         Assert.Throws<ObjectDisposedException>(() => runtime.Capabilities);
         Assert.Throws<ObjectDisposedException>(() => runtime.Languages);
         Assert.Throws<ObjectDisposedException>(() => runtime.FindByName("Ruby"));
+        Assert.Throws<ObjectDisposedException>(() => runtime.FindByName(null!));
         Assert.Throws<ObjectDisposedException>(() => runtime.FindByAlias("ruby"));
         Assert.Throws<ObjectDisposedException>(() => runtime.FindByFilename("Gemfile"));
         Assert.Throws<ObjectDisposedException>(() => runtime.FindByExtension("example.rb"));
@@ -164,6 +165,63 @@ public sealed class LinguistRuntimeTests
     }
 
     [Fact]
+    public void OperationsRejectMissingCapabilitiesBeforeCallingTheBackend()
+    {
+        var backend = new FakeBackend(capabilities: LinguistCapabilities.None);
+        using var runtime = new LinguistRuntime(backend);
+
+        Assert.Throws<NotSupportedException>(() => runtime.Languages);
+        Assert.Throws<NotSupportedException>(() => runtime.FindByName("Ruby"));
+        Assert.Throws<NotSupportedException>(() => runtime.Analyze([]));
+        Assert.Throws<NotSupportedException>(() => runtime.Classify("puts 'Hello'\n"u8));
+        Assert.Equal(0, backend.AnalyzeCount);
+        Assert.Equal(0, backend.ClassifyCount);
+        Assert.Empty(backend.Lookups);
+    }
+
+    [Fact]
+    public void ResultProducingOperationsRequireLanguageRegistryProjection()
+    {
+        LinguistCapabilities analysisWithoutRegistry = LinguistCapabilities.StandardDetection |
+            LinguistCapabilities.EncodingAndBinaryDetection |
+            LinguistCapabilities.GeneratedDetection |
+            LinguistCapabilities.PathClassification;
+        var analysisBackend = new FakeBackend(capabilities: analysisWithoutRegistry);
+        using var analysisRuntime = new LinguistRuntime(analysisBackend);
+        var classifierBackend = new FakeBackend(capabilities: LinguistCapabilities.ContentClassifier);
+        using var classifierRuntime = new LinguistRuntime(classifierBackend);
+
+        Assert.Throws<NotSupportedException>(() => analysisRuntime.Analyze([]));
+        Assert.Throws<NotSupportedException>(() => classifierRuntime.Classify("puts 'Hello'\n"u8));
+        Assert.Equal(0, analysisBackend.AnalyzeCount);
+        Assert.Equal(0, classifierBackend.ClassifyCount);
+    }
+
+    [Fact]
+    public void AnalyzeRequiresClassifierCapabilityOnlyWhenThatStrategyIsEnabled()
+    {
+        LinguistCapabilities capabilitiesWithoutClassifier = LinguistCapabilities.LanguageRegistry |
+            LinguistCapabilities.StandardDetection |
+            LinguistCapabilities.EncodingAndBinaryDetection |
+            LinguistCapabilities.GeneratedDetection |
+            LinguistCapabilities.PathClassification;
+        var backend = new FakeBackend(capabilities: capabilitiesWithoutClassifier);
+        using var runtime = new LinguistRuntime(backend);
+
+        Assert.Throws<NotSupportedException>(() => runtime.Analyze([]));
+
+        BlobAnalysis analysis = runtime.Analyze(
+            [],
+            options: new BlobAnalysisOptions
+            {
+                Strategies = DetectionStrategyMask.Default & ~DetectionStrategyMask.Classifier,
+            });
+
+        Assert.Same(backend.Analysis, analysis);
+        Assert.Equal(1, backend.AnalyzeCount);
+    }
+
+    [Fact]
     public void LanguagesUseStableIdEquality()
     {
         var firstBackend = new FakeBackend();
@@ -236,10 +294,20 @@ public sealed class LinguistRuntimeTests
         private readonly bool _blockAnalysis;
         private readonly bool _blockDispose;
 
-        internal FakeBackend(bool blockAnalysis = false, bool blockDispose = false)
+        internal FakeBackend(
+            bool blockAnalysis = false,
+            bool blockDispose = false,
+            LinguistCapabilities capabilities = LinguistCapabilities.LanguageRegistry |
+                LinguistCapabilities.StandardDetection |
+                LinguistCapabilities.ContentClassifier |
+                LinguistCapabilities.StrategyTrace |
+                LinguistCapabilities.EncodingAndBinaryDetection |
+                LinguistCapabilities.GeneratedDetection |
+                LinguistCapabilities.PathClassification)
         {
             _blockAnalysis = blockAnalysis;
             _blockDispose = blockDispose;
+            Capabilities = capabilities;
             Language = new LinguistLanguage(
                 326,
                 null,
@@ -280,6 +348,8 @@ public sealed class LinguistRuntimeTests
 
         internal int ClassifyCount { get; private set; }
 
+        internal int AnalyzeCount { get; private set; }
+
         internal List<string> Lookups { get; } = [];
 
         internal ManualResetEventSlim AnalysisEntered { get; } = new();
@@ -300,7 +370,7 @@ public sealed class LinguistRuntimeTests
 
         public LinguistVersionInfo Version { get; }
 
-        public LinguistCapabilities Capabilities => LinguistCapabilities.LanguageRegistry;
+        public LinguistCapabilities Capabilities { get; }
 
         public IReadOnlyList<LinguistLanguage> Languages { get; }
 
@@ -336,6 +406,7 @@ public sealed class LinguistRuntimeTests
 
         public BlobAnalysis Analyze(ReadOnlySpan<byte> data, BlobInput input, BlobAnalysisOptions options)
         {
+            AnalyzeCount++;
             LastBlobInput = input;
             if (_blockAnalysis)
             {

@@ -533,7 +533,6 @@ Use `buildTransitive` only for non-library Ruby or data files that require prese
 
 ```powershell
 dotnet build src/MBW.GHLinguist/MBW.GHLinguist.csproj --configuration Release --nologo
-dotnet test --project tests/MBW.GHLinguist.Tests/MBW.GHLinguist.Tests.csproj --configuration Release --no-build --minimum-expected-tests 1
 dotnet pack src/MBW.GHLinguist/MBW.GHLinguist.csproj --configuration Release --no-build --nologo --output .tmp/packages
 dotnet build MBW.GHLinguist.slnx --configuration Release --nologo
 dotnet test --solution MBW.GHLinguist.slnx --configuration Release --no-build --minimum-expected-tests 1

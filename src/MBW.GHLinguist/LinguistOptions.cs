@@ -17,6 +17,7 @@ namespace MBW.GHLinguist;
 /// };
 /// </code>
 /// </example>
+/// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/lib/linguist/blob_helper.rb" />
 public sealed class BlobInput
 {
     /// <summary>Gets the optional repository-relative path, preferably using forward slashes.</summary>

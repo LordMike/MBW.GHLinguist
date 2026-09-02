@@ -10,6 +10,7 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
     private const uint AbiMajor = 1;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly NativeRuntimeHandle _runtime;
+    private LinguistCapabilities? _capabilities;
     private IReadOnlyList<LinguistLanguage>? _languages;
     private Dictionary<ulong, LinguistLanguage>? _languagesById;
     private LinguistVersionInfo? _version;
@@ -72,7 +73,7 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
         get
         {
             ThrowIfDisposed();
-            return (LinguistCapabilities)NativeMethods.RuntimeCapabilities(_runtime);
+            return _capabilities ??= (LinguistCapabilities)NativeMethods.RuntimeCapabilities(_runtime);
         }
     }
 

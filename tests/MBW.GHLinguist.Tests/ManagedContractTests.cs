@@ -78,6 +78,18 @@ public sealed class ManagedContractTests
     }
 
     [Fact]
+    public void ClassificationOptionsPreserveAnExplicitEmptyCandidateList()
+    {
+        ClassificationOptions options = new()
+        {
+            CandidateLanguageIds = [],
+        };
+
+        Assert.NotNull(options.CandidateLanguageIds);
+        Assert.Empty(options.CandidateLanguageIds);
+    }
+
+    [Fact]
     public void ClassificationOptionsRejectInvalidCandidateLanguageIds()
     {
         ArgumentOutOfRangeException zero = Assert.Throws<ArgumentOutOfRangeException>(() => new ClassificationOptions
@@ -128,6 +140,25 @@ public sealed class ManagedContractTests
         Assert.False(analysis.IsBinary);
         Assert.Equal(12UL, analysis.LineCount);
         Assert.Equal(10UL, analysis.SourceLineCount);
+    }
+
+    [Fact]
+    public void BlobAnalysisRejectsMismatchedLanguageAndStrategyState()
+    {
+        Assert.Throws<LinguistException>(() => new BlobAnalysis(
+            CreateLanguage([]),
+            DetectionStrategy.None,
+            isEmpty: false,
+            BlobResultFlags.Text,
+            "text/plain",
+            "text/plain; charset=utf-8",
+            "inline",
+            "UTF-8",
+            "UTF-8",
+            "source.cs",
+            null,
+            null,
+            []));
     }
 
     private static LinguistLanguage CreateLanguage(IEnumerable<string> aliases) => new(
