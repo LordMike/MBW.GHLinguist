@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="src\MBW.GHLinguist\MBW.GHLinguist.csproj" />
+  <Project Path="tests\MBW.GHLinguist.Tests\MBW.GHLinguist.Tests.csproj">
+    <BuildDependency Project="src\MBW.GHLinguist\MBW.GHLinguist.csproj" />
+  </Project>
+</Solution>
