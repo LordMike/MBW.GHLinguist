@@ -15,7 +15,7 @@ Pin CRuby 4.0.1 and lock every native and Ruby dependency by version, source has
 
 - Support `win-x64` and `linux-x64`.
 - Provide one primary interop library plus an adjacent, pinned dependency closure.
-- Package a managed facade and native assets together as `Originary.Linguist.Interop`.
+- Package a managed facade and native assets together as `MBW.GHLinguist`.
 - Initialize CRuby and Linguist once per process.
 - Execute Ruby only on a dedicated native worker thread.
 - Serialize calls through that worker initially.
@@ -426,7 +426,7 @@ OL_API void OL_CALL ol_error_release(ol_error* error);
 
 ## Managed facade
 
-Add `src/Originary.Linguist.Interop` targeting `net10.0`. Use source-generated `LibraryImport`, `SafeHandle`, strict UTF-8 marshaling, checked spans, immutable managed result records, deterministic disposal, a native-library resolver, asset hash verification, and status-to-exception translation.
+Add `src/MBW.GHLinguist` targeting `net10.0`. Use source-generated `LibraryImport`, `SafeHandle`, strict UTF-8 marshaling, checked spans, immutable managed result records, deterministic disposal, a native-library resolver, asset hash verification, and status-to-exception translation.
 
 The public managed surface is:
 
@@ -448,23 +448,41 @@ public sealed class LinguistRuntime : IDisposable
         ReadOnlySpan<byte> data,
         ClassificationOptions? options = null);
 
-    public IReadOnlyList<LinguistLanguage> Lookup(
-        LanguageLookupKind kind,
-        string value);
+    public LinguistLanguage? FindByName(string name);
+    public LinguistLanguage? FindByAlias(string alias);
+    public IReadOnlyList<LinguistLanguage> FindByFilename(string filename);
+    public IReadOnlyList<LinguistLanguage> FindByExtension(string filename);
+    public IReadOnlyList<LinguistLanguage> FindByInterpreter(string interpreter);
+
+    public void Dispose();
 }
 ```
 
+The lookup methods mirror Linguist's Ruby names and return shapes: name and
+alias lookups return one language or `null`, while filename, extension, and
+interpreter lookups return read-only lists. `FindByExtension` accepts a complete
+filename or path, matching Linguist's `find_by_extension`, rather than a bare
+extension.
+
+All public runtime instance methods and properties that require native state
+throw `ObjectDisposedException` after disposal. Disposal is idempotent and
+serialized with active calls. Returned languages, analyses, classifications,
+and traces are copied managed values and remain usable after their runtime is
+disposed. Every public API ships XML documentation with usage examples, example
+results, and links to the corresponding pinned Linguist documentation or source
+when available.
+
 ## NuGet package
 
-Make `Originary.Linguist.Interop.csproj` packable and include the managed assembly plus native closures under `runtimes/win-x64/native/` and `runtimes/linux-x64/native/`.
+Make `MBW.GHLinguist.csproj` packable and include the managed assembly plus native closures under `runtimes/win-x64/native/` and `runtimes/linux-x64/native/`.
 
 The package layout is:
 
 ```text
-lib/net10.0/Originary.Linguist.Interop.dll
+lib/net10.0/MBW.GHLinguist.dll
 runtimes/win-x64/native/*
 runtimes/linux-x64/native/*
-buildTransitive/Originary.Linguist.Interop.targets
+buildTransitive/MBW.GHLinguist.targets
 LICENSES/*
 THIRD-PARTY-NOTICES.txt
 native/include/originary_linguist.h
@@ -476,15 +494,15 @@ Use `buildTransitive` only for non-library Ruby or data files that require prese
 
 1. Obtain approval for the project documentation changes, then document the C ABI, process-lifetime runtime, supported RIDs, copied-result ownership, serialized execution, unsupported unloading, package layout, and deferred repository API without changing schema, format, or documentation versions.
 2. Pin CRuby 4.0.1 and Linguist 9.6.0 commit `196b2a14418cab005065c72c9759370934c184bc`. Generate a locked dependency manifest for `charlock_holmes`, ICU, `mini_mime`, CGI, Psych/libyaml, and the Linguist tokenizer extension. Exclude Rugged/libgit2 because repository behavior is deferred. Record source and binary SHA-256 values, licenses, patches, build flags, and redistribution decisions.
-3. Add `src/Originary.Linguist.Native` with CMake-based Windows and Linux builds, the public header, C ABI implementation, worker queue, process runtime, Ruby bridge, export lists, symbol-visibility controls, and deterministic asset-location logic.
+3. Add `src/MBW.GHLinguist.Native` with CMake-based Windows and Linux builds, the public header, C ABI implementation, worker queue, process runtime, Ruby bridge, export lists, symbol-visibility controls, and deterministic asset-location logic.
 4. Start one native worker on the first runtime creation and initialize CRuby on that thread. Cache Ruby constants, method IDs, language metadata, classifier data, and immutable native copies. Send every Ruby operation through the synchronous request queue. Do not use `rb_thread_call_with_gvl` from arbitrary managed threads.
 5. Add a Ruby `InteropBlob` matching Linguist's blob contract. Implement standard strategy detection, strategy tracing, unrestricted or candidate-filtered classification, language registry projection, binary and encoding analysis, MIME results, generated/vendored/documentation predicates, line counts, and statistics eligibility. Copy all returned data into native-owned result objects before leaving the worker.
 6. Produce reviewed `win-x64` and `linux-x64` directories containing the primary interop library, CRuby runtime, Linguist tokenizer, Charlock Holmes, ICU, Psych/libyaml, required Ruby standard-library files, Linguist Ruby files, classifier data, language data, MIME data, and licenses. Configure Windows adjacent-DLL loading and Linux `$ORIGIN` lookup without consulting system Ruby or system ICU.
 7. Add the managed facade and keep all native handles internal. Copy native result values into immutable managed records so callers do not manage result lifetimes or native string views.
-8. Pack the managed facade, native dependency closures, public header, provenance, and third-party notices as `Originary.Linguist.Interop`.
-9. Add `tests/Originary.Linguist.Interop.Tests` as an xUnit v3 project that references the managed facade and invokes the actual native runtime.
+8. Pack the managed facade, native dependency closures, public header, provenance, and third-party notices as `MBW.GHLinguist`.
+9. Add `tests/MBW.GHLinguist.Tests` as an xUnit v3 project that references the managed facade and invokes the actual native runtime.
 10. Pack into an ignored `.tmp/packages` feed and restore a minimal fixture consumer using only `PackageReference`. Build and run it without Ruby, Linguist, ICU, or other development tools installed globally.
-11. Add `Originary.Linguist.Interop` under `/src/` and `Originary.Linguist.Interop.Tests` under `/tests/` in `Originary.slnx`. Keep native build orchestration beneath the interop project rather than registering a non-MSBuild project directly.
+11. Add `MBW.GHLinguist` under `/src/` and `MBW.GHLinguist.Tests` under `/tests/` in `MBW.GHLinguist.slnx`. Keep native build orchestration beneath the interop project rather than registering a non-MSBuild project directly.
 
 ## Tests
 
@@ -507,11 +525,11 @@ Use `buildTransitive` only for non-library Ruby or data files that require prese
 ## Validation
 
 ```powershell
-dotnet build src/Originary.Linguist.Interop/Originary.Linguist.Interop.csproj -c Release --nologo
-dotnet test tests/Originary.Linguist.Interop.Tests/Originary.Linguist.Interop.Tests.csproj -c Release --no-build --nologo
-dotnet pack src/Originary.Linguist.Interop/Originary.Linguist.Interop.csproj -c Release --no-build --nologo -o .tmp/packages
-dotnet build Originary.slnx -c Release --nologo
-dotnet test Originary.slnx -c Release --no-build --nologo
+dotnet build src/MBW.GHLinguist/MBW.GHLinguist.csproj --configuration Release --nologo
+dotnet test --project tests/MBW.GHLinguist.Tests/MBW.GHLinguist.Tests.csproj --configuration Release --no-build --minimum-expected-tests 1
+dotnet pack src/MBW.GHLinguist/MBW.GHLinguist.csproj --configuration Release --no-build --nologo --output .tmp/packages
+dotnet build MBW.GHLinguist.slnx --configuration Release --nologo
+dotnet test --solution MBW.GHLinguist.slnx --configuration Release --no-build --minimum-expected-tests 1
 git diff --check
 ```
 
