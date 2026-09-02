@@ -61,7 +61,7 @@ public sealed class LinguistRuntimeTests
 
         LinguistVersionInfo version = runtime.Version;
         IReadOnlyList<LinguistLanguage> languages = runtime.Languages;
-        BlobAnalysis analysis = runtime.Analyze("puts 'Hello'\n"u8, name: "hello.rb");
+        BlobAnalysis analysis = runtime.Analyze("puts 'Hello'\n"u8, new BlobInput { Name = "hello.rb" });
         ClassificationResults classification = runtime.Classify("puts 'Hello'\n"u8);
         runtime.Dispose();
 
@@ -79,7 +79,9 @@ public sealed class LinguistRuntimeTests
         byte[] data = "puts 'Hello'\n"u8.ToArray();
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
 
-        Task<BlobAnalysis> analysis = Task.Run(() => runtime.Analyze(data, name: "hello.rb"), cancellationToken);
+        Task<BlobAnalysis> analysis = Task.Run(
+            () => runtime.Analyze(data, new BlobInput { Name = "hello.rb" }),
+            cancellationToken);
         Assert.True(backend.AnalysisEntered.Wait(TimeSpan.FromSeconds(5), cancellationToken));
 
         Task dispose = Task.Run(runtime.Dispose, cancellationToken);
@@ -92,6 +94,84 @@ public sealed class LinguistRuntimeTests
 
         Assert.Equal(1, backend.DisposeCount);
         Assert.Throws<ObjectDisposedException>(() => runtime.Analyze(data));
+    }
+
+    [Fact]
+    public async Task ConcurrentDisposeCallsWaitForTheSameBackendRelease()
+    {
+        var backend = new FakeBackend(blockDispose: true);
+        var runtime = new LinguistRuntime(backend);
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Task firstDispose = Task.Run(runtime.Dispose, cancellationToken);
+        Assert.True(backend.DisposeEntered.Wait(TimeSpan.FromSeconds(5), cancellationToken));
+        Task secondDispose = Task.Run(runtime.Dispose, cancellationToken);
+
+        await Task.Delay(50, cancellationToken);
+        Assert.False(firstDispose.IsCompleted);
+        Assert.False(secondDispose.IsCompleted);
+
+        backend.ContinueDispose.Set();
+        await Task.WhenAll(firstDispose, secondDispose);
+        Assert.Equal(1, backend.DisposeCount);
+    }
+
+    [Fact]
+    public void AnalyzePassesTypedBlobMetadataWithoutPositionalAmbiguity()
+    {
+        var backend = new FakeBackend();
+        using var runtime = new LinguistRuntime(backend);
+        var input = new BlobInput
+        {
+            Path = "src/Generated/Client.cs",
+            Name = "Client.cs",
+            IsSymlink = true,
+            IsLfsTracked = true,
+        };
+
+        runtime.Analyze([], input);
+
+        Assert.Same(input, backend.LastBlobInput);
+    }
+
+    [Fact]
+    public void EmptyCandidateListReturnsNoResultsWithoutCallingTheClassifier()
+    {
+        var backend = new FakeBackend();
+        using var runtime = new LinguistRuntime(backend);
+
+        ClassificationResults results = runtime.Classify(
+            "puts 'Hello'\n"u8,
+            new ClassificationOptions { CandidateLanguageIds = [] });
+
+        Assert.Equal(0, results.ConsideredBytes);
+        Assert.Empty(results.Results);
+        Assert.Equal(0, backend.ClassifyCount);
+    }
+
+    [Fact]
+    public void UnknownCandidateLanguageIdIsRejectedBeforeNativeClassification()
+    {
+        var backend = new FakeBackend();
+        using var runtime = new LinguistRuntime(backend);
+
+        ArgumentException exception = Assert.Throws<ArgumentException>(() => runtime.Classify(
+            "puts 'Hello'\n"u8,
+            new ClassificationOptions { CandidateLanguageIds = [ulong.MaxValue] }));
+
+        Assert.Equal(nameof(ClassificationOptions.CandidateLanguageIds), exception.ParamName);
+        Assert.Equal(0, backend.ClassifyCount);
+    }
+
+    [Fact]
+    public void LanguagesUseStableIdEquality()
+    {
+        var firstBackend = new FakeBackend();
+        var secondBackend = new FakeBackend();
+
+        Assert.NotSame(firstBackend.Language, secondBackend.Language);
+        Assert.Equal(firstBackend.Language, secondBackend.Language);
+        Assert.Equal(firstBackend.Language.GetHashCode(), secondBackend.Language.GetHashCode());
     }
 
     [Fact]
@@ -154,10 +234,12 @@ public sealed class LinguistRuntimeTests
     private sealed class FakeBackend : ILinguistRuntimeBackend
     {
         private readonly bool _blockAnalysis;
+        private readonly bool _blockDispose;
 
-        internal FakeBackend(bool blockAnalysis = false)
+        internal FakeBackend(bool blockAnalysis = false, bool blockDispose = false)
         {
             _blockAnalysis = blockAnalysis;
+            _blockDispose = blockDispose;
             Language = new LinguistLanguage(
                 326,
                 null,
@@ -196,11 +278,19 @@ public sealed class LinguistRuntimeTests
 
         internal int DisposeCount { get; private set; }
 
+        internal int ClassifyCount { get; private set; }
+
         internal List<string> Lookups { get; } = [];
 
         internal ManualResetEventSlim AnalysisEntered { get; } = new();
 
         internal ManualResetEventSlim ContinueAnalysis { get; } = new();
+
+        internal ManualResetEventSlim DisposeEntered { get; } = new();
+
+        internal ManualResetEventSlim ContinueDispose { get; } = new();
+
+        internal BlobInput? LastBlobInput { get; private set; }
 
         internal LinguistLanguage Language { get; }
 
@@ -244,8 +334,9 @@ public sealed class LinguistRuntimeTests
             return Languages;
         }
 
-        public BlobAnalysis Analyze(ReadOnlySpan<byte> data, string? path, string? name, BlobAnalysisOptions options)
+        public BlobAnalysis Analyze(ReadOnlySpan<byte> data, BlobInput input, BlobAnalysisOptions options)
         {
+            LastBlobInput = input;
             if (_blockAnalysis)
             {
                 AnalysisEntered.Set();
@@ -255,8 +346,20 @@ public sealed class LinguistRuntimeTests
             return Analysis;
         }
 
-        public ClassificationResults Classify(ReadOnlySpan<byte> data, ClassificationOptions options) => Classification;
+        public ClassificationResults Classify(ReadOnlySpan<byte> data, ClassificationOptions options)
+        {
+            ClassifyCount++;
+            return Classification;
+        }
 
-        public void Dispose() => DisposeCount++;
+        public void Dispose()
+        {
+            DisposeCount++;
+            if (_blockDispose)
+            {
+                DisposeEntered.Set();
+                ContinueDispose.Wait(TimeSpan.FromSeconds(5));
+            }
+        }
     }
 }

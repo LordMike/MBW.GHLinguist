@@ -149,6 +149,7 @@ public enum DetectionStrategyMask : uint
     Default = Modeline | Filename | Shebang | Extension | Xml | Manpage | Heuristics | Classifier,
 }
 
+[Flags]
 internal enum BlobResultFlags : ulong
 {
     None = 0,

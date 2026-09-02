@@ -4,7 +4,7 @@ namespace MBW.GHLinguist;
 /// <example>
 /// A runtime may report values such as ABI <c>1.0</c>, Linguist <c>9.6.0</c>, and Ruby <c>4.0.1</c>.
 /// </example>
-public sealed record LinguistVersionInfo
+public sealed class LinguistVersionInfo
 {
     internal LinguistVersionInfo(
         uint abiMajor,
@@ -47,11 +47,15 @@ public sealed record LinguistVersionInfo
 }
 
 /// <summary>Describes one language in GitHub Linguist's language registry.</summary>
+/// <remarks>
+/// Language identity, equality, and hashing use the stable numeric <see cref="Id" />. Names and aliases are metadata
+/// and can change between Linguist revisions.
+/// </remarks>
 /// <example>
 /// C# is represented as a programming language with aliases such as <c>csharp</c> and extension <c>.cs</c>.
 /// </example>
 /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/lib/linguist/language.rb" />
-public sealed record LinguistLanguage
+public sealed class LinguistLanguage : IEquatable<LinguistLanguage>
 {
     internal LinguistLanguage(
         ulong id,
@@ -141,11 +145,28 @@ public sealed record LinguistLanguage
     /// <returns>The same value as <see cref="Name" />, for example <c>C#</c>.</returns>
     /// <example><code>Console.WriteLine(language); // C#</code></example>
     public override string ToString() => Name;
+
+    /// <summary>Determines whether another language has the same stable Linguist language ID.</summary>
+    /// <param name="other">The language to compare with this instance.</param>
+    /// <returns><see langword="true" /> when both languages have the same <see cref="Id" />; otherwise <see langword="false" />.</returns>
+    /// <example><code>bool sameLanguage = first.Equals(second);</code></example>
+    public bool Equals(LinguistLanguage? other) => other is not null && Id == other.Id;
+
+    /// <summary>Determines whether an object is a language with the same stable Linguist language ID.</summary>
+    /// <param name="obj">The object to compare with this instance.</param>
+    /// <returns><see langword="true" /> when <paramref name="obj" /> is a language with the same <see cref="Id" />.</returns>
+    /// <example><code>bool sameLanguage = language.Equals((object)otherLanguage);</code></example>
+    public override bool Equals(object? obj) => Equals(obj as LinguistLanguage);
+
+    /// <summary>Returns a hash code derived from the stable Linguist language ID.</summary>
+    /// <returns>The hash code of <see cref="Id" />.</returns>
+    /// <example><code>var languages = new HashSet&lt;LinguistLanguage&gt; { language };</code></example>
+    public override int GetHashCode() => Id.GetHashCode();
 }
 
 /// <summary>Describes the candidate languages produced by one detection strategy.</summary>
 /// <example>An extension trace for <c>example.h</c> may contain C, C++, and Objective-C candidates.</example>
-public sealed record StrategyTraceEntry
+public sealed class StrategyTraceEntry
 {
     internal StrategyTraceEntry(DetectionStrategy strategy, IEnumerable<LinguistLanguage> candidates)
     {
@@ -163,7 +184,7 @@ public sealed record StrategyTraceEntry
 /// <summary>Pairs a classified language with its similarity score.</summary>
 /// <remarks>The score is a similarity value, not a probability or confidence percentage.</remarks>
 /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/lib/linguist/classifier.rb#L116-L149" />
-public sealed record ClassificationResult
+public sealed class ClassificationResult
 {
     internal ClassificationResult(LinguistLanguage language, double score)
     {
@@ -179,8 +200,13 @@ public sealed record ClassificationResult
 }
 
 /// <summary>Contains the ordered results of direct content classification.</summary>
+/// <remarks>
+/// <see cref="Results" /> can be empty for unclassifiable input or an explicit empty candidate set. Scores are
+/// similarities rather than probabilities; applications should establish their own admission policy instead of
+/// interpreting a score as confidence. Equal scores retain the order supplied by Linguist.
+/// </remarks>
 /// <example>The first result may be C# with a score such as <c>0.93</c>.</example>
-public sealed record ClassificationResults
+public sealed class ClassificationResults
 {
     internal ClassificationResults(int consideredBytes, IEnumerable<ClassificationResult> results)
     {
@@ -196,12 +222,17 @@ public sealed record ClassificationResults
 }
 
 /// <summary>Contains complete Linguist analysis for one blob.</summary>
+/// <remarks>
+/// <see cref="Language" /> is <see langword="null" /> exactly when <see cref="Strategy" /> is
+/// <see cref="DetectionStrategy.None" />. <see cref="StrategyTrace" /> is empty unless requested, and line counts
+/// are <see langword="null" /> unless requested.
+/// </remarks>
 /// <example>
 /// A generated C# file may report <see cref="Language" /> as C#, <see cref="Strategy" /> as
 /// <see cref="DetectionStrategy.Extension" />, and <see cref="IsGenerated" /> as <see langword="true" />.
 /// </example>
 /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/lib/linguist/blob_helper.rb" />
-public sealed record BlobAnalysis
+public sealed class BlobAnalysis
 {
     internal BlobAnalysis(
         LinguistLanguage? language,
@@ -218,6 +249,11 @@ public sealed record BlobAnalysis
         ulong? sourceLineCount,
         IEnumerable<StrategyTraceEntry> strategyTrace)
     {
+        if ((language is null) != (strategy == DetectionStrategy.None))
+        {
+            throw new LinguistException("A detected language and its selecting strategy must either both be present or both be absent.");
+        }
+
         Language = language;
         Strategy = strategy;
         IsEmpty = isEmpty;

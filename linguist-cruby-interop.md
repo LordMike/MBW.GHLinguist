@@ -440,8 +440,7 @@ public sealed class LinguistRuntime : IDisposable
 
     public BlobAnalysis Analyze(
         ReadOnlySpan<byte> data,
-        string? path = null,
-        string? name = null,
+        BlobInput? input = null,
         BlobAnalysisOptions? options = null);
 
     public ClassificationResults Classify(
@@ -458,6 +457,9 @@ public sealed class LinguistRuntime : IDisposable
 }
 ```
 
+`BlobInput` groups optional path, filename, symlink, and Git LFS metadata so
+callers cannot accidentally swap adjacent `path` and `name` arguments.
+
 The lookup methods mirror Linguist's Ruby names and return shapes: name and
 alias lookups return one language or `null`, while filename, extension, and
 interpreter lookups return read-only lists. `FindByExtension` accepts a complete
@@ -471,6 +473,11 @@ and traces are copied managed values and remain usable after their runtime is
 disposed. Every public API ships XML documentation with usage examples, example
 results, and links to the corresponding pinned Linguist documentation or source
 when available.
+
+Classifier candidate IDs preserve Ruby's `nil` versus empty-array distinction:
+`null` means unrestricted classification, while an empty list returns no
+matches without invoking the classifier. Zero, duplicate, and unknown language
+IDs are rejected by the managed facade before native classification.
 
 ## NuGet package
 

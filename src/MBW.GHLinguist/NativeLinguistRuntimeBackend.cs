@@ -90,24 +90,25 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
 
     public LinguistLanguage? FindByAlias(string alias) => FindOne(LanguageLookupKind.Alias, alias);
 
-    public IReadOnlyList<LinguistLanguage> FindByFilename(string filename) => FindMany(LanguageLookupKind.Filename, filename);
+    public IReadOnlyList<LinguistLanguage> FindByFilename(string filenameOrPath) => FindMany(LanguageLookupKind.Filename, filenameOrPath);
 
-    public IReadOnlyList<LinguistLanguage> FindByExtension(string filename) => FindMany(LanguageLookupKind.Extension, filename);
+    public IReadOnlyList<LinguistLanguage> FindByExtension(string filenameOrPath) => FindMany(LanguageLookupKind.Extension, filenameOrPath);
 
     public IReadOnlyList<LinguistLanguage> FindByInterpreter(string interpreter) => FindMany(LanguageLookupKind.Interpreter, interpreter);
 
-    public BlobAnalysis Analyze(ReadOnlySpan<byte> data, string? path, string? name, BlobAnalysisOptions options)
+    public BlobAnalysis Analyze(ReadOnlySpan<byte> data, BlobInput input, BlobAnalysisOptions options)
     {
         ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(options);
 
-        byte[]? pathBytes = EncodeOptional(path, nameof(path));
-        byte[]? nameBytes = EncodeOptional(name, nameof(name));
+        byte[]? pathBytes = EncodeOptional(input.Path, nameof(BlobInput.Path));
+        byte[]? nameBytes = EncodeOptional(input.Name, nameof(BlobInput.Name));
         NativeBlobInput blob = new()
         {
             StructSize = (uint)Unsafe.SizeOf<NativeBlobInput>(),
-            Flags = (options.IsSymlink ? NativeBlobInputFlags.Symlink : 0) |
-                (options.IsLfsTracked ? NativeBlobInputFlags.LfsTracked : 0),
+            Flags = (input.IsSymlink ? NativeBlobInputFlags.Symlink : 0) |
+                (input.IsLfsTracked ? NativeBlobInputFlags.LfsTracked : 0),
         };
         NativeAnalysisOptions nativeOptions = new()
         {
@@ -158,6 +159,25 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(options);
 
+        if (options.CandidateLanguageIds is { Count: 0 })
+        {
+            return new ClassificationResults(0, []);
+        }
+
+        if (options.CandidateLanguageIds is not null)
+        {
+            EnsureLanguages();
+            foreach (ulong languageId in options.CandidateLanguageIds)
+            {
+                if (!_languagesById!.ContainsKey(languageId))
+                {
+                    throw new ArgumentException(
+                        $"Candidate language ID {languageId} does not exist in the loaded Linguist registry.",
+                        nameof(ClassificationOptions.CandidateLanguageIds));
+                }
+            }
+        }
+
         ulong[]? candidateIds = options.CandidateLanguageIds?.ToArray();
         NativeClassifyOptions nativeOptions = new()
         {
@@ -206,6 +226,11 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
                 ulong languageId = 0;
                 double score = 0;
                 ThrowForStatus(NativeMethods.ClassificationResult(handle, (nuint)index, &languageId, &score), 0);
+                if (!double.IsFinite(score) || score <= 0 || score > 1)
+                {
+                    throw new LinguistException($"The native runtime returned invalid classifier score {score}.");
+                }
+
                 results[index] = new ClassificationResult(GetLanguage(languageId), score);
             }
 
@@ -262,6 +287,13 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
 
         _languages = Array.AsReadOnly(languages);
         _languagesById = languagesById;
+        foreach (LinguistLanguage language in languages)
+        {
+            if (language.GroupLanguageId is ulong groupId && !languagesById.ContainsKey(groupId))
+            {
+                throw new LinguistException($"Language {language.Id} references unknown group language ID {groupId}.");
+            }
+        }
     }
 
     private LinguistLanguage ReadLanguage(ulong languageId)
@@ -281,7 +313,7 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
             info.GroupLanguageId == 0 ? null : info.GroupLanguageId,
             ReadRequiredString(info.Name),
             ReadOptionalString(info.FileSystemName),
-            (LanguageType)info.Type,
+            ReadLanguageType(info.Type),
             (info.Flags & 1) != 0,
             (info.Flags & 2) != 0,
             ReadOptionalString(info.Color),
@@ -356,10 +388,16 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
             using NativeLanguageIdListHandle handle = new(languages);
             int count = CheckedLength(NativeMethods.LanguageIdListCount(handle), "language lookup result count");
             var results = new LinguistLanguage[count];
+            var seenLanguageIds = new HashSet<ulong>();
             for (int index = 0; index < count; index++)
             {
                 ulong languageId = 0;
                 ThrowForStatus(NativeMethods.LanguageIdListAt(handle, (nuint)index, &languageId), 0);
+                if (!seenLanguageIds.Add(languageId))
+                {
+                    throw new LinguistException($"The native runtime returned duplicate lookup language ID {languageId}.");
+                }
+
                 results[index] = GetLanguage(languageId);
             }
 
@@ -390,14 +428,37 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
                 candidates[candidateIndex] = GetLanguage(candidateId);
             }
 
-            trace[traceIndex] = new StrategyTraceEntry((DetectionStrategy)entry.Strategy, candidates);
+            trace[traceIndex] = new StrategyTraceEntry(ReadDetectionStrategy(entry.Strategy), candidates);
+        }
+
+        BlobResultFlags flags = (BlobResultFlags)NativeMethods.AnalysisFlags(analysis);
+        const BlobResultFlags knownFlags = BlobResultFlags.LikelyBinary |
+            BlobResultFlags.Binary |
+            BlobResultFlags.Text |
+            BlobResultFlags.Image |
+            BlobResultFlags.Solid |
+            BlobResultFlags.Csv |
+            BlobResultFlags.Pdf |
+            BlobResultFlags.Large |
+            BlobResultFlags.Viewable |
+            BlobResultFlags.SafeToColorize |
+            BlobResultFlags.HighLongLineRatio |
+            BlobResultFlags.LfsPointer |
+            BlobResultFlags.Vendored |
+            BlobResultFlags.Documentation |
+            BlobResultFlags.Generated |
+            BlobResultFlags.Detectable |
+            BlobResultFlags.IncludeInStatistics;
+        if ((flags & ~knownFlags) != 0)
+        {
+            throw new LinguistException($"The native runtime returned unsupported blob result flags 0x{(ulong)flags:x}.");
         }
 
         return new BlobAnalysis(
             language,
-            (DetectionStrategy)NativeMethods.AnalysisStrategy(analysis),
+            ReadDetectionStrategy(NativeMethods.AnalysisStrategy(analysis)),
             isEmpty,
-            (BlobResultFlags)NativeMethods.AnalysisFlags(analysis),
+            flags,
             ReadAnalysisText(analysis, NativeAnalysisTextField.MimeType),
             ReadAnalysisText(analysis, NativeAnalysisTextField.ContentType),
             ReadAnalysisText(analysis, NativeAnalysisTextField.Disposition),
@@ -488,6 +549,14 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
 
     private static int CheckedLength(nuint length, string description) =>
         length <= int.MaxValue ? (int)length : throw new LinguistException($"The native runtime returned an unsupported {description} of {length}.");
+
+    private static LanguageType ReadLanguageType(uint value) => Enum.IsDefined((LanguageType)value)
+        ? (LanguageType)value
+        : throw new LinguistException($"The native runtime returned unsupported language type {value}.");
+
+    private static DetectionStrategy ReadDetectionStrategy(uint value) => Enum.IsDefined((DetectionStrategy)value)
+        ? (DetectionStrategy)value
+        : throw new LinguistException($"The native runtime returned unsupported detection strategy {value}.");
 
     private static void ThrowForStatus(NativeStatus status, nint error)
     {

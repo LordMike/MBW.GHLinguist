@@ -78,6 +78,33 @@ public sealed class ManagedContractTests
     }
 
     [Fact]
+    public void ClassificationOptionsRejectInvalidCandidateLanguageIds()
+    {
+        ArgumentOutOfRangeException zero = Assert.Throws<ArgumentOutOfRangeException>(() => new ClassificationOptions
+        {
+            CandidateLanguageIds = [1, 0],
+        });
+        ArgumentException duplicate = Assert.Throws<ArgumentException>(() => new ClassificationOptions
+        {
+            CandidateLanguageIds = [1, 1],
+        });
+
+        Assert.Equal(nameof(ClassificationOptions.CandidateLanguageIds), zero.ParamName);
+        Assert.Equal(nameof(ClassificationOptions.CandidateLanguageIds), duplicate.ParamName);
+    }
+
+    [Fact]
+    public void BlobInputDefaultsToContentOnlyAnalysis()
+    {
+        BlobInput input = new();
+
+        Assert.Null(input.Path);
+        Assert.Null(input.Name);
+        Assert.False(input.IsSymlink);
+        Assert.False(input.IsLfsTracked);
+    }
+
+    [Fact]
     public void BlobAnalysisProjectsNativeResultFlags()
     {
         BlobAnalysis analysis = new(
