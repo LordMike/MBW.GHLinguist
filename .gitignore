@@ -38,9 +38,3 @@ __pycache__/
 dist/
 build/
 *.egg-info/
-
-# Source-content map scenario artifacts
-.scenario-cache/
-scenario-output*/
-
-.omo/
