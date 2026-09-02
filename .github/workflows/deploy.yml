@@ -17,8 +17,8 @@ on:
         type: string
 
 jobs:
-  deploy:
+  no_deployment:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
-      - name: No deployment configured
-        run: echo "No repository-specific deployment is configured for ${{ inputs.release-tag }}."
+      - run: ':'

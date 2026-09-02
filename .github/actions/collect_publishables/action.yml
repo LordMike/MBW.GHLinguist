@@ -6,6 +6,7 @@ description: Detect package and Docker outputs without publishing
 # Contract:
 # - Package presence, not project inspection, selects package publication.
 # - Dockerfile presence, not repository configuration, selects Docker publication.
+# - .ci-skip-docker disables Docker publication for repositories with tooling Dockerfiles.
 # - This action never builds Docker images and never receives credentials.
 
 outputs:
@@ -40,6 +41,12 @@ runs:
 
         metadata=.artifacts/docker-images.json
         printf '[]\n' > "$metadata"
+
+        if [ -f .ci-skip-docker ]; then
+          echo 'has-docker=false' >> "$GITHUB_OUTPUT"
+          echo 'Docker publication disabled by .ci-skip-docker.'
+          exit 0
+        fi
 
         mapfile -d '' dockerfiles < <(
           find . -type f \( -name Dockerfile -o -name 'Dockerfile.*' \) \

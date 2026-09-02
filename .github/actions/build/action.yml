@@ -7,6 +7,7 @@ description: Build, test, and package a conventional .NET repository without pub
 # - CI owns the fixed .artifacts layout; this action deliberately has no path inputs.
 # - The repository must be buildable from its root with the dotnet CLI.
 # - .ci-skip-tests remains a temporary escape hatch for repositories without tests.
+# - An optional .ci/prepare-pack.sh hook may prepare repository-specific package inputs.
 # - Effective IsPackable projects write packages to the fixed NuGet directory.
 # - This action never receives credentials and never publishes anything.
 
@@ -37,6 +38,11 @@ runs:
       if: hashFiles('.ci-skip-tests') == ''
       shell: bash
       run: dotnet test --configuration Release --no-build --verbosity normal
+
+    - name: Prepare package inputs
+      if: env.CI_PUBLISH_TARGET != 'none' && hashFiles('.ci/prepare-pack.sh') != ''
+      shell: bash
+      run: bash .ci/prepare-pack.sh
 
     - name: Pack effective IsPackable projects
       if: env.CI_PUBLISH_TARGET != 'none'
