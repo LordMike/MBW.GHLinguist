@@ -3,6 +3,9 @@
 These scripts compile GitHub Linguist's native tokenizer and stage it with the
 Linguist Ruby sources under `.tmp/artifacts/linguist/<rid>`.
 
+The tokenizer binary is also copied to `.tmp/artifacts/native/<rid>`, which is
+the package-ready RID asset root consumed by `MBW.GHLinguist.csproj`.
+
 The build intentionally does not install Linguist's gem dependencies yet. It
 validates the first native boundary needed by the embedded runtime without
 bringing in the deferred Rugged dependency.

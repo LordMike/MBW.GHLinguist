@@ -9,6 +9,7 @@ $repoRoot = (Resolve-Path (Join-Path $scriptRoot '../..')).Path
 $linguistRoot = Join-Path $repoRoot 'extern/linguist'
 $buildRoot = Join-Path $repoRoot '.tmp/build/linguist/win-x64'
 $artifactRoot = Join-Path $repoRoot '.tmp/artifacts/linguist/win-x64'
+$nativeArtifactRoot = Join-Path $repoRoot '.tmp/artifacts/native/win-x64'
 $extensionSource = Join-Path $buildRoot 'extension'
 $versionsFile = Join-Path $scriptRoot 'versions.env'
 
@@ -92,6 +93,7 @@ if ($actualRubyVersion -ne $versions.RUBY_VERSION) {
 Remove-Item -LiteralPath $buildRoot, $artifactRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $extensionSource -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $artifactRoot 'lib') -Force | Out-Null
+New-Item -ItemType Directory -Path $nativeArtifactRoot -Force | Out-Null
 Copy-Item -Path (Join-Path $linguistRoot 'ext/linguist/*') -Destination $extensionSource -Recurse
 Copy-Item -Path (Join-Path $linguistRoot 'lib/*') -Destination (Join-Path $artifactRoot 'lib') -Recurse
 
@@ -113,6 +115,7 @@ if (-not $extension) {
 
 $extensionDestination = Join-Path $artifactRoot "lib/linguist/$($extension.Name)"
 Copy-Item -LiteralPath $extension.FullName -Destination $extensionDestination
+Copy-Item -LiteralPath $extension.FullName -Destination (Join-Path $nativeArtifactRoot $extension.Name)
 
 $previousRubyLib = $env:RUBYLIB
 try {
@@ -124,3 +127,4 @@ finally {
 }
 
 Write-Host "Linguist Windows artifacts: $artifactRoot"
+Write-Host "Linguist Windows native asset: $(Join-Path $nativeArtifactRoot $extension.Name)"

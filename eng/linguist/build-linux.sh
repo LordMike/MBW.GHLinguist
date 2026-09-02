@@ -11,6 +11,7 @@ source "$script_dir/versions.env"
 linguist_root="$repo_root/extern/linguist"
 build_root="$repo_root/.tmp/build/linguist/linux-x64"
 artifact_root="$repo_root/.tmp/artifacts/linguist/linux-x64"
+native_artifact_root="$repo_root/.tmp/artifacts/native/linux-x64"
 extension_source="$build_root/extension"
 
 for command in git ruby make cc; do
@@ -45,7 +46,7 @@ if [[ "$actual_ruby_version" != "$RUBY_VERSION" ]]; then
 fi
 
 rm -rf "$build_root" "$artifact_root"
-mkdir -p "$extension_source" "$artifact_root/lib/linguist"
+mkdir -p "$extension_source" "$artifact_root/lib/linguist" "$native_artifact_root"
 cp -R "$linguist_root/ext/linguist/." "$extension_source/"
 cp -R "$linguist_root/lib/." "$artifact_root/lib/"
 
@@ -62,7 +63,9 @@ if [[ -z "$extension_path" ]]; then
 fi
 
 cp "$extension_path" "$artifact_root/lib/linguist/linguist.so"
+cp "$extension_path" "$native_artifact_root/linguist.so"
 
 RUBYLIB="$artifact_root/lib" ruby "$script_dir/validate.rb"
 
 echo "Linguist Linux artifacts: $artifact_root"
+echo "Linguist Linux native asset: $native_artifact_root/linguist.so"
