@@ -22,6 +22,7 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
 
     internal static NativeLinguistRuntimeBackend Create()
     {
+        byte[] assetRootBytes = EncodeRequired(GetNativeAssetRoot(), "assetRoot");
         uint nativeMajor = NativeMethods.AbiVersionMajor();
         uint nativeMinor = NativeMethods.AbiVersionMinor();
         if (nativeMajor != AbiMajor)
@@ -29,14 +30,19 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
             throw new LinguistException($"Native ABI version {nativeMajor}.{nativeMinor} is incompatible with managed ABI {AbiMajor}.0.");
         }
 
-        NativeRuntimeOptions options = new()
-        {
-            StructSize = (uint)Unsafe.SizeOf<NativeRuntimeOptions>(),
-        };
-
         nint runtime = 0;
         nint error = 0;
-        NativeStatus status = NativeMethods.RuntimeCreate(&options, &runtime, &error);
+        NativeStatus status;
+        fixed (byte* assetRootPointer = assetRootBytes)
+        {
+            NativeRuntimeOptions options = new()
+            {
+                StructSize = (uint)Unsafe.SizeOf<NativeRuntimeOptions>(),
+                AssetRoot = new NativeStringView(assetRootPointer, (nuint)assetRootBytes.Length),
+            };
+
+            status = NativeMethods.RuntimeCreate(&options, &runtime, &error);
+        }
         try
         {
             ThrowForStatus(status, error);
@@ -504,6 +510,19 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
         {
             throw new ObjectDisposedException(nameof(NativeLinguistRuntimeBackend));
         }
+    }
+
+    internal static string GetNativeAssetRoot() => GetNativeAssetRoot(typeof(NativeLinguistRuntimeBackend).Assembly.Location);
+
+    internal static string GetNativeAssetRoot(string assemblyLocation)
+    {
+        if (string.IsNullOrEmpty(assemblyLocation))
+        {
+            throw new PlatformNotSupportedException("Single-file deployment is not supported because the deployed native asset directory cannot be determined.");
+        }
+
+        return Path.GetDirectoryName(assemblyLocation)
+            ?? throw new LinguistException("The managed assembly location does not identify a deployed native asset directory.");
     }
 
     private static NativeStringView CreateStringView(byte* pointer, byte[]? bytes) => new(pointer, (nuint)(bytes?.Length ?? 0));

@@ -15,6 +15,10 @@
   <ItemGroup>
     <InternalsVisibleTo Include="MBW.GHLinguist.Tests" />
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\buildTransitive\MBW.GHLinguist.targets"
+          Pack="true"
+          PackagePath="buildTransitive\MBW.GHLinguist.targets"
+          Visible="false" />
     <None Include="$(RidNativeAssetRoot)\win-x64\**\*"
           Pack="true"
           PackagePath="runtimes/win-x64/native/%(RecursiveDir)%(Filename)%(Extension)"

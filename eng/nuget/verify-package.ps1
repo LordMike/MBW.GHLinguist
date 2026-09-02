@@ -25,13 +25,81 @@ try {
     'README.md'
     'lib/net10.0/MBW.GHLinguist.dll'
     'lib/net10.0/MBW.GHLinguist.xml'
+    'buildTransitive/MBW.GHLinguist.targets'
     'runtimes/linux-x64/native/ghlinguist.so'
+    'runtimes/linux-x64/native/provenance.json'
     'runtimes/win-x64/native/ghlinguist.dll'
+    'runtimes/win-x64/native/provenance.json'
   )
 
   foreach ($requiredEntry in $requiredEntries) {
     if ($requiredEntry -notin $entries) {
       throw "Package is missing required entry: $requiredEntry"
+    }
+  }
+
+  foreach ($rid in 'linux-x64', 'win-x64') {
+    $prefix = "runtimes/$rid/native/"
+    $provenancePath = $prefix + 'provenance.json'
+    $provenanceEntries = @($archive.Entries | Where-Object { $_.FullName -eq $provenancePath })
+    if ($provenanceEntries.Count -ne 1) {
+      throw "Package native closure for $rid must contain exactly one provenance file."
+    }
+
+    $reader = [System.IO.StreamReader]::new($provenanceEntries[0].Open())
+    try {
+      $provenance = $reader.ReadToEnd() | ConvertFrom-Json
+    }
+    finally {
+      $reader.Dispose()
+    }
+
+    if ($provenance.platform -ne $rid) {
+      throw "Package native closure provenance platform '$($provenance.platform)' does not match $rid."
+    }
+
+    $provenanceFiles = @($provenance.files)
+    if ($provenanceFiles.Count -eq 0) {
+      throw "Package native closure provenance for $rid does not describe any files."
+    }
+
+    $hasNestedFile = $false
+    foreach ($provenanceFile in $provenanceFiles) {
+      $relativePath = [string] $provenanceFile.path
+      if ([string]::IsNullOrWhiteSpace($relativePath) -or
+          [System.IO.Path]::IsPathRooted($relativePath) -or
+          $relativePath.Replace('\', '/').Split('/') -contains '..') {
+        throw "Package native closure provenance for $rid contains an invalid path '$relativePath'."
+      }
+
+      $normalizedPath = $relativePath.Replace('\', '/')
+      $assetPath = $prefix + $normalizedPath
+      $assetEntries = @($archive.Entries | Where-Object { $_.FullName -eq $assetPath })
+      if ($assetEntries.Count -ne 1) {
+        throw "Package native closure provenance for $rid references missing asset: $assetPath"
+      }
+
+      if ($normalizedPath.Contains('/')) {
+        $hasNestedFile = $true
+      }
+
+      $stream = $assetEntries[0].Open()
+      $hash = [System.Security.Cryptography.SHA256]::Create()
+      try {
+        $actualHash = [System.Convert]::ToHexString($hash.ComputeHash($stream)).ToLowerInvariant()
+      }
+      finally {
+        $hash.Dispose()
+        $stream.Dispose()
+      }
+
+      if ($actualHash -ne $provenanceFile.sha256) {
+        throw "Package native closure asset hash does not match provenance: $assetPath"
+      }
+    }
+
+    if (-not $hasNestedFile) {
+      throw "Package native closure for $rid does not preserve nested asset layout."
     }
   }
 

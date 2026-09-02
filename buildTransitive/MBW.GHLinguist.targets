@@ -1,0 +1,29 @@
+<Project>
+  <PropertyGroup>
+    <MBWGHLinguistNativeAssetRoot>$(MSBuildThisFileDirectory)..\runtimes\$(RuntimeIdentifier)\native</MBWGHLinguistNativeAssetRoot>
+  </PropertyGroup>
+
+  <Target Name="CopyMBWGHLinguistNativeClosureToOutput"
+          AfterTargets="CopyFilesToOutputDirectory"
+          Condition="'$(RuntimeIdentifier)' != '' and Exists('$(MBWGHLinguistNativeAssetRoot)')">
+    <ItemGroup>
+      <_MBWGHLinguistNativeAsset Include="$(MBWGHLinguistNativeAssetRoot)\**\*" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_MBWGHLinguistNativeAsset)"
+          DestinationFiles="@(_MBWGHLinguistNativeAsset->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyMBWGHLinguistNativeClosureToPublish"
+          AfterTargets="CopyFilesToPublishDirectory"
+          Condition="'$(RuntimeIdentifier)' != '' and Exists('$(MBWGHLinguistNativeAssetRoot)')">
+    <ItemGroup>
+      <_MBWGHLinguistNativePublishAsset Include="$(MBWGHLinguistNativeAssetRoot)\**\*" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_MBWGHLinguistNativePublishAsset)"
+          DestinationFiles="@(_MBWGHLinguistNativePublishAsset->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>
