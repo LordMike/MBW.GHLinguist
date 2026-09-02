@@ -6,5 +6,15 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <MinVerVersionOverride Condition="'$(CI_VERSION)' != ''">$(CI_VERSION)</MinVerVersionOverride>
+    <ValidateRidAssets Condition="'$(CI_PUBLISH_TARGET)' != 'none'">true</ValidateRidAssets>
   </PropertyGroup>
+
+  <Target Name="ValidateStandaloneNativeAssets"
+          BeforeTargets="GenerateNuspec"
+          Condition="'$(ValidateRidAssets)' == 'true'">
+    <Error Condition="!Exists('$(RidNativeAssetRoot)/linux-x64/originary_linguist.so')"
+           Text="Missing linux-x64 native bridge at $(RidNativeAssetRoot)/linux-x64/originary_linguist.so." />
+    <Error Condition="!Exists('$(RidNativeAssetRoot)/win-x64/originary_linguist.dll')"
+           Text="Missing win-x64 native bridge at $(RidNativeAssetRoot)/win-x64/originary_linguist.dll." />
+  </Target>
 </Project>
