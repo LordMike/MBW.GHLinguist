@@ -1,0 +1,27 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LordMike/MBW.Tools.GhStandardContent/master/spec/StandardContent.json",
+  "meta": {
+    "repo": "LordMike/MBW.GHLinguist",
+    "profiles": [
+      "standardCI",
+      "standardContent",
+      "standardDotnet",
+      "standardDotnetBuildAction"
+    ],
+    "files": [
+      ".editorconfig",
+      ".gitattributes",
+      ".github/actions/build/action.yml",
+      ".github/actions/collect_publishables/action.yml",
+      ".github/actions/initialize_ci/action.yml",
+      ".github/actions/publish_docker/action.yml",
+      ".github/actions/publish_github_release/action.yml",
+      ".github/actions/publish_nuget/action.yml",
+      ".github/readme.md",
+      ".github/workflows/ci.yml",
+      ".gitignore",
+      "Directory.Build.props"
+    ],
+    "last_updated": "2026-09-02T20:07:35.6314084\u002B00:00"
+  }
+}

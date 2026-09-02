@@ -8,10 +8,6 @@ dotnet_diagnostic.CS1591.severity = silent
 # C# styling
 csharp_style_namespace_declarations=file_scoped:error
 
-[src/MBW.GHLinguist/*.cs]
-# Public package APIs must always ship IntelliSense documentation.
-dotnet_diagnostic.CS1591.severity = error
-
 [*.{targets,csproj}]
 tab_width=2
 indent_style=space
