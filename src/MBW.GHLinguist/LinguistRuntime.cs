@@ -60,6 +60,17 @@ public sealed class LinguistRuntime : IDisposable
 
     /// <summary>Gets the features implemented by the loaded native runtime.</summary>
     /// <value>A flags value such as <see cref="LinguistCapabilities.LanguageRegistry" />.</value>
+    /// <remarks>
+    /// Registry lookup requires <see cref="LinguistCapabilities.LanguageRegistry" />. Complete analysis additionally
+    /// requires <see cref="LinguistCapabilities.StandardDetection" />,
+    /// <see cref="LinguistCapabilities.EncodingAndBinaryDetection" />,
+    /// <see cref="LinguistCapabilities.GeneratedDetection" />, and
+    /// <see cref="LinguistCapabilities.PathClassification" />. Analysis also requires
+    /// <see cref="LinguistCapabilities.StrategyTrace" /> or <see cref="LinguistCapabilities.ContentClassifier" />
+    /// when the corresponding option or strategy is enabled. Direct classification requires language-registry and
+    /// content-classifier capabilities, except for an explicit empty candidate list. Unsupported operations throw
+    /// <see cref="NotSupportedException" /> before invoking the backend.
+    /// </remarks>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
     public LinguistCapabilities Capabilities
     {
@@ -191,8 +202,16 @@ public sealed class LinguistRuntime : IDisposable
     }
 
     /// <summary>Performs complete GitHub Linguist analysis of one blob.</summary>
+    /// <remarks>
+    /// Calling this method without <paramref name="input" /> omits path and filename metadata, but still performs
+    /// blob checks and runs the enabled analysis strategies. It is not equivalent to <see cref="Classify" />, which
+    /// performs classifier-only ranking.
+    /// </remarks>
     /// <param name="data">The complete blob bytes. The span is borrowed only for this synchronous call.</param>
-    /// <param name="input">Optional filename and repository metadata; <see langword="null" /> performs content-only analysis.</param>
+    /// <param name="input">
+    /// Optional filename and repository metadata. <see langword="null" /> analyzes the bytes without path or filename
+    /// metadata while retaining the configured blob-analysis pipeline.
+    /// </param>
     /// <param name="options">Optional analysis behavior; <see langword="null" /> uses Linguist defaults.</param>
     /// <returns>A copied result; for example, a <c>hello.rb</c> blob can report Ruby selected by <see cref="DetectionStrategy.Extension" />.</returns>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
@@ -234,6 +253,10 @@ public sealed class LinguistRuntime : IDisposable
     }
 
     /// <summary>Classifies source content directly without path-based detection strategies.</summary>
+    /// <remarks>
+    /// Use this method for classifier-only ranking. For normal Linguist file detection, including blob checks and
+    /// ordered strategies, use <see cref="Analyze" /> instead.
+    /// </remarks>
     /// <param name="data">Source bytes. At most the configured leading 50 KiB are considered.</param>
     /// <param name="options">Optional classifier filters and byte limit; <see langword="null" /> uses Linguist defaults.</param>
     /// <returns>Matches ordered by descending similarity; for example, C# may be first with a score near <c>0.9</c>.</returns>

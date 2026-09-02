@@ -272,6 +272,34 @@ public sealed class LinguistRuntimeTests
     }
 
     [Fact]
+    public void DocumentationDistinguishesAnalysisFromClassificationAndListsCapabilities()
+    {
+        string documentationPath = Path.ChangeExtension(typeof(LinguistRuntime).Assembly.Location, ".xml");
+        XDocument documentation = XDocument.Load(documentationPath);
+        XElement analyze = Assert.Single(documentation.Descendants("member"), member =>
+            ((string?)member.Attribute("name"))?.StartsWith(
+                "M:MBW.GHLinguist.LinguistRuntime.Analyze",
+                StringComparison.Ordinal) == true);
+        XElement capabilities = Assert.Single(documentation.Descendants("member"), member =>
+            (string?)member.Attribute("name") == "P:MBW.GHLinguist.LinguistRuntime.Capabilities");
+
+        Assert.Contains("not equivalent", analyze.Value, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(nameof(LinguistCapabilities.LanguageRegistry), capabilities.ToString(), StringComparison.Ordinal);
+        Assert.Contains(nameof(LinguistCapabilities.ContentClassifier), capabilities.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReadmeContainsThePrimaryDecisionAndCapabilityGuidance()
+    {
+        string readme = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "README.md"));
+
+        Assert.Contains("Analyze(data)` is not equivalent to `Classify(data)", readme, StringComparison.Ordinal);
+        Assert.Contains("## Runtime capabilities", readme, StringComparison.Ordinal);
+        Assert.Contains("FindByExtension", readme, StringComparison.Ordinal);
+        Assert.Contains("explicit empty candidate list", readme, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void NativeInteropLayoutsMatchTheX64CAbi()
     {
         Assert.Equal(16, Unsafe.SizeOf<NativeStringView>());

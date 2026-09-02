@@ -459,6 +459,9 @@ public sealed class LinguistRuntime : IDisposable
 
 `BlobInput` groups optional path, filename, symlink, and Git LFS metadata so
 callers cannot accidentally swap adjacent `path` and `name` arguments.
+Omitting `BlobInput` removes path and filename metadata but does not turn
+`Analyze` into classifier-only operation: blob checks and enabled detection
+strategies still run. `Classify` is the classifier-only API.
 
 The lookup methods mirror Linguist's Ruby names and return shapes: name and
 alias lookups return one language or `null`, while filename, extension, and
@@ -478,6 +481,13 @@ Classifier candidate IDs preserve Ruby's `nil` versus empty-array distinction:
 `null` means unrestricted classification, while an empty list returns no
 matches without invoking the classifier. Zero, duplicate, and unknown language
 IDs are rejected by the managed facade before native classification.
+
+The managed facade checks `LinguistCapabilities` before dispatch. Registry
+operations require `LanguageRegistry`; complete analysis additionally requires
+standard detection, encoding/binary, generated detection, and path
+classification, plus trace or classifier capabilities when those features are
+enabled. Direct non-empty classification requires both language-registry and
+content-classifier capabilities.
 
 ## NuGet package
 

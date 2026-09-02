@@ -55,6 +55,11 @@ Use `Analyze` for normal file-language detection. Use `Classify` when the
 caller deliberately wants classifier scores without filename, shebang, modeline,
 XML, or heuristic strategy selection.
 
+`Analyze(data)` is not equivalent to `Classify(data)`. Without a `BlobInput`,
+`Analyze` still performs blob checks and runs the enabled detection strategies;
+it simply has no path or filename metadata. `Classify` performs classifier-only
+ranking.
+
 ## Blob metadata
 
 `BlobInput` groups metadata separately from analysis behavior so path and name
@@ -157,6 +162,27 @@ percentages. Applications should establish their own admission policy.
 - The v1 process runtime cannot be unloaded or reinitialized after CRuby starts.
 
 Prefer one long-lived runtime rather than constructing a runtime per file.
+
+## Runtime capabilities
+
+`LinguistRuntime.Capabilities` describes features exposed by the loaded native
+runtime. The managed facade checks required capabilities before starting an
+operation and throws `NotSupportedException` rather than returning a partial or
+misleading result.
+
+| Operation | Required capabilities |
+|---|---|
+| `Languages` and every `FindBy...` method | `LanguageRegistry` |
+| `Analyze` | `LanguageRegistry`, `StandardDetection`, `EncodingAndBinaryDetection`, `GeneratedDetection`, and `PathClassification` |
+| `Analyze` with `IncludeStrategyTrace` | The normal analysis capabilities plus `StrategyTrace` |
+| `Analyze` with the `Classifier` strategy enabled | The normal analysis capabilities plus `ContentClassifier` |
+| `Classify` | `LanguageRegistry` and `ContentClassifier` |
+| `Classify` with an explicit empty candidate list | No classifier call is made; an empty result is returned |
+
+The default analysis strategy mask includes `Classifier`, so normal
+`Analyze(...)` calls require `ContentClassifier`. A caller can explicitly remove
+that strategy when working with a runtime that supports the rest of the analysis
+pipeline.
 
 ## Exceptions
 

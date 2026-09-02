@@ -11,6 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="..\..\README.md" Link="README.md" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
