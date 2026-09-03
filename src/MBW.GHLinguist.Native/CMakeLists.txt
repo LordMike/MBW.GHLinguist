@@ -110,6 +110,10 @@ set_target_properties(ghlinguist PROPERTIES
     OUTPUT_NAME ghlinguist
     WINDOWS_EXPORT_ALL_SYMBOLS OFF)
 
+if(WIN32)
+    set_target_properties(ghlinguist PROPERTIES PREFIX "")
+endif()
+
 if(GHL_BUILD_SMOKE)
     add_executable(ghlinguist_smoke tests/runtime_smoke.cpp)
     target_compile_features(ghlinguist_smoke PRIVATE cxx_std_17)
