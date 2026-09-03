@@ -18,7 +18,7 @@ require_path() {
   [[ -e "$1" ]] || fail "Required $2 is missing: $1"
 }
 
-for command in git ruby gem make cc cmake; do
+for command in git ruby gem make cc cmake ldd patchelf readelf; do
   command -v "$command" >/dev/null 2>&1 || fail "Required command is unavailable: $command"
 done
 require_path "$manifest_path" "native dependency manifest"
@@ -39,8 +39,14 @@ linguist_revision="$(manifest_value linguist.revision)"
 [[ "$(tr -d '[:space:]' < "$linguist_root/lib/linguist/VERSION")" == "$linguist_version" ]] || fail "Expected Linguist $linguist_version."
 
 ruby_prefix="$(ruby -rrbconfig -e 'print RbConfig::CONFIG.fetch("prefix")')"
+ruby_include_dir="$(ruby -rrbconfig -e 'print RbConfig::CONFIG.fetch("rubyhdrdir")')"
+ruby_arch_include_dir="$(ruby -rrbconfig -e 'print RbConfig::CONFIG.fetch("rubyarchhdrdir")')"
+ruby_shared_library="$(ruby -rrbconfig -e 'print File.join(RbConfig::CONFIG.fetch("libdir"), RbConfig::CONFIG.fetch("LIBRUBY_SO"))')"
 require_path "$ruby_prefix/bin/ruby" "Ruby runtime executable"
 require_path "$ruby_prefix/lib/ruby" "Ruby standard library"
+require_path "$ruby_include_dir/ruby.h" "Ruby public headers"
+require_path "$ruby_arch_include_dir/ruby/config.h" "Ruby architecture headers"
+require_path "$ruby_shared_library" "Ruby shared runtime library"
 
 rm -rf "$build_root" "$native_asset_root"
 mkdir -p "$build_root/tokenizer" "$native_asset_root/bin" "$native_asset_root/lib" "$native_asset_root/linguist"
@@ -58,6 +64,7 @@ while IFS=$'\t' read -r gem_name gem_version; do
   [[ -n "$gem_name" ]] || continue
   GEM_HOME="$gem_home" GEM_PATH="$gem_home" gem install --no-document --install-dir "$gem_home" "$gem_name" --version "$gem_version"
 done < <(ruby -rjson -e 'JSON.parse(File.read(ARGV.fetch(0))).fetch("gems").each { |gem| puts "#{gem.fetch("name")}\t#{gem.fetch("version")}" }' "$manifest_path")
+find "$gem_home/gems" -mindepth 2 -maxdepth 2 -type d -name ext -prune -exec rm -rf {} +
 
 for library in icudata icui18n icuuc; do
   library_path="$(ldconfig -p | awk -v name="lib${library}.so" '$1 ~ ("^" name) { print $NF; exit }')"
@@ -91,16 +98,87 @@ cp -a "$linguist_root/samples" "$native_asset_root/samples"
 RUBYLIB="$native_asset_root/lib" GEM_HOME="$gem_home" GEM_PATH="$gem_home" \
   "$native_asset_root/bin/ruby" "$script_dir/generate-samples.rb" "$native_asset_root/lib/linguist/samples_data.rb"
 rm -rf "$native_asset_root/samples"
+classifier_sha256="$(ruby -rdigest -e 'print Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$native_asset_root/lib/linguist/samples_data.rb")"
 
 bridge_build="$build_root/bridge"
-cmake -S "$repo_root/src/MBW.GHLinguist.Native" -B "$bridge_build"
+cmake -S "$repo_root/src/MBW.GHLinguist.Native" -B "$bridge_build" \
+  -DGHL_ENABLE_RUBY_EMBEDDING=ON \
+  -DGHL_BUILD_SMOKE=ON \
+  -DGHL_RUBY_ROOT="$ruby_prefix" \
+  -DGHL_RUBY_INCLUDE_DIR="$ruby_include_dir" \
+  -DGHL_RUBY_ARCH_INCLUDE_DIR="$ruby_arch_include_dir" \
+  -DGHL_RUBY_LIBRARY="$ruby_shared_library" \
+  -DGHL_LINGUIST_REVISION="$linguist_revision" \
+  -DGHL_CLASSIFIER_SHA256="$classifier_sha256"
 cmake --build "$bridge_build" --parallel "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
-bridge_path="$(find "$bridge_build" -type f -name 'ghlinguist.so' -print -quit)"
-[[ -n "$bridge_path" ]] || fail "ghlinguist bridge build completed without producing ghlinguist.so."
+bridge_path="$(find "$bridge_build" -type f -name 'libghlinguist.so' -print -quit)"
+[[ -n "$bridge_path" ]] || fail "ghlinguist bridge build completed without producing libghlinguist.so."
 cp -a "$bridge_path" "$native_asset_root/ghlinguist.so"
 
-LD_LIBRARY_PATH="$native_asset_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
-  RUBYLIB="$native_asset_root/lib" \
+mapfile -d '' dependency_queue < <(find "$native_asset_root" -type f \( -name '*.so' -o -name '*.so.*' \) -print0)
+dependency_queue+=("$native_asset_root/bin/ruby")
+declare -A inspected_dependencies=()
+dependency_index=0
+while (( dependency_index < ${#dependency_queue[@]} )); do
+  elf_path="${dependency_queue[$dependency_index]}"
+  ((dependency_index += 1))
+  [[ -z "${inspected_dependencies[$elf_path]:-}" ]] || continue
+  inspected_dependencies["$elf_path"]=1
+  readelf -h "$elf_path" >/dev/null 2>&1 || continue
+
+  ldd_output="$(LD_LIBRARY_PATH="$native_asset_root/lib" ldd "$elf_path" 2>&1)"
+  if grep -q 'not found' <<<"$ldd_output"; then
+    fail "Unresolved ELF dependency for $elf_path: $ldd_output"
+  fi
+  while IFS= read -r dependency; do
+    [[ -n "$dependency" ]] || continue
+    dependency_name="$(basename "$dependency")"
+    case "$dependency_name" in
+      libc.so.*|libm.so.*|libdl.so.*|libpthread.so.*|libresolv.so.*|librt.so.*|libutil.so.*|ld-linux*.so.*|linux-vdso.so.*)
+        continue
+        ;;
+    esac
+    destination="$native_asset_root/lib/$dependency_name"
+    if [[ ! -e "$destination" ]]; then
+      cp -aL "$dependency" "$destination"
+      dependency_queue+=("$destination")
+    fi
+  done < <(awk '$2 == "=>" && $3 ~ /^\// { print $3 }' <<<"$ldd_output")
+done
+
+find "$native_asset_root" -type f -name '.*' -delete
+while IFS= read -r -d '' link_path; do
+  materialized_path="${link_path}.materialized"
+  cp -aL "$link_path" "$materialized_path"
+  rm "$link_path"
+  mv "$materialized_path" "$link_path"
+done < <(find "$native_asset_root" -type l -print0)
+
+while IFS= read -r -d '' elf_path; do
+  if ! readelf -h "$elf_path" >/dev/null 2>&1; then
+    continue
+  fi
+  elf_directory="$(dirname "$elf_path")"
+  relative_lib="$(realpath --relative-to="$elf_directory" "$native_asset_root/lib")"
+  if [[ "$relative_lib" == "." ]]; then
+    rpath='$ORIGIN'
+  else
+    rpath="\$ORIGIN/$relative_lib"
+  fi
+  patchelf --set-rpath "$rpath" "$elf_path"
+done < <(find "$native_asset_root" -type f \( -name '*.so' -o -name '*.so.*' \) -print0)
+
+smoke_path="$(find "$bridge_build" -type f -name 'ghlinguist_smoke' -print -quit)"
+[[ -n "$smoke_path" ]] || fail "ghlinguist smoke build completed without producing ghlinguist_smoke."
+mkdir -p "$native_asset_root/smoke"
+cp -a "$smoke_path" "$native_asset_root/smoke/ghlinguist_smoke"
+ln -s ../ghlinguist.so "$native_asset_root/smoke/libghlinguist.so"
+ln -s ghlinguist.so "$native_asset_root/libghlinguist.so"
+"$native_asset_root/smoke/ghlinguist_smoke" "$native_asset_root"
+rm -rf "$native_asset_root/smoke"
+rm -f "$native_asset_root/libghlinguist.so"
+
+RUBYLIB="$native_asset_root/lib:$native_asset_root" \
   GEM_HOME="$gem_home" GEM_PATH="$gem_home" \
   GHL_DEPENDENCY_MANIFEST="$manifest_path" \
   "$native_asset_root/bin/ruby" "$script_dir/validate.rb"

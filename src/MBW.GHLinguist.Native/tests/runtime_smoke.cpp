@@ -18,8 +18,12 @@ int main(int argc, char** argv) {
     const ghl_status status = ghl_runtime_create(&options, &runtime, &error);
     if (status != GHL_STATUS_OK) {
         const ghl_string_view message = ghl_error_message(error);
+        const ghl_string_view ruby_class = ghl_error_ruby_class(error);
+        const ghl_string_view ruby_backtrace = ghl_error_ruby_backtrace(error);
         std::fprintf(stderr, "Runtime creation failed (%d): %.*s\n", status,
             static_cast<int>(message.length), message.data == nullptr ? "" : message.data);
+        if (ruby_class.length != 0) std::fprintf(stderr, "Ruby exception: %.*s\n", static_cast<int>(ruby_class.length), ruby_class.data);
+        if (ruby_backtrace.length != 0) std::fprintf(stderr, "%.*s\n", static_cast<int>(ruby_backtrace.length), ruby_backtrace.data);
         ghl_error_release(error);
         return 1;
     }

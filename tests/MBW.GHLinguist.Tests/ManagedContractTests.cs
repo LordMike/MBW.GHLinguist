@@ -92,17 +92,25 @@ public sealed class ManagedContractTests
     [Fact]
     public void ClassificationOptionsRejectInvalidCandidateLanguageIds()
     {
-        ArgumentOutOfRangeException zero = Assert.Throws<ArgumentOutOfRangeException>(() => new ClassificationOptions
+        ArgumentOutOfRangeException sentinel = Assert.Throws<ArgumentOutOfRangeException>(() => new ClassificationOptions
         {
-            CandidateLanguageIds = [1, 0],
+            CandidateLanguageIds = [1, ulong.MaxValue],
         });
         ArgumentException duplicate = Assert.Throws<ArgumentException>(() => new ClassificationOptions
         {
             CandidateLanguageIds = [1, 1],
         });
 
-        Assert.Equal(nameof(ClassificationOptions.CandidateLanguageIds), zero.ParamName);
+        Assert.Equal(nameof(ClassificationOptions.CandidateLanguageIds), sentinel.ParamName);
         Assert.Equal(nameof(ClassificationOptions.CandidateLanguageIds), duplicate.ParamName);
+    }
+
+    [Fact]
+    public void ClassificationOptionsAllowLanguageIdZero()
+    {
+        var options = new ClassificationOptions { CandidateLanguageIds = [0] };
+
+        Assert.Equal([0UL], options.CandidateLanguageIds);
     }
 
     [Fact]

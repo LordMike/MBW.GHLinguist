@@ -8,6 +8,7 @@ namespace MBW.GHLinguist;
 internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBackend
 {
     private const uint AbiMajor = 1;
+    private const ulong NoLanguageId = ulong.MaxValue;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly NativeRuntimeHandle _runtime;
     private LinguistCapabilities? _capabilities;
@@ -310,14 +311,14 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
             StructSize = (uint)Unsafe.SizeOf<NativeLanguageInfo>(),
         };
         ThrowForStatus(NativeMethods.RuntimeLanguageInfo(_runtime, languageId, &info), 0);
-        if (info.LanguageId != languageId || info.LanguageId == 0)
+        if (info.LanguageId != languageId)
         {
-            throw new LinguistException("The native runtime returned inconsistent language metadata.");
+            throw new LinguistException($"The native runtime returned language ID {info.LanguageId} for requested ID {languageId}.");
         }
 
         return new LinguistLanguage(
             info.LanguageId,
-            info.GroupLanguageId == 0 ? null : info.GroupLanguageId,
+            info.GroupLanguageId == NoLanguageId ? null : info.GroupLanguageId,
             ReadRequiredString(info.Name),
             ReadOptionalString(info.FileSystemName),
             ReadLanguageType(info.Type),
@@ -415,7 +416,12 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
     private BlobAnalysis CopyAnalysis(NativeAnalysisHandle analysis, bool isEmpty, BlobAnalysisOptions options)
     {
         ulong languageId = NativeMethods.AnalysisLanguageId(analysis);
-        LinguistLanguage? language = languageId == 0 ? null : GetLanguage(languageId);
+        DetectionStrategy strategy = ReadDetectionStrategy(NativeMethods.AnalysisStrategy(analysis));
+        if ((languageId == NoLanguageId) != (strategy == DetectionStrategy.None))
+        {
+            throw new LinguistException($"The native runtime returned inconsistent language ID {languageId} and strategy {strategy}.");
+        }
+        LinguistLanguage? language = languageId == NoLanguageId ? null : GetLanguage(languageId);
         var trace = new StrategyTraceEntry[options.IncludeStrategyTrace
             ? CheckedLength(NativeMethods.AnalysisTraceCount(analysis), "analysis trace count")
             : 0];
@@ -463,7 +469,7 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
 
         return new BlobAnalysis(
             language,
-            ReadDetectionStrategy(NativeMethods.AnalysisStrategy(analysis)),
+            strategy,
             isEmpty,
             flags,
             ReadAnalysisText(analysis, NativeAnalysisTextField.MimeType),
@@ -493,9 +499,9 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
 
     private LinguistLanguage GetLanguage(ulong languageId)
     {
-        if (languageId == 0)
+        if (languageId == NoLanguageId)
         {
-            throw new LinguistException("The native runtime returned language ID zero where a language was required.");
+            throw new LinguistException("The native runtime returned the no-language sentinel where a language was required.");
         }
 
         EnsureLanguages();

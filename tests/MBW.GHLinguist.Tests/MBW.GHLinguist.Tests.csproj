@@ -20,4 +20,16 @@
     <ProjectReference Include="..\..\src\MBW.GHLinguist\MBW.GHLinguist.csproj" />
     <Using Include="Xunit" />
   </ItemGroup>
+
+  <Target Name="CopyNativeIntegrationAssets" AfterTargets="Build" Condition="'$(RunNativeIntegrationTests)' == 'true'">
+    <PropertyGroup>
+      <NativeIntegrationAssetRoot>$(MSBuildThisFileDirectory)..\..\.tmp\artifacts\native\$(RuntimeIdentifier)</NativeIntegrationAssetRoot>
+    </PropertyGroup>
+    <Error Condition="'$(RuntimeIdentifier)' == ''" Text="RunNativeIntegrationTests requires a RuntimeIdentifier." />
+    <Error Condition="!Exists('$(NativeIntegrationAssetRoot)')" Text="The staged native closure is missing: $(NativeIntegrationAssetRoot)" />
+    <ItemGroup>
+      <_NativeIntegrationAsset Include="$(NativeIntegrationAssetRoot)\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_NativeIntegrationAsset)" DestinationFiles="@(_NativeIntegrationAsset->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

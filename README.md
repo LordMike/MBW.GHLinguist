@@ -7,19 +7,16 @@ Ruby or native handles to callers.
 
 ## Status
 
-The managed API and native ABI projection are implemented, but the
-`ghlinguist` native bridge and its CRuby dependency closure are not yet
-packaged. Until that bridge is available, `LinguistRuntime.Create()` throws
-`DllNotFoundException`. The existing `linguist.so` assets are Linguist's Ruby
-tokenizer extension, not the public C ABI library.
+The managed API, native ABI bridge, and relocatable CRuby dependency closures
+are implemented for the supported runtime identifiers. The package does not
+require a system Ruby installation or runtime downloads.
 
-The intended supported runtime identifiers are `win-x64` and `linux-x64`.
+The supported runtime identifiers are `win-x64` and `linux-x64`.
 
 ## Intended usage
 
-Once the native bridge is packaged, start with `LinguistRuntime`. Create one
-runtime, reuse it for calls, and dispose it when the application no longer needs
-Linguist:
+Start with `LinguistRuntime`. Create one runtime, reuse it for calls, and dispose
+it when the application no longer needs Linguist:
 
 ```csharp
 using MBW.GHLinguist;
@@ -146,7 +143,8 @@ Candidate-list semantics are deliberate:
 | Empty list | Return an empty result without invoking the classifier |
 | Non-empty list | Restrict classification to exactly those IDs |
 
-Zero IDs, duplicate IDs, and IDs absent from the active runtime are rejected.
+The no-language sentinel (`ulong.MaxValue`), duplicate IDs, and IDs absent from
+the active runtime are rejected. Language ID `0` is valid.
 Classifier scores are similarities, not probabilities or confidence
 percentages. Applications should establish their own admission policy.
 
@@ -231,6 +229,8 @@ Use `linux-x64` instead when running on Linux.
 ## Native assets
 
 RID-specific native builds stage package-ready files beneath
-`.tmp/artifacts/native/<rid>`. The library project copies selected RID assets
-during RID-specific builds and packages both RID trees under
-`runtimes/<rid>/native`.
+`.tmp/artifacts/native/<rid>`. The package exposes the ABI bridge under
+`runtimes/<rid>/native` and stores each complete relocatable closure under
+`nativeassets/<rid>`. Its `buildTransitive` target copies the selected closure
+with its relative layout intact for build and publish. When a project does not
+set `RuntimeIdentifier`, the target selects the .NET SDK host RID.

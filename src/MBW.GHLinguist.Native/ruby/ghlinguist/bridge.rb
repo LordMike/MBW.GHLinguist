@@ -25,6 +25,8 @@ module GHLinguist
   end
 
   module Bridge
+    NO_LANGUAGE_ID = (1 << 64) - 1
+
     STRATEGIES = [
       [1, 1 << 0, Linguist::Strategy::Modeline],
       [2, 1 << 1, Linguist::Strategy::Filename],
@@ -95,7 +97,7 @@ module GHLinguist
       flags |= 1 << 16 if included
 
       [
-        language&.language_id || 0,
+        language&.language_id || NO_LANGUAGE_ID,
         selecting_strategy,
         flags,
         blob.mime_type,

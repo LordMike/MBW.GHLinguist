@@ -27,9 +27,9 @@ try {
     'lib/net10.0/MBW.GHLinguist.xml'
     'buildTransitive/MBW.GHLinguist.targets'
     'runtimes/linux-x64/native/ghlinguist.so'
-    'runtimes/linux-x64/native/provenance.json'
     'runtimes/win-x64/native/ghlinguist.dll'
-    'runtimes/win-x64/native/provenance.json'
+    'nativeassets/linux-x64/provenance.json'
+    'nativeassets/win-x64/provenance.json'
   )
 
   foreach ($requiredEntry in $requiredEntries) {
@@ -39,7 +39,7 @@ try {
   }
 
   foreach ($rid in 'linux-x64', 'win-x64') {
-    $prefix = "runtimes/$rid/native/"
+    $prefix = "nativeassets/$rid/"
     $provenancePath = $prefix + 'provenance.json'
     $provenanceEntries = @($archive.Entries | Where-Object { $_.FullName -eq $provenancePath })
     if ($provenanceEntries.Count -ne 1) {

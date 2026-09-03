@@ -130,6 +130,8 @@ New-Item -ItemType Directory -Path (Join-Path $nativeAssetRoot 'bin') -Force | O
 Copy-Item -LiteralPath $ruby -Destination (Join-Path $nativeAssetRoot 'bin/ruby.exe')
 Get-ChildItem -LiteralPath (Join-Path $RubyRoot 'bin') -Filter '*.dll' -File |
   Copy-Item -Destination (Join-Path $nativeAssetRoot 'bin') -Force
+Get-ChildItem -LiteralPath (Join-Path $RubyRoot 'bin') -Filter '*.dll' -File |
+  Copy-Item -Destination $nativeAssetRoot -Force
 Copy-RequiredDirectory (Join-Path $RubyRoot 'lib/ruby') (Join-Path $nativeAssetRoot 'lib/ruby') 'Ruby standard library'
 
 $gemHome = Join-Path $nativeAssetRoot "lib/ruby/gems/$($manifest.ruby.abiVersion)"
@@ -144,6 +146,9 @@ foreach ($gem in $manifest.gems) {
   Require-Path $gemSpec "gem specification for $($gem.name) $($gem.version)"
   Copy-Item -LiteralPath $gemSpec -Destination (Join-Path $gemHome "specifications/$($gem.name)-$($gem.version).gemspec") -Force
 }
+Get-ChildItem -LiteralPath (Join-Path $gemHome 'gems') -Directory | ForEach-Object {
+  Remove-Item -LiteralPath (Join-Path $_.FullName 'ext') -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 foreach ($pattern in $manifest.icu.windowsPatterns) {
   $matches = foreach ($searchPath in $manifest.icu.windowsSearchPaths) {
@@ -153,6 +158,14 @@ foreach ($pattern in $manifest.icu.windowsPatterns) {
     throw "Required ICU dependency matching '$pattern' is missing under $RubyRoot/bin or $RubyRoot/msys64/ucrt64/bin."
   }
   $matches | Copy-Item -Destination (Join-Path $nativeAssetRoot 'bin') -Force
+  $matches | Copy-Item -Destination $nativeAssetRoot -Force
+}
+
+foreach ($runtimeDll in 'libgcc_s_seh-1.dll', 'libstdc++-6.dll', 'libwinpthread-1.dll') {
+  $runtimeDllPath = Join-Path $msysBin $runtimeDll
+  Require-Path $runtimeDllPath 'MinGW runtime dependency'
+  Copy-Item -LiteralPath $runtimeDllPath -Destination (Join-Path $nativeAssetRoot 'bin') -Force
+  Copy-Item -LiteralPath $runtimeDllPath -Destination $nativeAssetRoot -Force
 }
 
 foreach ($path in $manifest.linguist.paths) {
@@ -195,15 +208,34 @@ finally {
   $env:GEM_PATH = $previousGemPathForSamples
   Remove-Item -LiteralPath (Join-Path $nativeAssetRoot 'samples') -Recurse -Force
 }
+$classifierSha256 = (Get-FileHash -LiteralPath (Join-Path $nativeAssetRoot 'lib/linguist/samples_data.rb') -Algorithm SHA256).Hash.ToLowerInvariant()
 
 $bridgeBuild = Join-Path $buildRoot 'bridge'
-Invoke-Checked cmake '-S' (Join-Path $repoRoot 'src/MBW.GHLinguist.Native') '-B' $bridgeBuild '-G' 'MinGW Makefiles' "-DGHL_RUBY_ROOT=$RubyRoot"
+Invoke-Checked cmake '-S' (Join-Path $repoRoot 'src/MBW.GHLinguist.Native') '-B' $bridgeBuild '-G' 'MinGW Makefiles' `
+  "-DGHL_RUBY_ROOT=$RubyRoot" '-DGHL_BUILD_SMOKE=ON' "-DGHL_SMOKE_ASSET_ROOT=$nativeAssetRoot" `
+  "-DGHL_LINGUIST_REVISION=$actualLinguistRevision" "-DGHL_CLASSIFIER_SHA256=$classifierSha256"
 Invoke-Checked cmake '--build' $bridgeBuild '--parallel' '2'
 $bridge = Get-ChildItem -LiteralPath $bridgeBuild -Filter 'ghlinguist.dll' -File -Recurse | Select-Object -First 1
 if (-not $bridge) {
   throw 'ghlinguist bridge build completed without producing ghlinguist.dll.'
 }
 Copy-Item -LiteralPath $bridge.FullName -Destination (Join-Path $nativeAssetRoot 'ghlinguist.dll') -Force
+
+$smoke = Get-ChildItem -LiteralPath $bridgeBuild -Filter 'ghlinguist_smoke.exe' -File -Recurse | Select-Object -First 1
+if (-not $smoke) {
+  throw 'Native bridge build completed without producing ghlinguist_smoke.exe.'
+}
+$stagedSmoke = Join-Path $nativeAssetRoot 'ghlinguist_smoke.exe'
+Copy-Item -LiteralPath $smoke.FullName -Destination $stagedSmoke -Force
+$previousPath = $env:Path
+try {
+  $env:Path = "$nativeAssetRoot$([IO.Path]::PathSeparator)$env:Path"
+  Invoke-Checked $stagedSmoke $nativeAssetRoot
+}
+finally {
+  $env:Path = $previousPath
+  Remove-Item -LiteralPath $stagedSmoke -Force -ErrorAction SilentlyContinue
+}
 
 $previousRubyLib, $previousGemHome, $previousGemPath, $previousManifest = $env:RUBYLIB, $env:GEM_HOME, $env:GEM_PATH, $env:GHL_DEPENDENCY_MANIFEST
 try {
@@ -219,6 +251,10 @@ finally {
   $env:GEM_PATH = $previousGemPath
   $env:GHL_DEPENDENCY_MANIFEST = $previousManifest
 }
+
+Get-ChildItem -LiteralPath $nativeAssetRoot -Recurse -Force -File |
+  Where-Object { $_.Name.StartsWith('.', [StringComparison]::Ordinal) } |
+  Remove-Item -Force
 
 Write-Provenance $manifest $nativeAssetRoot
 Write-Host "Staged complete Windows native closure: $nativeAssetRoot"

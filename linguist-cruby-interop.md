@@ -414,7 +414,8 @@ GHL_API void GHL_CALL ghl_error_release(ghl_error* error);
 - `maximum_bytes == 0` uses Linguist's 50 KiB default.
 - A nonzero classifier bound cannot exceed 50 KiB in ABI v1.
 - Classification scores are similarity scores, not probabilities or confidence.
-- `language_id == 0` means no detected language.
+- `language_id == UINT64_MAX` means no detected language; zero is a valid Linguist language ID.
+- `group_language_id == UINT64_MAX` means the language is not grouped under another language.
 - Every exported function is thread-safe.
 - Ruby work is synchronous but serialized through the process worker.
 - `ghl_runtime_create` blocks until CRuby, bridge code, language data, heuristics, generated rules, MIME data, and classifier centroids are loaded.
@@ -491,21 +492,23 @@ content-classifier capabilities.
 
 ## NuGet package
 
-Make `MBW.GHLinguist.csproj` packable and include the managed assembly plus native closures under `runtimes/win-x64/native/` and `runtimes/linux-x64/native/`.
+Make `MBW.GHLinguist.csproj` packable and include the managed assembly, native ABI bridges under `runtimes/<rid>/native/`, and complete relocatable closures under `nativeassets/<rid>/`.
 
 The package layout is:
 
 ```text
 lib/net10.0/MBW.GHLinguist.dll
-runtimes/win-x64/native/*
-runtimes/linux-x64/native/*
+runtimes/win-x64/native/ghlinguist.dll
+runtimes/linux-x64/native/ghlinguist.so
+nativeassets/win-x64/*
+nativeassets/linux-x64/*
 buildTransitive/MBW.GHLinguist.targets
 LICENSES/*
 THIRD-PARTY-NOTICES.txt
 native/include/ghlinguist.h
 ```
 
-Use `buildTransitive` only for non-library Ruby or data files that require preserved subdirectories. Normal build and publish consumption must be automatic after one `PackageReference`.
+Use `buildTransitive` to copy the selected complete closure while preserving subdirectories. Prefer an explicit supported `RuntimeIdentifier`; when it is absent, select the .NET SDK host RID. Normal build and publish consumption must be automatic after one `PackageReference`.
 
 ## Work
 

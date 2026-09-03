@@ -23,7 +23,7 @@
 
 struct NativeLanguage {
     uint64_t id = 0;
-    uint64_t group_id = 0;
+    uint64_t group_id = GHL_LANGUAGE_ID_NONE;
     ghl_language_type type = GHL_LANGUAGE_TYPE_UNKNOWN;
     uint32_t flags = 0;
     std::string name;
@@ -61,7 +61,7 @@ struct NativeStrategyTrace {
     std::vector<uint64_t> candidates;
 };
 struct ghl_analysis {
-    uint64_t language_id = 0;
+    uint64_t language_id = GHL_LANGUAGE_ID_NONE;
     ghl_strategy strategy = GHL_STRATEGY_NONE;
     ghl_blob_result_flags flags = 0;
     std::string mime_type;
@@ -92,6 +92,16 @@ constexpr uint32_t kRuntimeMagic = 0x47484C31u;
 constexpr char kWrapperVersion[] = "MBW.GHLinguist.Native CRuby bootstrap";
 constexpr char kUnavailable[] = "unavailable";
 constexpr char kUnsupported[] = "GitHub Linguist Ruby embedding is not enabled in this native build.";
+#if defined(GHL_LINGUIST_REVISION)
+constexpr char kLinguistRevision[] = GHL_LINGUIST_REVISION;
+#else
+constexpr char kLinguistRevision[] = "unavailable";
+#endif
+#if defined(GHL_CLASSIFIER_SHA256)
+constexpr char kClassifierSha256[] = GHL_CLASSIFIER_SHA256;
+#else
+constexpr char kClassifierSha256[] = "unavailable";
+#endif
 
 static_assert(sizeof(ghl_string_view) == sizeof(void*) + sizeof(size_t));
 static_assert(sizeof(ghl_bytes_view) == sizeof(void*) + sizeof(size_t));
@@ -181,7 +191,7 @@ bool valid_classify_options(const ghl_classify_options* options) {
         (options->allowed_types & ~GHL_LANGUAGE_MASK_ALL) != 0 || options->maximum_bytes > 51200 ||
         (options->candidate_language_ids == nullptr && options->candidate_language_count != 0) || !reserved_zero(options->reserved)) return false;
     for (size_t i = 0; i < options->candidate_language_count; ++i) {
-        if (options->candidate_language_ids[i] == 0) return false;
+        if (options->candidate_language_ids[i] == GHL_LANGUAGE_ID_NONE) return false;
     }
     return true;
 }
@@ -240,7 +250,7 @@ std::string ruby_optional_string(VALUE value) {
 uint64_t ruby_integer(VALUE value) { return NUM2ULL(value); }
 
 ghl_language_type ruby_language_type(VALUE value) {
-    const std::string type = ruby_optional_string(value);
+    const std::string type = ruby_optional_string(SYMBOL_P(value) ? rb_sym2str(value) : value);
     if (type == "data") return GHL_LANGUAGE_TYPE_DATA;
     if (type == "markup") return GHL_LANGUAGE_TYPE_MARKUP;
     if (type == "programming") return GHL_LANGUAGE_TYPE_PROGRAMMING;
@@ -305,7 +315,8 @@ std::shared_ptr<LanguageRegistry> project_languages() {
         const VALUE language = rb_ary_entry(languages, index);
         NativeLanguage native;
         native.id = ruby_integer(rb_funcall(language, rb_intern("language_id"), 0));
-        native.group_id = ruby_integer(rb_funcall(rb_funcall(language, rb_intern("group"), 0), rb_intern("language_id"), 0));
+        const uint64_t group_id = ruby_integer(rb_funcall(rb_funcall(language, rb_intern("group"), 0), rb_intern("language_id"), 0));
+        native.group_id = group_id == native.id ? GHL_LANGUAGE_ID_NONE : group_id;
         native.type = ruby_language_type(rb_funcall(language, rb_intern("type"), 0));
         native.name = ruby_string(rb_funcall(language, rb_intern("name"), 0));
         native.fs_name = ruby_optional_string(rb_funcall(language, rb_intern("fs_name"), 0));
@@ -333,11 +344,55 @@ std::shared_ptr<LanguageRegistry> project_languages() {
     return registry;
 }
 
-VALUE load_runtime_assets(VALUE opaque) {
-    auto* context = reinterpret_cast<RubyStartupContext*>(opaque);
+void configure_runtime_load_path(RubyStartupContext* context) {
     VALUE load_path = rb_gv_get("$LOAD_PATH");
+    const std::filesystem::path ruby_root = std::filesystem::u8path(context->asset_root) / "lib" / "ruby";
+    const auto add_standard_root = [load_path](const std::filesystem::path& root) {
+        const std::string root_path = root.u8string();
+        rb_ary_unshift(load_path, rb_utf8_str_new(root_path.data(), static_cast<long>(root_path.size())));
+        for (const auto& architecture_directory : std::filesystem::directory_iterator(root)) {
+            if (!architecture_directory.is_directory() || !std::filesystem::is_regular_file(architecture_directory.path() / "rbconfig.rb")) continue;
+            const std::string architecture_path = architecture_directory.path().u8string();
+            rb_ary_unshift(load_path, rb_utf8_str_new(architecture_path.data(), static_cast<long>(architecture_path.size())));
+        }
+    };
+    if (std::filesystem::is_directory(ruby_root)) {
+        for (const auto& root_directory : std::filesystem::directory_iterator(ruby_root)) {
+            if (!root_directory.is_directory() || root_directory.path().filename() == "gems") continue;
+            const std::string name = root_directory.path().filename().u8string();
+            if (!name.empty() && std::isdigit(static_cast<unsigned char>(name.front()))) {
+                add_standard_root(root_directory.path());
+                continue;
+            }
+            for (const auto& version_directory : std::filesystem::directory_iterator(root_directory.path())) {
+                if (version_directory.is_directory()) add_standard_root(version_directory.path());
+            }
+        }
+    }
+    const std::filesystem::path gem_root = ruby_root / "gems";
+    if (std::filesystem::is_directory(gem_root)) {
+        for (const auto& abi_directory : std::filesystem::directory_iterator(gem_root)) {
+            const std::filesystem::path gems_directory = abi_directory.path() / "gems";
+            if (!abi_directory.is_directory() || !std::filesystem::is_directory(gems_directory)) continue;
+            for (const auto& gem_directory : std::filesystem::directory_iterator(gems_directory)) {
+                const std::filesystem::path gem_library = gem_directory.path() / "lib";
+                if (!gem_directory.is_directory() || !std::filesystem::is_directory(gem_library)) continue;
+                const std::string gem_path = gem_library.u8string();
+                rb_ary_unshift(load_path, rb_utf8_str_new(gem_path.data(), static_cast<long>(gem_path.size())));
+            }
+        }
+    }
     rb_ary_unshift(load_path, rb_utf8_str_new(context->linguist_root.data(), static_cast<long>(context->linguist_root.size())));
     rb_ary_unshift(load_path, rb_utf8_str_new(context->asset_root.data(), static_cast<long>(context->asset_root.size())));
+}
+
+VALUE load_runtime_assets(VALUE opaque) {
+    auto* context = reinterpret_cast<RubyStartupContext*>(opaque);
+    rb_funcall(rb_mKernel, rb_intern("require"), 1, rb_utf8_str_new_cstr("enc/encdb"));
+    rb_funcall(rb_mKernel, rb_intern("require"), 1, rb_utf8_str_new_cstr("enc/trans/transdb"));
+    rb_funcall(rb_mKernel, rb_intern("require"), 1, rb_utf8_str_new_cstr("date"));
+    rb_funcall(rb_mKernel, rb_intern("require"), 1, rb_utf8_str_new_cstr("digest.so"));
+    rb_funcall(rb_mKernel, rb_intern("require"), 1, rb_utf8_str_new_cstr("digest"));
     rb_funcall(rb_mKernel, rb_intern("require"), 1, rb_utf8_str_new_cstr("linguist/language"));
     rb_funcall(rb_mKernel, rb_intern("require"), 1, rb_utf8_str_new_cstr("ghlinguist/bridge"));
 
@@ -503,7 +558,14 @@ private:
         RUBY_INIT_STACK;
         ruby_init();
         ruby_init_loadpath();
+        configure_runtime_load_path(&context);
         ruby_script("ghlinguist");
+        char disable_gems[] = "--disable-gems";
+        char require_date[] = "-rdate";
+        char option[] = "-e";
+        char expression[] = "";
+        char* ruby_arguments[] = {program_name, disable_gems, require_date, option, expression, nullptr};
+        ruby_exec_node(ruby_options(5, ruby_arguments));
         int state = 0;
         rb_protect(load_runtime_assets, reinterpret_cast<VALUE>(&context), &state);
         if (state != 0) {
@@ -703,8 +765,8 @@ ghl_status GHL_CALL ghl_runtime_version(const ghl_runtime* runtime, ghl_version_
     out_version->wrapper_version = view(kWrapperVersion);
     out_version->ruby_version = view(runtime->ruby_version);
     out_version->linguist_version = runtime->linguist_version.empty() ? view(kUnavailable) : view(runtime->linguist_version);
-    out_version->linguist_revision = view(kUnavailable);
-    out_version->classifier_sha256 = view(kUnavailable);
+    out_version->linguist_revision = view(kLinguistRevision);
+    out_version->classifier_sha256 = view(kClassifierSha256);
     return GHL_STATUS_OK;
 }
 
@@ -830,7 +892,7 @@ ghl_status GHL_CALL ghl_runtime_classify(const ghl_runtime* runtime, ghl_bytes_v
 }
 
 void GHL_CALL ghl_analysis_release(ghl_analysis* analysis) { delete analysis; }
-uint64_t GHL_CALL ghl_analysis_language_id(const ghl_analysis* analysis) { return analysis == nullptr ? 0 : analysis->language_id; }
+uint64_t GHL_CALL ghl_analysis_language_id(const ghl_analysis* analysis) { return analysis == nullptr ? GHL_LANGUAGE_ID_NONE : analysis->language_id; }
 ghl_strategy GHL_CALL ghl_analysis_strategy(const ghl_analysis* analysis) { return analysis == nullptr ? GHL_STRATEGY_NONE : analysis->strategy; }
 ghl_blob_result_flags GHL_CALL ghl_analysis_flags(const ghl_analysis* analysis) { return analysis == nullptr ? 0 : analysis->flags; }
 uint64_t GHL_CALL ghl_analysis_loc(const ghl_analysis* analysis) { return analysis == nullptr ? 0 : analysis->loc; }

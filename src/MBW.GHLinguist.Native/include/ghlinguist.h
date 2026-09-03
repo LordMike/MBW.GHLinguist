@@ -45,6 +45,7 @@ typedef struct ghl_string_view { const char* data; size_t length; } ghl_string_v
 typedef struct ghl_bytes_view { const uint8_t* data; size_t length; } ghl_bytes_view;
 
 typedef uint64_t ghl_capabilities;
+#define GHL_LANGUAGE_ID_NONE UINT64_MAX
 #define GHL_CAP_LANGUAGE_REGISTRY (UINT64_C(1) << 0)
 #define GHL_CAP_STANDARD_DETECTION (UINT64_C(1) << 1)
 #define GHL_CAP_CONTENT_CLASSIFIER (UINT64_C(1) << 2)

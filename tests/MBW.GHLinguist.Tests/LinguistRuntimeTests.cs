@@ -158,7 +158,7 @@ public sealed class LinguistRuntimeTests
 
         ArgumentException exception = Assert.Throws<ArgumentException>(() => runtime.Classify(
             "puts 'Hello'\n"u8,
-            new ClassificationOptions { CandidateLanguageIds = [ulong.MaxValue] }));
+            new ClassificationOptions { CandidateLanguageIds = [327] }));
 
         Assert.Equal(nameof(ClassificationOptions.CandidateLanguageIds), exception.ParamName);
         Assert.Equal(0, backend.ClassifyCount);

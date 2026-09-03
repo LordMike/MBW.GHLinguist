@@ -133,9 +133,9 @@ public sealed class ClassificationOptions
     /// <summary>Gets an optional set of language IDs to which classification is restricted.</summary>
     /// <value>
     /// <see langword="null" /> for unrestricted classification, an empty list to return no matches without invoking
-    /// the classifier, or a copied read-only list of specific nonzero IDs.
+    /// the classifier, or a copied read-only list of specific language IDs.
     /// </value>
-    /// <exception cref="ArgumentOutOfRangeException">The collection contains language ID zero.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The collection contains the reserved no-language sentinel.</exception>
     /// <exception cref="ArgumentException">The collection contains duplicate language IDs.</exception>
     public IReadOnlyList<ulong>? CandidateLanguageIds
     {
@@ -149,9 +149,9 @@ public sealed class ClassificationOptions
             }
 
             ulong[] copy = value.ToArray();
-            if (copy.Contains(0UL))
+            if (copy.Contains(ulong.MaxValue))
             {
-                throw new ArgumentOutOfRangeException(nameof(CandidateLanguageIds), "Language ID zero does not identify a Linguist language.");
+                throw new ArgumentOutOfRangeException(nameof(CandidateLanguageIds), "The maximum unsigned 64-bit value is reserved as the no-language sentinel.");
             }
 
             if (copy.Distinct().Count() != copy.Length)
