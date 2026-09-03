@@ -17,6 +17,13 @@
 #include <utility>
 #include <vector>
 
+#if defined(_WIN32) && defined(GHL_RUBY_EMBEDDING)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
 #if defined(GHL_RUBY_EMBEDDING)
 #include <ruby.h>
 #endif
@@ -134,6 +141,33 @@ std::string path_to_utf8(const std::filesystem::path& value) {
     return text;
 #endif
 }
+
+#if defined(_WIN32) && defined(GHL_RUBY_EMBEDDING)
+bool preload_windows_runtime_dependencies(const std::string& asset_root, std::string* message) {
+    constexpr const wchar_t* prefixes[] = {
+        L"libwinpthread-1", L"libgcc_s_seh-1", L"libstdc++-6", L"libicudt", L"libicuuc", L"libicuin"};
+    const std::filesystem::path root = path_from_utf8(asset_root);
+    for (const wchar_t* prefix : prefixes) {
+        std::filesystem::path dependency;
+        for (const auto& entry : std::filesystem::directory_iterator(root)) {
+            const std::wstring filename = entry.path().filename().wstring();
+            if (entry.is_regular_file() && entry.path().extension() == L".dll" && filename.rfind(prefix, 0) == 0) {
+                dependency = entry.path();
+                break;
+            }
+        }
+        if (dependency.empty()) {
+            *message = "The Windows native closure is missing a dependency matching " + path_to_utf8(prefix) + "*.dll.";
+            return false;
+        }
+        if (LoadLibraryW(dependency.c_str()) == nullptr) {
+            *message = "Unable to preload " + path_to_utf8(dependency) + " (Windows error " + std::to_string(GetLastError()) + ").";
+            return false;
+        }
+    }
+    return true;
+}
+#endif
 
 std::string lowercase(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
@@ -567,6 +601,13 @@ private:
         initialization_attempted_ = true;
         asset_root_ = asset_root;
 #if defined(GHL_RUBY_EMBEDDING)
+#if defined(_WIN32)
+        std::string dependency_error;
+        if (!preload_windows_runtime_dependencies(asset_root, &dependency_error)) {
+            initialization_result_ = {GHL_STATUS_NATIVE_FAILURE, std::move(dependency_error), {}, {}, {}, {}, {}};
+            return initialization_result_;
+        }
+#endif
         RubyStartupContext context{asset_root, path_to_utf8(path_from_utf8(asset_root) / "lib"), {}, {}};
         char program_name[] = "ghlinguist";
         char* arguments[] = {program_name, nullptr};

@@ -273,7 +273,7 @@ jobs:
           if (-not $env:PACKAGE_VERSION) { throw 'The package job did not report a package version.' }
           $project = 'tests/MBW.GHLinguist.PackageSmoke/MBW.GHLinguist.PackageSmoke.csproj'
           $source = (Resolve-Path '.artifacts/nuget').Path
-          dotnet restore $project --runtime $env:TEST_RID "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" --source $source --source https://api.nuget.org/v3/index.json
+          dotnet restore $project --runtime $env:TEST_RID "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" --source https://api.nuget.org/v3/index.json --source $source
           dotnet run --project $project --configuration Release --runtime $env:TEST_RID --no-restore "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION"
 
       - name: Restore, publish, and run framework-dependent package consumer
@@ -287,7 +287,7 @@ jobs:
           $project = 'tests/MBW.GHLinguist.PackageSmoke/MBW.GHLinguist.PackageSmoke.csproj'
           $source = (Resolve-Path '.artifacts/nuget').Path
           $publish = Join-Path '.tmp/package-smoke-publish' $env:TEST_RID
-          dotnet restore $project "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" --source $source --source https://api.nuget.org/v3/index.json
+          dotnet restore $project "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" --source https://api.nuget.org/v3/index.json --source $source
           dotnet publish $project --configuration FrameworkDependent --no-restore --output $publish "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION"
           dotnet (Join-Path $publish 'MBW.GHLinguist.PackageSmoke.dll')
 
