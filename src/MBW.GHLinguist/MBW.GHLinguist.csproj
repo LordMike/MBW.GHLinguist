@@ -10,6 +10,7 @@
     <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
     <RidNativeAssetRoot>$(MSBuildThisFileDirectory)..\..\.tmp\artifacts\native</RidNativeAssetRoot>
     <ValidateRidAssets Condition="'$(ValidateRidAssets)' == ''">false</ValidateRidAssets>
+    <NoWarn>$(NoWarn);NU5100</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
