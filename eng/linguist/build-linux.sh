@@ -148,6 +148,10 @@ done
 
 find "$native_asset_root" -type f -name '.*' -delete
 while IFS= read -r -d '' link_path; do
+  if [[ ! -e "$link_path" ]]; then
+    rm "$link_path"
+    continue
+  fi
   materialized_path="${link_path}.materialized"
   cp -aL "$link_path" "$materialized_path"
   rm "$link_path"
