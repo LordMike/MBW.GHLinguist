@@ -56,7 +56,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          ridk exec pacman --noconfirm -S --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-make mingw-w64-ucrt-x86_64-icu
+          ridk exec pacman --noconfirm -S --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-make mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-icu
           $manifest = Get-Content eng/linguist/native-dependencies.json -Raw | ConvertFrom-Json
           foreach ($gem in $manifest.gems) {
             $arguments = @('install', '--no-document', $gem.name, '--version', $gem.version)

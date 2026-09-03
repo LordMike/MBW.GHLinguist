@@ -211,7 +211,7 @@ finally {
 $classifierSha256 = (Get-FileHash -LiteralPath (Join-Path $nativeAssetRoot 'lib/linguist/samples_data.rb') -Algorithm SHA256).Hash.ToLowerInvariant()
 
 $bridgeBuild = Join-Path $buildRoot 'bridge'
-Invoke-Checked cmake '-S' (Join-Path $repoRoot 'src/MBW.GHLinguist.Native') '-B' $bridgeBuild '-G' 'MinGW Makefiles' `
+Invoke-Checked cmake '-S' (Join-Path $repoRoot 'src/MBW.GHLinguist.Native') '-B' $bridgeBuild '-G' 'Ninja' `
   "-DGHL_RUBY_ROOT=$RubyRoot" '-DGHL_BUILD_SMOKE=ON' "-DGHL_SMOKE_ASSET_ROOT=$nativeAssetRoot" `
   "-DGHL_LINGUIST_REVISION=$actualLinguistRevision" "-DGHL_CLASSIFIER_SHA256=$classifierSha256"
 Invoke-Checked cmake '--build' $bridgeBuild '--parallel' '2'
