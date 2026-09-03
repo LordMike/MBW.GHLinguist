@@ -242,7 +242,7 @@ finally {
 
 $previousRubyLib, $previousGemHome, $previousGemPath, $previousManifest = $env:RUBYLIB, $env:GEM_HOME, $env:GEM_PATH, $env:GHL_DEPENDENCY_MANIFEST
 try {
-  $env:RUBYLIB = Join-Path $nativeAssetRoot 'lib'
+  $env:RUBYLIB = "$(Join-Path $nativeAssetRoot 'lib')$([IO.Path]::PathSeparator)$nativeAssetRoot"
   $env:GEM_HOME = $gemHome
   $env:GEM_PATH = $gemHome
   $env:GHL_DEPENDENCY_MANIFEST = $manifestPath
