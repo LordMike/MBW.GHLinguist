@@ -1,19 +1,15 @@
-# This file is centrally managed; local edits may be lost.
-
 name: CI
-
-# Contract:
-# - This is the only event-triggered managed workflow.
-# - Every active run builds and tests exactly once through the repository action.
-# - Feature branches, pull requests, and manual runs allocate no publishing jobs.
-# - Publishing jobs use trusted GitHub ref guards and receive only their own secrets.
-# - Implementation lives in explicit local actions and the reusable deploy workflow.
-# - This file describes orchestration and contains no repository-specific behavior.
 
 on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish_nuget_org:
+        description: Publish the verified package to NuGet.org (trusted tags only)
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -23,183 +19,261 @@ env:
   DOTNET_NOLOGO: true
 
 jobs:
-  build:
-    name: Build and test
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+  managed:
+    name: Managed build and test
     runs-on: ubuntu-latest
-    outputs:
-      has-packages: ${{ steps.publishables.outputs.has-packages }}
-      has-docker: ${{ steps.publishables.outputs.has-docker }}
-      publish-target: ${{ steps.context.outputs.publish-target }}
-      is-prerelease: ${{ steps.context.outputs.is-prerelease }}
-      is-plain-version: ${{ steps.context.outputs.is-plain-version }}
-      release-tag: ${{ steps.context.outputs.release-tag }}
-      version: ${{ steps.context.outputs.version }}
-
     steps:
-      - name: Checkout exact source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Checkout exact source and Linguist
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
         with:
-          fetch-depth: 0
+          ref: ${{ github.sha }}
+          submodules: recursive
           persist-credentials: false
 
-      - name: Initialize CI context
+      - name: Run managed build and tests once
+        uses: ./.github/actions/build
+        env:
+          CI_PUBLISH_TARGET: none
+
+  native_windows:
+    name: Native win-x64
+    runs-on: windows-2025
+    steps:
+      - name: Checkout exact source and Linguist
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Set up the pinned Ruby runtime
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0.1'
+          bundler: none
+
+      - name: Install Windows native prerequisites
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ridk exec pacman --noconfirm -S --needed mingw-w64-ucrt-x86_64-toolchain mingw-w64-ucrt-x86_64-icu
+          $manifest = Get-Content eng/linguist/native-dependencies.json -Raw | ConvertFrom-Json
+          foreach ($gem in $manifest.gems) {
+            gem install --no-document $gem.name --version $gem.version
+          }
+
+      - name: Build and validate win-x64 native closure
+        shell: pwsh
+        run: ./eng/linguist/build-windows.ps1
+
+      # build-windows.ps1 runs eng/linguist/validate.rb against the staged closure.
+      # Add independent managed-to-native runtime tests here when such a test entry point exists.
+      - name: Reserve native runtime test stage
+        shell: pwsh
+        run: Write-Host 'Native closure validation completed by build-windows.ps1; no separate runtime test entry point is defined yet.'
+
+      - name: Upload win-x64 native closure
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: native-win-x64
+          path: .tmp/artifacts/native/win-x64
+          include-hidden-files: true
+          if-no-files-found: error
+
+  native_linux:
+    name: Native linux-x64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact source and Linguist
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Build and validate linux-x64 native closure
+        shell: pwsh
+        run: ./eng/linguist/build-docker.ps1
+
+      # build-linux.sh runs eng/linguist/validate.rb inside the pinned Docker image.
+      # Add independent managed-to-native runtime tests here when such a test entry point exists.
+      - name: Reserve native runtime test stage
+        shell: bash
+        run: echo 'Native closure validation completed by build-linux.sh; no separate runtime test entry point is defined yet.'
+
+      - name: Upload linux-x64 native closure
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: native-linux-x64
+          path: .tmp/artifacts/native/linux-x64
+          include-hidden-files: true
+          if-no-files-found: error
+
+  package:
+    name: Merge native closures and package
+    needs:
+      - managed
+      - native_windows
+      - native_linux
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.context.outputs.version }}
+    steps:
+      - name: Checkout exact source and Linguist
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Initialize package version
         id: context
         uses: ./.github/actions/initialize_ci
 
-      - name: Run repository build
-        uses: ./.github/actions/build
-        env:
-          CI_PUBLISH_TARGET: ${{ steps.context.outputs.publish-target }}
-          CI_VERSION: ${{ steps.context.outputs.version }}
-
-      - name: Collect publishable outputs
-        id: publishables
-        if: steps.context.outputs.publish-target != 'none'
-        uses: ./.github/actions/collect_publishables
-
-      - name: Upload CI artifacts
-        if: >-
-          steps.context.outputs.publish-target == 'release' ||
-          steps.publishables.outputs.has-packages == 'true' ||
-          steps.publishables.outputs.has-docker == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - name: Download win-x64 native closure
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4.3.0
         with:
-          name: ci-artifacts
+          name: native-win-x64
+          path: .tmp/artifacts/native/win-x64
+
+      - name: Download linux-x64 native closure
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4.3.0
+        with:
+          name: native-linux-x64
+          path: .tmp/artifacts/native/linux-x64
+
+      - name: Validate downloaded native provenance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifestHash = (Get-FileHash eng/linguist/native-dependencies.json -Algorithm SHA256).Hash.ToLowerInvariant()
+          foreach ($rid in 'win-x64', 'linux-x64') {
+            $root = Join-Path '.tmp/artifacts/native' $rid
+            $provenancePath = Join-Path $root 'provenance.json'
+            if (-not (Test-Path -LiteralPath $provenancePath)) { throw "Missing provenance for $rid." }
+            $provenance = Get-Content -LiteralPath $provenancePath -Raw | ConvertFrom-Json
+            if ($provenance.platform -ne $rid) { throw "Provenance platform '$($provenance.platform)' does not match $rid." }
+            if ($provenance.manifestSha256 -ne $manifestHash) { throw "Provenance manifest hash does not match the checked-out source for $rid." }
+            if (@($provenance.files).Count -eq 0) { throw "Provenance for $rid contains no files." }
+            foreach ($file in $provenance.files) {
+              $relativePath = [string]$file.path
+              if ([IO.Path]::IsPathRooted($relativePath) -or $relativePath.Replace('\', '/').Split('/') -contains '..') { throw "Invalid provenance path '$relativePath' for $rid." }
+              $asset = Join-Path $root $relativePath
+              if (-not (Test-Path -LiteralPath $asset -PathType Leaf)) { throw "Missing native asset '$relativePath' for $rid." }
+              $actualHash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant()
+              if ($actualHash -ne $file.sha256) { throw "Native asset hash mismatch for '$relativePath' in $rid." }
+            }
+          }
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build package project
+        shell: bash
+        run: dotnet build src/MBW.GHLinguist/MBW.GHLinguist.csproj --configuration Release
+
+      - name: Build exactly one NuGet package
+        shell: bash
+        env:
+          CI_VERSION: ${{ steps.context.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p .artifacts/nuget
+          version_args=()
+          if [ -n "$CI_VERSION" ]; then
+            version_args+=("-p:Version=$CI_VERSION")
+          fi
+          dotnet pack src/MBW.GHLinguist/MBW.GHLinguist.csproj --configuration Release --no-build --output .artifacts/nuget -p:ValidateRidAssets=true "${version_args[@]}"
+          shopt -s nullglob
+          packages=(.artifacts/nuget/*.nupkg)
+          [ "${#packages[@]}" -eq 1 ] || { echo "Expected exactly one nupkg, found ${#packages[@]}."; exit 1; }
+
+      - name: Verify NuGet package contents
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = @(Get-ChildItem .artifacts/nuget -Filter '*.nupkg' -File)
+          if ($package.Count -ne 1) { throw "Expected exactly one nupkg, found $($package.Count)." }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($package[0].FullName)
+          try {
+            $nuspec = @($archive.Entries | Where-Object { $_.FullName -like '*.nuspec' })
+            if ($nuspec.Count -ne 1) { throw "Expected exactly one nuspec, found $($nuspec.Count)." }
+            $reader = [IO.StreamReader]::new($nuspec.Open())
+            try { [xml]$document = $reader.ReadToEnd() } finally { $reader.Dispose() }
+            $version = $document.SelectSingleNode("/*[local-name()='package']/*[local-name()='metadata']/*[local-name()='version']").InnerText
+          }
+          finally { $archive.Dispose() }
+          ./eng/nuget/verify-package.ps1 -Package $package[0].FullName -ExpectedVersion $version
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: package-artifacts
           path: .artifacts
           include-hidden-files: true
           if-no-files-found: error
 
-  publish_nuget:
-    name: Publish NuGet packages
-    needs: build
+  publish_github_packages:
+    name: Publish GitHub Packages
+    needs: package
     if: >-
-      needs.build.result == 'success' &&
       github.event_name == 'push' &&
-      (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/tags/')) &&
-      needs.build.outputs.has-packages == 'true' &&
-      needs.build.outputs.publish-target != 'none'
+      (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/tags/'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-
     steps:
       - name: Checkout exact source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: Download CI artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - name: Download package artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4.3.0
         with:
-          name: ci-artifacts
+          name: package-artifacts
           path: .artifacts
 
-      - name: Publish collected NuGet packages
+      - name: Publish packages to GitHub Packages
         uses: ./.github/actions/publish_nuget
         with:
-          publish-target: ${{ needs.build.outputs.publish-target }}
+          publish-target: github
+          publish-nuget-org: false
         env:
           NUGET_GITHUB_TOKEN: ${{ github.token }}
+
+  publish_nuget_org:
+    name: Publish NuGet.org
+    needs: package
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.publish_nuget_org &&
+      startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download package artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4.3.0
+        with:
+          name: package-artifacts
+          path: .artifacts
+
+      - name: Publish packages to NuGet.org
+        uses: ./.github/actions/publish_nuget
+        with:
+          publish-target: nuget-org
+          publish-nuget-org: true
+        env:
           NUGET_ORG_KEY: ${{ secrets.NUGET_KEY }}
-
-  publish_docker:
-    name: Publish Docker images
-    needs: build
-    if: >-
-      needs.build.result == 'success' &&
-      github.event_name == 'push' &&
-      (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/tags/')) &&
-      needs.build.outputs.has-docker == 'true' &&
-      needs.build.outputs.publish-target != 'none'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout exact source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-
-      - name: Download CI artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: ci-artifacts
-          path: .artifacts
-
-      - name: Publish discovered Docker images
-        uses: ./.github/actions/publish_docker
-        with:
-          publish-target: ${{ needs.build.outputs.publish-target }}
-          version: ${{ needs.build.outputs.version }}
-          is-prerelease: ${{ needs.build.outputs.is-prerelease }}
-        env:
-          DOCKER_GITHUB_TOKEN: ${{ github.token }}
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_KEY: ${{ secrets.DOCKER_KEY }}
-
-  publish_github_release:
-    name: Publish GitHub Release
-    needs:
-      - build
-      - publish_nuget
-      - publish_docker
-    if: >-
-      always() &&
-      needs.build.result == 'success' &&
-      github.event_name == 'push' &&
-      startsWith(github.ref, 'refs/tags/') &&
-      needs.build.outputs.publish-target == 'release' &&
-      (needs.publish_nuget.result == 'success' || needs.publish_nuget.result == 'skipped') &&
-      (needs.publish_docker.result == 'success' || needs.publish_docker.result == 'skipped')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout exact source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-
-      - name: Download CI artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: ci-artifacts
-          path: .artifacts
-
-      - name: Publish GitHub Release
-        uses: ./.github/actions/publish_github_release
-        with:
-          release-tag: ${{ needs.build.outputs.release-tag }}
-          is-prerelease: ${{ needs.build.outputs.is-prerelease }}
-        env:
-          GITHUB_RELEASE_TOKEN: ${{ github.token }}
-
-  deploy:
-    name: Deploy
-    needs:
-      - build
-      - publish_github_release
-    if: >-
-      always() &&
-      needs.build.result == 'success' &&
-      github.event_name == 'push' &&
-      startsWith(github.ref, 'refs/tags/') &&
-      needs.build.outputs.publish-target == 'release' &&
-      needs.publish_github_release.result == 'success'
-    uses: ./.github/workflows/deploy.yml
-    with:
-      release-tag: ${{ needs.build.outputs.release-tag }}
-      version: ${{ needs.build.outputs.version }}
-      is-prerelease: ${{ needs.build.outputs.is-prerelease }}
-      is-plain-version: ${{ needs.build.outputs.is-plain-version }}
-    secrets: inherit
-    permissions:
-      contents: read

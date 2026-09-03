@@ -5,14 +5,18 @@ description: Publish collected NuGet packages to the registries selected by CI
 
 # Contract:
 # - Packages are read only from .artifacts/nuget.
-# - All publishable refs go to GitHub Packages.
-# - Release refs additionally go to NuGet.org.
+# - GitHub Packages is the default publishing destination for trusted push refs.
+# - NuGet.org is an explicit opt-in controlled by the calling job.
 # - Registry credentials are supplied only by the invoking publishing job.
 
 inputs:
   publish-target:
-    description: CI publish target (development or release)
+    description: Publication destination (github or nuget-org)
     required: true
+  publish-nuget-org:
+    description: Whether this invocation is explicitly authorized to publish to NuGet.org
+    required: false
+    default: 'false'
 
 runs:
   using: composite
@@ -23,6 +27,7 @@ runs:
         dotnet-version: 10.0.x
 
     - name: Publish NuGet packages to GitHub Packages
+      if: inputs.publish-target == 'github'
       shell: bash
       env:
         PACKAGE_TOKEN: ${{ env.NUGET_GITHUB_TOKEN }}
@@ -38,8 +43,8 @@ runs:
             --source "https://nuget.pkg.github.com/${GITHUB_REPOSITORY_OWNER}/index.json"
         done
 
-    - name: Publish release packages to NuGet.org
-      if: inputs.publish-target == 'release'
+    - name: Publish packages to NuGet.org
+      if: inputs.publish-nuget-org == 'true' && inputs.publish-target == 'nuget-org'
       shell: bash
       env:
         NUGET_KEY: ${{ env.NUGET_ORG_KEY }}
