@@ -117,6 +117,24 @@ ghl_string_view view(const char* text) { return {text, std::char_traits<char>::l
 ghl_string_view view(const std::string& text) { return {text.data(), text.size()}; }
 ghl_string_view empty_view() { return {nullptr, 0}; }
 
+std::filesystem::path path_from_utf8(const std::string& value) {
+#if defined(__cpp_char8_t)
+    const auto* first = reinterpret_cast<const char8_t*>(value.data());
+    return std::filesystem::path(std::u8string(first, first + value.size()));
+#else
+    return std::filesystem::u8path(value);
+#endif
+}
+
+std::string path_to_utf8(const std::filesystem::path& value) {
+    const auto text = value.u8string();
+#if defined(__cpp_char8_t)
+    return {reinterpret_cast<const char*>(text.data()), text.size()};
+#else
+    return text;
+#endif
+}
+
 std::string lowercase(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
     return value;
@@ -346,20 +364,20 @@ std::shared_ptr<LanguageRegistry> project_languages() {
 
 void configure_runtime_load_path(RubyStartupContext* context) {
     VALUE load_path = rb_gv_get("$LOAD_PATH");
-    const std::filesystem::path ruby_root = std::filesystem::u8path(context->asset_root) / "lib" / "ruby";
+    const std::filesystem::path ruby_root = path_from_utf8(context->asset_root) / "lib" / "ruby";
     const auto add_standard_root = [load_path](const std::filesystem::path& root) {
-        const std::string root_path = root.u8string();
+        const std::string root_path = path_to_utf8(root);
         rb_ary_unshift(load_path, rb_utf8_str_new(root_path.data(), static_cast<long>(root_path.size())));
         for (const auto& architecture_directory : std::filesystem::directory_iterator(root)) {
             if (!architecture_directory.is_directory() || !std::filesystem::is_regular_file(architecture_directory.path() / "rbconfig.rb")) continue;
-            const std::string architecture_path = architecture_directory.path().u8string();
+            const std::string architecture_path = path_to_utf8(architecture_directory.path());
             rb_ary_unshift(load_path, rb_utf8_str_new(architecture_path.data(), static_cast<long>(architecture_path.size())));
         }
     };
     if (std::filesystem::is_directory(ruby_root)) {
         for (const auto& root_directory : std::filesystem::directory_iterator(ruby_root)) {
             if (!root_directory.is_directory() || root_directory.path().filename() == "gems") continue;
-            const std::string name = root_directory.path().filename().u8string();
+            const std::string name = path_to_utf8(root_directory.path().filename());
             if (!name.empty() && std::isdigit(static_cast<unsigned char>(name.front()))) {
                 add_standard_root(root_directory.path());
                 continue;
@@ -377,7 +395,7 @@ void configure_runtime_load_path(RubyStartupContext* context) {
             for (const auto& gem_directory : std::filesystem::directory_iterator(gems_directory)) {
                 const std::filesystem::path gem_library = gem_directory.path() / "lib";
                 if (!gem_directory.is_directory() || !std::filesystem::is_directory(gem_library)) continue;
-                const std::string gem_path = gem_library.u8string();
+                const std::string gem_path = path_to_utf8(gem_library);
                 rb_ary_unshift(load_path, rb_utf8_str_new(gem_path.data(), static_cast<long>(gem_path.size())));
             }
         }
@@ -549,7 +567,7 @@ private:
         initialization_attempted_ = true;
         asset_root_ = asset_root;
 #if defined(GHL_RUBY_EMBEDDING)
-        RubyStartupContext context{asset_root, (std::filesystem::u8path(asset_root) / "lib").u8string(), {}, {}};
+        RubyStartupContext context{asset_root, path_to_utf8(path_from_utf8(asset_root) / "lib"), {}, {}};
         char program_name[] = "ghlinguist";
         char* arguments[] = {program_name, nullptr};
         char** argument_vector = arguments;
@@ -649,7 +667,7 @@ RubyWorker& ruby_worker() {
 
 bool validate_asset_root(const ghl_string_view asset_root, std::string* normalized, std::string* message) {
     std::error_code error;
-    const std::filesystem::path root = std::filesystem::u8path(std::string(asset_root.data, asset_root.length));
+    const std::filesystem::path root = path_from_utf8(std::string(asset_root.data, asset_root.length));
     if (!std::filesystem::is_directory(root, error) || error) {
         *message = "asset_root must name an existing directory.";
         return false;
@@ -666,7 +684,7 @@ bool validate_asset_root(const ghl_string_view asset_root, std::string* normaliz
         *message = "asset_root could not be canonicalized.";
         return false;
     }
-    *normalized = canonical.u8string();
+    *normalized = path_to_utf8(canonical);
     return true;
 }
 
