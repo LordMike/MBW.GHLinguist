@@ -15,8 +15,7 @@
     "version": "9.6.0",
     "revision": "196b2a14418cab005065c72c9759370934c184bc",
     "paths": [
-      "lib",
-      "vendor"
+      "lib"
     ],
     "tokenizerExtension": "ext/linguist"
   },
