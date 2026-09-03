@@ -47,9 +47,9 @@
       "msys64/ucrt64/bin"
     ],
     "windowsPatterns": [
-      "icudt*.dll",
-      "icuin*.dll",
-      "icuuc*.dll"
+      "libicudt*.dll",
+      "libicuin*.dll",
+      "libicuuc*.dll"
     ],
     "linuxPatterns": [
       "lib/libicudata.so*",
