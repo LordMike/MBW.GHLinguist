@@ -108,6 +108,9 @@ if ($actualLinguistVersion -ne $manifest.linguist.version) {
   throw "Expected Linguist $($manifest.linguist.version), found $actualLinguistVersion."
 }
 
+$bridgeSource = Join-Path $repoRoot 'src/MBW.GHLinguist.Native/ruby/ghlinguist/bridge.rb'
+Require-Path $bridgeSource 'GHLinguist Ruby bridge'
+
 $msysBin = Join-Path $RubyRoot 'msys64/ucrt64/bin'
 if (-not (Get-Command make -ErrorAction SilentlyContinue) -or -not (Get-Command gcc -ErrorAction SilentlyContinue)) {
   Require-Path $msysBin 'RubyInstaller MSYS2 UCRT toolchain'
@@ -160,6 +163,8 @@ foreach ($path in $manifest.linguist.paths) {
     Copy-RequiredDirectory (Join-Path $LinguistRoot $path) (Join-Path $nativeAssetRoot "linguist/$path") "Linguist $path"
   }
 }
+New-Item -ItemType Directory -Path (Join-Path $nativeAssetRoot 'ghlinguist') -Force | Out-Null
+Copy-Item -LiteralPath $bridgeSource -Destination (Join-Path $nativeAssetRoot 'ghlinguist/bridge.rb') -Force
 $extensionSource = Join-Path $buildRoot 'tokenizer'
 Copy-RequiredDirectory (Join-Path $LinguistRoot $manifest.linguist.tokenizerExtension) $extensionSource 'Linguist tokenizer source'
 Push-Location $extensionSource
@@ -176,6 +181,20 @@ if (-not $tokenizer) {
 }
 New-Item -ItemType Directory -Path (Join-Path $nativeAssetRoot 'lib/linguist') -Force | Out-Null
 Copy-Item -LiteralPath $tokenizer.FullName -Destination (Join-Path $nativeAssetRoot "lib/linguist/$($tokenizer.Name)") -Force
+Copy-RequiredDirectory (Join-Path $LinguistRoot 'samples') (Join-Path $nativeAssetRoot 'samples') 'Linguist classifier samples'
+$previousRubyLibForSamples, $previousGemHomeForSamples, $previousGemPathForSamples = $env:RUBYLIB, $env:GEM_HOME, $env:GEM_PATH
+try {
+  $env:RUBYLIB = Join-Path $nativeAssetRoot 'lib'
+  $env:GEM_HOME = $gemHome
+  $env:GEM_PATH = $gemHome
+  Invoke-Checked $ruby (Join-Path $scriptRoot 'generate-samples.rb') (Join-Path $nativeAssetRoot 'lib/linguist/samples_data.rb')
+}
+finally {
+  $env:RUBYLIB = $previousRubyLibForSamples
+  $env:GEM_HOME = $previousGemHomeForSamples
+  $env:GEM_PATH = $previousGemPathForSamples
+  Remove-Item -LiteralPath (Join-Path $nativeAssetRoot 'samples') -Recurse -Force
+}
 
 $bridgeBuild = Join-Path $buildRoot 'bridge'
 Invoke-Checked cmake '-S' (Join-Path $repoRoot 'src/MBW.GHLinguist.Native') '-B' $bridgeBuild '-G' 'MinGW Makefiles' "-DGHL_RUBY_ROOT=$RubyRoot"

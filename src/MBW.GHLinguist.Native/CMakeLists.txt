@@ -6,6 +6,11 @@ set(GHL_RUBY_ROOT "" CACHE PATH "RubyInstaller root used to embed CRuby (for exa
 option(GHL_ENABLE_RUBY_EMBEDDING "Build the CRuby embedding runtime" OFF)
 option(GHL_BUILD_SMOKE "Build the native runtime smoke executable" OFF)
 set(GHL_SMOKE_ASSET_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../extern/linguist" CACHE PATH "Full GitHub Linguist asset root used by the runtime smoke test")
+set(GHL_BUNDLED_BRIDGE "${CMAKE_CURRENT_SOURCE_DIR}/ruby/ghlinguist/bridge.rb")
+
+if(NOT EXISTS "${GHL_BUNDLED_BRIDGE}")
+    message(FATAL_ERROR "The bundled GHLinguist Ruby bridge is missing: ${GHL_BUNDLED_BRIDGE}")
+endif()
 
 if(GHL_RUBY_ROOT)
     set(GHL_ENABLE_RUBY_EMBEDDING ON)

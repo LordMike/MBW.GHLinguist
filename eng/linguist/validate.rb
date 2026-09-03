@@ -6,6 +6,7 @@ require "linguist/tokenizer"
 require "cgi"
 require "mini_mime"
 require "charlock_holmes"
+require "ghlinguist/bridge"
 
 manifest_path = ENV.fetch("GHL_DEPENDENCY_MANIFEST")
 manifest = JSON.parse(File.read(manifest_path))
@@ -22,5 +23,8 @@ abort "The Linguist tokenizer returned no tokens" if tokens.empty?
 
 abort "The staged mini_mime gem did not resolve a Ruby filename" unless MiniMime.lookup_by_filename("example.rb")
 CharlockHolmes::EncodingDetector.detect("plain text")
+
+analysis = GHLinguist::Bridge.analyze("sample.rb", "sample.rb", "puts :ok\n", 0, 0, 0xff)
+abort "The staged GHLinguist bridge did not identify a Ruby source file" if analysis[0].zero?
 
 puts "Validated Linguist #{Linguist::VERSION} tokenizer (#{tokens.length} tokens)"

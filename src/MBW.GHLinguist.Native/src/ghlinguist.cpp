@@ -54,9 +54,30 @@ struct ghl_runtime {
     std::string ruby_version;
     std::string linguist_version;
     std::shared_ptr<const LanguageRegistry> languages;
+    bool bridge_loaded = false;
 };
-struct ghl_analysis { uint32_t unused = 0; };
-struct ghl_classification { uint32_t unused = 0; };
+struct NativeStrategyTrace {
+    ghl_strategy strategy = GHL_STRATEGY_NONE;
+    std::vector<uint64_t> candidates;
+};
+struct ghl_analysis {
+    uint64_t language_id = 0;
+    ghl_strategy strategy = GHL_STRATEGY_NONE;
+    ghl_blob_result_flags flags = 0;
+    std::string mime_type;
+    std::string content_type;
+    std::string disposition;
+    std::string encoding;
+    std::string ruby_encoding;
+    std::string tm_scope;
+    uint64_t loc = 0;
+    uint64_t sloc = 0;
+    std::vector<NativeStrategyTrace> traces;
+};
+struct ghl_classification {
+    uint32_t considered_bytes = 0;
+    std::vector<std::pair<uint64_t, double>> results;
+};
 struct ghl_language_id_list { std::vector<uint64_t> ids; };
 struct ghl_error {
     ghl_status status;
@@ -179,6 +200,26 @@ struct WorkerResult {
     std::string ruby_version;
     std::string linguist_version;
     std::shared_ptr<const LanguageRegistry> languages;
+    bool bridge_loaded = false;
+    std::shared_ptr<ghl_analysis> analysis;
+    std::shared_ptr<ghl_classification> classification;
+};
+
+struct AnalysisRequest {
+    uint32_t input_flags = 0;
+    uint32_t option_flags = 0;
+    uint32_t strategy_mask = 0;
+    std::string path;
+    std::string name;
+    std::string data;
+};
+
+struct ClassifyRequest {
+    uint32_t maximum_bytes = 0;
+    uint32_t allowed_types = 0;
+    bool has_candidates = false;
+    std::string data;
+    std::vector<uint64_t> candidate_ids;
 };
 
 #if defined(GHL_RUBY_EMBEDDING)
@@ -251,6 +292,7 @@ struct RubyStartupContext {
     std::string ruby_version;
     std::string linguist_version;
     std::shared_ptr<LanguageRegistry> languages;
+    bool bridge_loaded = false;
 };
 
 std::shared_ptr<LanguageRegistry> project_languages() {
@@ -297,6 +339,7 @@ VALUE load_runtime_assets(VALUE opaque) {
     rb_ary_unshift(load_path, rb_utf8_str_new(context->linguist_root.data(), static_cast<long>(context->linguist_root.size())));
     rb_ary_unshift(load_path, rb_utf8_str_new(context->asset_root.data(), static_cast<long>(context->asset_root.size())));
     rb_funcall(rb_mKernel, rb_intern("require"), 1, rb_utf8_str_new_cstr("linguist/language"));
+    rb_funcall(rb_mKernel, rb_intern("require"), 1, rb_utf8_str_new_cstr("ghlinguist/bridge"));
 
     int state = 0;
     VALUE ruby_version = rb_eval_string_protect("RUBY_VERSION", &state);
@@ -306,6 +349,93 @@ VALUE load_runtime_assets(VALUE opaque) {
     if (state != 0) rb_jump_tag(state);
     context->linguist_version = ruby_string(linguist_version);
     context->languages = project_languages();
+    context->bridge_loaded = true;
+    return Qnil;
+}
+
+VALUE ruby_bridge() {
+    const VALUE ghlinguist = rb_const_get(rb_cObject, rb_intern("GHLinguist"));
+    return rb_const_get(ghlinguist, rb_intern("Bridge"));
+}
+
+VALUE required_array_entry(VALUE values, long index) {
+    if (!RB_TYPE_P(values, T_ARRAY) || index < 0 || index >= RARRAY_LEN(values)) {
+        rb_raise(rb_eTypeError, "GHLinguist::Bridge returned an invalid result.");
+    }
+    return rb_ary_entry(values, index);
+}
+
+std::string required_ruby_string(VALUE value) {
+    if (NIL_P(value)) return {};
+    if (!RB_TYPE_P(value, T_STRING)) rb_raise(rb_eTypeError, "GHLinguist::Bridge returned a non-string text value.");
+    return ruby_string(value);
+}
+
+struct RubyAnalysisContext { const AnalysisRequest* request; std::shared_ptr<ghl_analysis>* result; };
+
+VALUE marshal_analysis(VALUE opaque) {
+    const auto* context = reinterpret_cast<RubyAnalysisContext*>(opaque);
+    const AnalysisRequest& request = *context->request;
+    const VALUE result = rb_funcall(ruby_bridge(), rb_intern("analyze"), 6,
+        rb_utf8_str_new(request.path.data(), static_cast<long>(request.path.size())),
+        rb_utf8_str_new(request.name.data(), static_cast<long>(request.name.size())),
+        rb_str_new(request.data.data(), static_cast<long>(request.data.size())),
+        UINT2NUM(request.input_flags), UINT2NUM(request.option_flags), UINT2NUM(request.strategy_mask));
+
+    auto analysis = std::make_shared<ghl_analysis>();
+    analysis->language_id = NUM2ULL(required_array_entry(result, 0));
+    analysis->strategy = NUM2UINT(required_array_entry(result, 1));
+    analysis->flags = NUM2ULL(required_array_entry(result, 2));
+    analysis->mime_type = required_ruby_string(required_array_entry(result, 3));
+    analysis->content_type = required_ruby_string(required_array_entry(result, 4));
+    analysis->disposition = required_ruby_string(required_array_entry(result, 5));
+    analysis->encoding = required_ruby_string(required_array_entry(result, 6));
+    analysis->ruby_encoding = required_ruby_string(required_array_entry(result, 7));
+    analysis->tm_scope = required_ruby_string(required_array_entry(result, 8));
+    analysis->loc = NUM2ULL(required_array_entry(result, 9));
+    analysis->sloc = NUM2ULL(required_array_entry(result, 10));
+    const VALUE ruby_traces = required_array_entry(result, 11);
+    if (!RB_TYPE_P(ruby_traces, T_ARRAY)) rb_raise(rb_eTypeError, "GHLinguist::Bridge returned invalid traces.");
+    analysis->traces.reserve(static_cast<size_t>(RARRAY_LEN(ruby_traces)));
+    for (long trace_index = 0; trace_index < RARRAY_LEN(ruby_traces); ++trace_index) {
+        const VALUE ruby_trace = rb_ary_entry(ruby_traces, trace_index);
+        NativeStrategyTrace trace;
+        trace.strategy = NUM2UINT(required_array_entry(ruby_trace, 0));
+        const VALUE ruby_candidates = required_array_entry(ruby_trace, 1);
+        if (!RB_TYPE_P(ruby_candidates, T_ARRAY)) rb_raise(rb_eTypeError, "GHLinguist::Bridge returned invalid trace candidates.");
+        trace.candidates.reserve(static_cast<size_t>(RARRAY_LEN(ruby_candidates)));
+        for (long candidate_index = 0; candidate_index < RARRAY_LEN(ruby_candidates); ++candidate_index) {
+            trace.candidates.push_back(NUM2ULL(rb_ary_entry(ruby_candidates, candidate_index)));
+        }
+        analysis->traces.push_back(std::move(trace));
+    }
+    *context->result = std::move(analysis);
+    return Qnil;
+}
+
+struct RubyClassifyContext { const ClassifyRequest* request; std::shared_ptr<ghl_classification>* result; };
+
+VALUE marshal_classification(VALUE opaque) {
+    const auto* context = reinterpret_cast<RubyClassifyContext*>(opaque);
+    const ClassifyRequest& request = *context->request;
+    VALUE candidates = Qnil;
+    if (request.has_candidates) {
+        candidates = rb_ary_new_capa(static_cast<long>(request.candidate_ids.size()));
+        for (uint64_t id : request.candidate_ids) rb_ary_push(candidates, ULL2NUM(id));
+    }
+    const VALUE result = rb_funcall(ruby_bridge(), rb_intern("classify"), 4,
+        rb_str_new(request.data.data(), static_cast<long>(request.data.size())), UINT2NUM(request.maximum_bytes),
+        UINT2NUM(request.allowed_types), candidates);
+    auto classification = std::make_shared<ghl_classification>();
+    classification->considered_bytes = NUM2UINT(required_array_entry(result, 0));
+    const VALUE ruby_results = required_array_entry(result, 1);
+    if (!RB_TYPE_P(ruby_results, T_ARRAY)) rb_raise(rb_eTypeError, "GHLinguist::Bridge returned invalid classification results.");
+    classification->results.reserve(static_cast<size_t>(RARRAY_LEN(ruby_results)));
+    for (long index = 0; index < RARRAY_LEN(ruby_results); ++index) {
+        const VALUE ruby_result = rb_ary_entry(ruby_results, index);
+        classification->results.emplace_back(NUM2ULL(required_array_entry(ruby_result, 0)), NUM2DBL(required_array_entry(ruby_result, 1)));
+    }
+    *context->result = std::move(classification);
     return Qnil;
 }
 #endif
@@ -316,6 +446,14 @@ public:
 
     WorkerResult ensure_initialized(std::string asset_root) {
         return invoke([this, asset_root = std::move(asset_root)] { return initialize_on_worker(asset_root); });
+    }
+
+    WorkerResult analyze(AnalysisRequest request) {
+        return invoke([this, request = std::move(request)] { return analyze_on_worker(request); });
+    }
+
+    WorkerResult classify(ClassifyRequest request) {
+        return invoke([this, request = std::move(request)] { return classify_on_worker(request); });
     }
 
 private:
@@ -373,12 +511,50 @@ private:
             initialization_result_ = {GHL_STATUS_RUBY_EXCEPTION, std::move(details.message),
                 std::move(details.ruby_class), std::move(details.ruby_backtrace), {}, {}, {}};
         } else {
-            initialization_result_ = {GHL_STATUS_OK, {}, {}, {}, std::move(context.ruby_version), std::move(context.linguist_version), std::move(context.languages)};
+            initialization_result_ = {GHL_STATUS_OK, {}, {}, {}, std::move(context.ruby_version), std::move(context.linguist_version), std::move(context.languages), context.bridge_loaded};
         }
 #else
         initialization_result_ = {GHL_STATUS_UNSUPPORTED, kUnsupported, {}, {}, {}, {}, {}};
 #endif
         return initialization_result_;
+    }
+
+    WorkerResult analyze_on_worker(const AnalysisRequest& request) {
+#if defined(GHL_RUBY_EMBEDDING)
+        if (initialization_result_.status != GHL_STATUS_OK) return initialization_result_;
+        if (!initialization_result_.bridge_loaded) return {GHL_STATUS_UNSUPPORTED, "GHLinguist::Bridge is not available.", {}, {}, {}, {}};
+        std::shared_ptr<ghl_analysis> analysis;
+        RubyAnalysisContext context{&request, &analysis};
+        int state = 0;
+        rb_protect(marshal_analysis, reinterpret_cast<VALUE>(&context), &state);
+        if (state != 0) {
+            RubyErrorDetails details = ruby_error_details();
+            return {GHL_STATUS_RUBY_EXCEPTION, std::move(details.message), std::move(details.ruby_class), std::move(details.ruby_backtrace), {}, {}};
+        }
+        return {GHL_STATUS_OK, {}, {}, {}, {}, {}, {}, false, std::move(analysis)};
+#else
+        (void)request;
+        return {GHL_STATUS_UNSUPPORTED, kUnsupported, {}, {}, {}, {}};
+#endif
+    }
+
+    WorkerResult classify_on_worker(const ClassifyRequest& request) {
+#if defined(GHL_RUBY_EMBEDDING)
+        if (initialization_result_.status != GHL_STATUS_OK) return initialization_result_;
+        if (!initialization_result_.bridge_loaded) return {GHL_STATUS_UNSUPPORTED, "GHLinguist::Bridge is not available.", {}, {}, {}, {}};
+        std::shared_ptr<ghl_classification> classification;
+        RubyClassifyContext context{&request, &classification};
+        int state = 0;
+        rb_protect(marshal_classification, reinterpret_cast<VALUE>(&context), &state);
+        if (state != 0) {
+            RubyErrorDetails details = ruby_error_details();
+            return {GHL_STATUS_RUBY_EXCEPTION, std::move(details.message), std::move(details.ruby_class), std::move(details.ruby_backtrace), {}, {}};
+        }
+        return {GHL_STATUS_OK, {}, {}, {}, {}, {}, {}, false, {}, std::move(classification)};
+#else
+        (void)request;
+        return {GHL_STATUS_UNSUPPORTED, kUnsupported, {}, {}, {}, {}};
+#endif
     }
 
     void run() {
@@ -418,8 +594,9 @@ bool validate_asset_root(const ghl_string_view asset_root, std::string* normaliz
     }
     const std::filesystem::path linguist_root = root / "lib" / "linguist";
     if (!std::filesystem::is_regular_file(linguist_root / "version.rb", error) || error ||
-        !std::filesystem::is_regular_file(linguist_root / "language.rb", error) || error) {
-        *message = "asset_root must contain lib/linguist/version.rb and lib/linguist/language.rb.";
+        !std::filesystem::is_regular_file(linguist_root / "language.rb", error) || error ||
+        !std::filesystem::is_regular_file(root / "ghlinguist" / "bridge.rb", error) || error) {
+        *message = "asset_root must contain lib/linguist/version.rb, lib/linguist/language.rb, and ghlinguist/bridge.rb.";
         return false;
     }
     const std::filesystem::path canonical = std::filesystem::weakly_canonical(root, error);
@@ -499,7 +676,7 @@ ghl_status GHL_CALL ghl_runtime_create(const ghl_runtime_options* options, ghl_r
             std::move(worker.ruby_class), std::move(worker.ruby_backtrace));
     }
 
-    ghl_runtime* runtime = new (std::nothrow) ghl_runtime{kRuntimeMagic, std::move(worker.ruby_version), std::move(worker.linguist_version), std::move(worker.languages)};
+    ghl_runtime* runtime = new (std::nothrow) ghl_runtime{kRuntimeMagic, std::move(worker.ruby_version), std::move(worker.linguist_version), std::move(worker.languages), worker.bridge_loaded};
     if (runtime == nullptr) return fail(GHL_STATUS_OUT_OF_MEMORY, "Unable to allocate runtime handle.", out_error);
     *out_runtime = runtime;
     return GHL_STATUS_OK;
@@ -507,7 +684,13 @@ ghl_status GHL_CALL ghl_runtime_create(const ghl_runtime_options* options, ghl_r
 
 void GHL_CALL ghl_runtime_release(ghl_runtime* runtime) { if (runtime != nullptr) { runtime->magic = 0; delete runtime; } }
 ghl_capabilities GHL_CALL ghl_runtime_capabilities(const ghl_runtime* runtime) {
-    return valid_runtime(runtime) && runtime->languages ? GHL_CAP_LANGUAGE_REGISTRY : 0;
+    if (!valid_runtime(runtime) || !runtime->languages) return 0;
+    ghl_capabilities capabilities = GHL_CAP_LANGUAGE_REGISTRY;
+    if (runtime->bridge_loaded) {
+        capabilities |= GHL_CAP_STANDARD_DETECTION | GHL_CAP_CONTENT_CLASSIFIER | GHL_CAP_STRATEGY_TRACE |
+            GHL_CAP_ENCODING_BINARY | GHL_CAP_GENERATED_DETECTION | GHL_CAP_PATH_CLASSIFICATION;
+    }
+    return capabilities;
 }
 
 ghl_status GHL_CALL ghl_runtime_version(const ghl_runtime* runtime, ghl_version_info* out_version) {
@@ -586,30 +769,117 @@ ghl_status GHL_CALL ghl_runtime_analyze(const ghl_runtime* runtime, const ghl_bl
     clear_error(out_error);
     if (out_analysis == nullptr || !valid_runtime(runtime) || !valid_blob(blob) || !valid_analysis_options(options)) return invalid("analysis arguments are invalid or use an incompatible layout.", out_error);
     *out_analysis = nullptr;
-    return unsupported(out_error);
+    if (!runtime->bridge_loaded) return unsupported(out_error);
+    try {
+        AnalysisRequest request;
+        request.input_flags = blob->flags;
+        request.option_flags = options->flags;
+        request.strategy_mask = options->strategies;
+        if (blob->path.length != 0) request.path.assign(blob->path.data, blob->path.length);
+        if (blob->name.length != 0) request.name.assign(blob->name.data, blob->name.length);
+        if (blob->data.length != 0) request.data.assign(reinterpret_cast<const char*>(blob->data.data), blob->data.length);
+        WorkerResult worker = ruby_worker().analyze(std::move(request));
+        if (worker.status != GHL_STATUS_OK || !worker.analysis) {
+            return fail(worker.status == GHL_STATUS_OK ? GHL_STATUS_NATIVE_FAILURE : worker.status,
+                worker.message.empty() ? "Ruby analysis failed." : worker.message, out_error,
+                std::move(worker.ruby_class), std::move(worker.ruby_backtrace));
+        }
+        ghl_analysis* analysis = new (std::nothrow) ghl_analysis(std::move(*worker.analysis));
+        if (analysis == nullptr) return fail(GHL_STATUS_OUT_OF_MEMORY, "Unable to allocate analysis result.", out_error);
+        *out_analysis = analysis;
+        return GHL_STATUS_OK;
+    } catch (const std::bad_alloc&) {
+        return fail(GHL_STATUS_OUT_OF_MEMORY, "Unable to allocate analysis request.", out_error);
+    } catch (const std::exception& exception) {
+        return fail(GHL_STATUS_NATIVE_FAILURE, exception.what(), out_error);
+    } catch (...) {
+        return fail(GHL_STATUS_NATIVE_FAILURE, "Analysis failed unexpectedly.", out_error);
+    }
 }
 ghl_status GHL_CALL ghl_runtime_classify(const ghl_runtime* runtime, ghl_bytes_view data, const ghl_classify_options* options, ghl_classification** out_classification, ghl_error** out_error) {
     clear_error(out_error);
     if (out_classification == nullptr || !valid_runtime(runtime) || !valid_bytes(data) || !valid_classify_options(options)) return invalid("classification arguments are invalid or use an incompatible layout.", out_error);
     *out_classification = nullptr;
-    return unsupported(out_error);
+    if (!runtime->bridge_loaded) return unsupported(out_error);
+    try {
+        ClassifyRequest request;
+        request.maximum_bytes = options->maximum_bytes;
+        request.allowed_types = options->allowed_types;
+        request.has_candidates = options->candidate_language_ids != nullptr;
+        if (data.length != 0) request.data.assign(reinterpret_cast<const char*>(data.data), data.length);
+        if (options->candidate_language_count != 0) {
+            request.candidate_ids.assign(options->candidate_language_ids, options->candidate_language_ids + options->candidate_language_count);
+        }
+        WorkerResult worker = ruby_worker().classify(std::move(request));
+        if (worker.status != GHL_STATUS_OK || !worker.classification) {
+            return fail(worker.status == GHL_STATUS_OK ? GHL_STATUS_NATIVE_FAILURE : worker.status,
+                worker.message.empty() ? "Ruby classification failed." : worker.message, out_error,
+                std::move(worker.ruby_class), std::move(worker.ruby_backtrace));
+        }
+        ghl_classification* classification = new (std::nothrow) ghl_classification(std::move(*worker.classification));
+        if (classification == nullptr) return fail(GHL_STATUS_OUT_OF_MEMORY, "Unable to allocate classification result.", out_error);
+        *out_classification = classification;
+        return GHL_STATUS_OK;
+    } catch (const std::bad_alloc&) {
+        return fail(GHL_STATUS_OUT_OF_MEMORY, "Unable to allocate classification request.", out_error);
+    } catch (const std::exception& exception) {
+        return fail(GHL_STATUS_NATIVE_FAILURE, exception.what(), out_error);
+    } catch (...) {
+        return fail(GHL_STATUS_NATIVE_FAILURE, "Classification failed unexpectedly.", out_error);
+    }
 }
 
 void GHL_CALL ghl_analysis_release(ghl_analysis* analysis) { delete analysis; }
-uint64_t GHL_CALL ghl_analysis_language_id(const ghl_analysis*) { return 0; }
-ghl_strategy GHL_CALL ghl_analysis_strategy(const ghl_analysis*) { return GHL_STRATEGY_NONE; }
-ghl_blob_result_flags GHL_CALL ghl_analysis_flags(const ghl_analysis*) { return 0; }
-uint64_t GHL_CALL ghl_analysis_loc(const ghl_analysis*) { return 0; }
-uint64_t GHL_CALL ghl_analysis_sloc(const ghl_analysis*) { return 0; }
-ghl_status GHL_CALL ghl_analysis_text(const ghl_analysis* analysis, ghl_analysis_text_field, ghl_string_view* out_value) { if (out_value == nullptr || analysis == nullptr) return GHL_STATUS_INVALID_ARGUMENT; *out_value = empty_view(); return GHL_STATUS_UNSUPPORTED; }
-size_t GHL_CALL ghl_analysis_trace_count(const ghl_analysis*) { return 0; }
-ghl_status GHL_CALL ghl_analysis_trace_entry(const ghl_analysis* analysis, size_t, ghl_strategy_trace_entry* out_entry) { if (analysis == nullptr) return GHL_STATUS_INVALID_ARGUMENT; if (!valid_trace_output(out_entry)) return GHL_STATUS_ABI_MISMATCH; *out_entry = {}; out_entry->struct_size = sizeof(*out_entry); return GHL_STATUS_UNSUPPORTED; }
-ghl_status GHL_CALL ghl_analysis_trace_candidate(const ghl_analysis* analysis, size_t, size_t, uint64_t* out_language_id) { if (analysis == nullptr || out_language_id == nullptr) return GHL_STATUS_INVALID_ARGUMENT; *out_language_id = 0; return GHL_STATUS_UNSUPPORTED; }
+uint64_t GHL_CALL ghl_analysis_language_id(const ghl_analysis* analysis) { return analysis == nullptr ? 0 : analysis->language_id; }
+ghl_strategy GHL_CALL ghl_analysis_strategy(const ghl_analysis* analysis) { return analysis == nullptr ? GHL_STRATEGY_NONE : analysis->strategy; }
+ghl_blob_result_flags GHL_CALL ghl_analysis_flags(const ghl_analysis* analysis) { return analysis == nullptr ? 0 : analysis->flags; }
+uint64_t GHL_CALL ghl_analysis_loc(const ghl_analysis* analysis) { return analysis == nullptr ? 0 : analysis->loc; }
+uint64_t GHL_CALL ghl_analysis_sloc(const ghl_analysis* analysis) { return analysis == nullptr ? 0 : analysis->sloc; }
+ghl_status GHL_CALL ghl_analysis_text(const ghl_analysis* analysis, ghl_analysis_text_field field, ghl_string_view* out_value) {
+    if (out_value == nullptr || analysis == nullptr) return GHL_STATUS_INVALID_ARGUMENT;
+    *out_value = empty_view();
+    switch (field) {
+    case GHL_ANALYSIS_TEXT_MIME_TYPE: *out_value = view(analysis->mime_type); break;
+    case GHL_ANALYSIS_TEXT_CONTENT_TYPE: *out_value = view(analysis->content_type); break;
+    case GHL_ANALYSIS_TEXT_DISPOSITION: *out_value = view(analysis->disposition); break;
+    case GHL_ANALYSIS_TEXT_ENCODING: *out_value = view(analysis->encoding); break;
+    case GHL_ANALYSIS_TEXT_RUBY_ENCODING: *out_value = view(analysis->ruby_encoding); break;
+    case GHL_ANALYSIS_TEXT_TM_SCOPE: *out_value = view(analysis->tm_scope); break;
+    default: return GHL_STATUS_INVALID_ARGUMENT;
+    }
+    return GHL_STATUS_OK;
+}
+size_t GHL_CALL ghl_analysis_trace_count(const ghl_analysis* analysis) { return analysis == nullptr ? 0 : analysis->traces.size(); }
+ghl_status GHL_CALL ghl_analysis_trace_entry(const ghl_analysis* analysis, size_t index, ghl_strategy_trace_entry* out_entry) {
+    if (analysis == nullptr) return GHL_STATUS_INVALID_ARGUMENT;
+    if (!valid_trace_output(out_entry)) return GHL_STATUS_ABI_MISMATCH;
+    *out_entry = {};
+    out_entry->struct_size = sizeof(*out_entry);
+    if (index >= analysis->traces.size()) return GHL_STATUS_NOT_FOUND;
+    out_entry->strategy = analysis->traces[index].strategy;
+    out_entry->candidate_count = static_cast<uint32_t>(analysis->traces[index].candidates.size());
+    return GHL_STATUS_OK;
+}
+ghl_status GHL_CALL ghl_analysis_trace_candidate(const ghl_analysis* analysis, size_t trace_index, size_t candidate_index, uint64_t* out_language_id) {
+    if (analysis == nullptr || out_language_id == nullptr) return GHL_STATUS_INVALID_ARGUMENT;
+    *out_language_id = 0;
+    if (trace_index >= analysis->traces.size() || candidate_index >= analysis->traces[trace_index].candidates.size()) return GHL_STATUS_NOT_FOUND;
+    *out_language_id = analysis->traces[trace_index].candidates[candidate_index];
+    return GHL_STATUS_OK;
+}
 
 void GHL_CALL ghl_classification_release(ghl_classification* classification) { delete classification; }
-size_t GHL_CALL ghl_classification_count(const ghl_classification*) { return 0; }
-uint32_t GHL_CALL ghl_classification_considered_bytes(const ghl_classification*) { return 0; }
-ghl_status GHL_CALL ghl_classification_result(const ghl_classification* classification, size_t, uint64_t* out_language_id, double* out_score) { if (classification == nullptr || out_language_id == nullptr || out_score == nullptr) return GHL_STATUS_INVALID_ARGUMENT; *out_language_id = 0; *out_score = 0; return GHL_STATUS_UNSUPPORTED; }
+size_t GHL_CALL ghl_classification_count(const ghl_classification* classification) { return classification == nullptr ? 0 : classification->results.size(); }
+uint32_t GHL_CALL ghl_classification_considered_bytes(const ghl_classification* classification) { return classification == nullptr ? 0 : classification->considered_bytes; }
+ghl_status GHL_CALL ghl_classification_result(const ghl_classification* classification, size_t index, uint64_t* out_language_id, double* out_score) {
+    if (classification == nullptr || out_language_id == nullptr || out_score == nullptr) return GHL_STATUS_INVALID_ARGUMENT;
+    *out_language_id = 0;
+    *out_score = 0;
+    if (index >= classification->results.size()) return GHL_STATUS_NOT_FOUND;
+    *out_language_id = classification->results[index].first;
+    *out_score = classification->results[index].second;
+    return GHL_STATUS_OK;
+}
 
 void GHL_CALL ghl_language_id_list_release(ghl_language_id_list* languages) { delete languages; }
 size_t GHL_CALL ghl_language_id_list_count(const ghl_language_id_list* languages) { return languages == nullptr ? 0 : languages->ids.size(); }

@@ -23,6 +23,8 @@ for command in git ruby gem make cc cmake; do
 done
 require_path "$manifest_path" "native dependency manifest"
 require_path "$linguist_root/ext/linguist/extconf.rb" "Linguist tokenizer source"
+bridge_source="$repo_root/src/MBW.GHLinguist.Native/ruby/ghlinguist/bridge.rb"
+require_path "$bridge_source" "GHLinguist Ruby bridge"
 
 manifest_value() {
   ruby -rjson -e 'value = ARGV.shift.split(".").reduce(JSON.parse(File.read(ARGV.shift))) { |item, key| item.fetch(key) }; puts value' "$1" "$manifest_path"
@@ -72,6 +74,8 @@ while IFS= read -r path; do
     cp -a "$linguist_root/$path" "$native_asset_root/linguist/$path"
   fi
 done < <(ruby -rjson -e 'JSON.parse(File.read(ARGV.fetch(0))).fetch("linguist").fetch("paths").each { |path| puts path }' "$manifest_path")
+mkdir -p "$native_asset_root/ghlinguist"
+cp -a "$bridge_source" "$native_asset_root/ghlinguist/bridge.rb"
 
 tokenizer_source="$build_root/tokenizer"
 cp -a "$linguist_root/ext/linguist/." "$tokenizer_source/"
@@ -83,6 +87,10 @@ cp -a "$linguist_root/ext/linguist/." "$tokenizer_source/"
 require_path "$tokenizer_source/linguist.so" "built Linguist tokenizer"
 mkdir -p "$native_asset_root/lib/linguist"
 cp -a "$tokenizer_source/linguist.so" "$native_asset_root/lib/linguist/linguist.so"
+cp -a "$linguist_root/samples" "$native_asset_root/samples"
+RUBYLIB="$native_asset_root/lib" GEM_HOME="$gem_home" GEM_PATH="$gem_home" \
+  "$native_asset_root/bin/ruby" "$script_dir/generate-samples.rb" "$native_asset_root/lib/linguist/samples_data.rb"
+rm -rf "$native_asset_root/samples"
 
 bridge_build="$build_root/bridge"
 cmake -S "$repo_root/src/MBW.GHLinguist.Native" -B "$bridge_build"
