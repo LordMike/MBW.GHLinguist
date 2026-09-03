@@ -132,6 +132,9 @@ Get-ChildItem -LiteralPath (Join-Path $RubyRoot 'bin') -Filter '*.dll' -File |
   Copy-Item -Destination (Join-Path $nativeAssetRoot 'bin') -Force
 Get-ChildItem -LiteralPath (Join-Path $RubyRoot 'bin') -Filter '*.dll' -File |
   Copy-Item -Destination $nativeAssetRoot -Force
+$rubyBuiltinDlls = Join-Path $RubyRoot 'bin/ruby_builtin_dlls'
+Copy-RequiredDirectory $rubyBuiltinDlls (Join-Path $nativeAssetRoot 'bin/ruby_builtin_dlls') 'Ruby built-in DLL private assembly'
+Copy-RequiredDirectory $rubyBuiltinDlls (Join-Path $nativeAssetRoot 'ruby_builtin_dlls') 'Ruby built-in DLL private assembly'
 Copy-RequiredDirectory (Join-Path $RubyRoot 'lib/ruby') (Join-Path $nativeAssetRoot 'lib/ruby') 'Ruby standard library'
 
 $gemHome = Join-Path $nativeAssetRoot "lib/ruby/gems/$($manifest.ruby.abiVersion)"
