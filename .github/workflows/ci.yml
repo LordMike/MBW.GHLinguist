@@ -72,8 +72,10 @@ jobs:
             $actualSha256 = (Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
             if ($actualSha256 -ne $gem.sha256) { throw "SHA-256 mismatch for gem artifact $($gem.artifact)." }
             $arguments = @('install', '--local', '--no-document', '--ignore-dependencies', $artifactPath)
-            if ($gem.name -eq 'charlock_holmes') {
-              $arguments += @('--', '--with-icui18nlib=icuin', '--with-icudatalib=icudt')
+            $buildArguments = @($gem.windowsBuildArguments)
+            if ($buildArguments.Count -gt 0) {
+              $arguments += '--'
+              $arguments += $buildArguments
             }
             & gem @arguments
             if ($LASTEXITCODE -ne 0) { throw "Failed to install $($gem.name) $($gem.version)." }

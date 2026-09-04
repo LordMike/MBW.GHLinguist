@@ -305,7 +305,7 @@ NATIVE_ASSET_ROOT="$native_asset_root" MANIFEST_PATH="$manifest_path" LICENSE_IN
   end
    manifest = JSON.parse(File.read(ENV.fetch("MANIFEST_PATH")))
    gem_artifacts = manifest.fetch("gems").map do |gem|
-     gem.slice("name", "version", "artifact", "artifactUrl", "sha256")
+     gem.slice("name", "version", "artifact", "artifactUrl", "sha256", "windowsBuildArguments")
    end
    apt_packages = File.readlines(ENV.fetch("APT_PACKAGES_PATH"), chomp: true).map do |line|
      name, version, architecture = line.split("\t", 3)

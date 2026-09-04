@@ -81,7 +81,9 @@ function Copy-RequiredGemLicenses {
 
   $licenses = @(Get-ChildItem -LiteralPath $GemRoot -File -Recurse | Where-Object { $_.Name -match '^(?i:license|copying)' })
   if ($licenses.Count -eq 0) {
-    $licenses = @($FallbackSources | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
+    $licenses = @($FallbackSources |
+      Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+      ForEach-Object { Get-Item -LiteralPath $_ })
   }
   if ($licenses.Count -eq 0) {
     throw "Required license or copying file is missing from $Description."
@@ -118,7 +120,14 @@ function Write-Provenance {
     externalDependencies = [ordered]@{
       ruby = [ordered]@{ version = $Manifest.ruby.version; description = $RubyDescription }
       gems = @($Manifest.gems | ForEach-Object {
-        [ordered]@{ name = $_.name; version = $_.version; artifact = $_.artifact; artifactUrl = $_.artifactUrl; sha256 = $_.sha256 }
+        [ordered]@{
+          name = $_.name
+          version = $_.version
+          artifact = $_.artifact
+          artifactUrl = $_.artifactUrl
+          sha256 = $_.sha256
+          windowsBuildArguments = @($_.windowsBuildArguments)
+        }
       })
       pacmanPackages = @($PacmanPackages)
     }
@@ -185,7 +194,7 @@ foreach ($command in 'make', 'gcc') {
 $pacman = Join-Path $RubyRoot 'msys64/usr/bin/pacman.exe'
 Require-Path $pacman 'RubyInstaller MSYS2 package manager'
 $pacmanPackages = foreach ($package in $manifest.windows.pacmanPackages) {
-  if ($package -notmatch '^[a-z0-9][a-z0-9+.-]*$') {
+  if ($package -notmatch '^[a-z0-9][a-z0-9+._-]*$') {
     throw "Invalid pacman package allowlist entry: $package"
   }
   $identity = (& $pacman '-Q' $package).Trim()
@@ -232,7 +241,8 @@ foreach ($gem in $manifest.gems) {
   Copy-RequiredDirectory $gemLocation (Join-Path $gemHome "gems/$($gem.name)-$($gem.version)") "gem $($gem.name) $($gem.version)"
   Require-Path $gemSpec "gem specification for $($gem.name) $($gem.version)"
   Copy-Item -LiteralPath $gemSpec -Destination (Join-Path $gemHome "specifications/$($gem.name)-$($gem.version).gemspec") -Force
-  $gemExtensionDir = (& $ruby -rrubygems -e "spec = Gem::Specification.find_by_name('$($gem.name)', '=$($gem.version)'); print spec.extensions.empty? ? '' : spec.extension_dir").Trim()
+  $gemExtensionDir = & $ruby -rrubygems -e "spec = Gem::Specification.find_by_name('$($gem.name)', '=$($gem.version)'); print spec.extensions.empty? ? '' : spec.extension_dir"
+  $gemExtensionDir = if ($null -eq $gemExtensionDir) { '' } else { $gemExtensionDir.Trim() }
   if ($gemExtensionDir) {
     Require-Path $gemExtensionDir "native extension for gem $($gem.name) $($gem.version)"
     $gemExtensionRelativePath = $gemExtensionDir.Substring($sourceGemHome.Length).TrimStart('\', '/')
@@ -279,7 +289,13 @@ foreach ($licenseFile in $manifest.ruby.licenseFiles) {
   Copy-LockedRemoteFile -Destination (Join-Path $nativeAssetRoot "licenses/ruby/$($licenseFile.name)") -Url $licenseFile.url -Sha256 $licenseFile.sha256
 }
 Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'LICENSE'), (Join-Path $RubyRoot 'LICENSE.txt'), (Join-Path $RubyRoot 'RubyInstaller-LICENSE.txt')) -Destination (Join-Path $nativeAssetRoot 'licenses/rubyinstaller/LICENSE') -Description 'RubyInstaller'
-Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/icu/LICENSE'), (Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/icu/LICENSE.txt')) -Destination (Join-Path $nativeAssetRoot 'licenses/msys2/icu/LICENSE') -Description 'ICU'
+$icuLicenseSources = @(
+  (Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/icu/LICENSE')
+  (Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/icu/LICENSE.txt')
+  Get-ChildItem -Path (Join-Path $RubyRoot 'msys64/ucrt64/share/icu/*/LICENSE') -File -ErrorAction SilentlyContinue |
+    ForEach-Object FullName
+)
+Copy-FirstRequiredLicense -Sources $icuLicenseSources -Destination (Join-Path $nativeAssetRoot 'licenses/msys2/icu/LICENSE') -Description 'ICU'
 Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/gcc-libs/COPYING3')) -Destination (Join-Path $nativeAssetRoot 'licenses/msys2/gcc/COPYING3') -Description 'GCC'
 Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/gcc-libs/COPYING.RUNTIME')) -Destination (Join-Path $nativeAssetRoot 'licenses/msys2/gcc/COPYING.RUNTIME') -Description 'GCC runtime exception'
 Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/winpthreads/COPYING')) -Destination (Join-Path $nativeAssetRoot 'licenses/msys2/winpthreads/COPYING') -Description 'winpthreads'

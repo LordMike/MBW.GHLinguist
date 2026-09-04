@@ -84,7 +84,8 @@
       "licenseSource": {
         "win-x64": [
           "<ruby-root>/msys64/ucrt64/share/licenses/icu/LICENSE",
-          "<ruby-root>/msys64/ucrt64/share/licenses/icu/LICENSE.txt"
+          "<ruby-root>/msys64/ucrt64/share/licenses/icu/LICENSE.txt",
+          "<ruby-root>/msys64/ucrt64/share/icu/<version>/LICENSE"
         ]
       },
       "output": "licenses/msys2/icu/LICENSE"
