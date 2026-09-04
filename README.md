@@ -16,8 +16,8 @@ Ruby or native handles to callers.
 
 - [Source repository](https://github.com/LordMike/MBW.GHLinguist)
 - [GitHub Actions](https://github.com/LordMike/MBW.GHLinguist/actions)
-- [GitHub Packages feed](https://nuget.pkg.github.com/LordMike/index.json)
-- [NuGet.org package page (tagged releases, when published)](https://www.nuget.org/packages/MBW.GHLinguist)
+- [NuGet.org package](https://www.nuget.org/packages/MBW.GHLinguist)
+- [GitHub Packages development feed](https://nuget.pkg.github.com/LordMike/index.json)
 - [GitHub Linguist](https://github.com/github-linguist/linguist)
 - [How Linguist works](https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/docs/how-linguist-works.md)
 
@@ -35,17 +35,15 @@ Its explicit Ruby gem closure includes `zlib` 3.2.3 and `resolv` 0.7.2.
 CI enforces the patched minimum versions for the Ruby advisories that motivated
 those pins and performs a live NuGet vulnerability audit for managed packages.
 
-Development packages are published to GitHub Packages as incrementing
-prereleases. NuGet.org publication is reserved for explicitly approved tagged
-releases; the NuGet.org link above may therefore have no published versions yet.
+Stable releases are published to NuGet.org. Development packages are published
+to GitHub Packages as incrementing authenticated prereleases.
 
 ## Prerequisites
 
 - The .NET 10 SDK, not only the .NET runtime
 - An x64 Windows or Linux development and deployment environment
 - A consuming executable that targets `net10.0`
-- A classic GitHub personal access token with `read:packages` while the package
-  is distributed through GitHub Packages
+- A `RuntimeIdentifier` of `win-x64` or `linux-x64`
 
 Run `dotnet --info` if the SDK or host architecture is uncertain. macOS, ARM64,
 .NET 9 and earlier, NativeAOT, trimming, and single-file deployment are not
@@ -53,61 +51,61 @@ supported.
 
 ## Install
 
-The current package source is GitHub Packages. GitHub requires authentication
-for its NuGet registry, including package downloads. Use a classic personal
-access token with `read:packages`, and ensure that your GitHub account has access
-to the package. See GitHub's
-[NuGet registry documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-nuget-registry)
-for token and package-access details.
+Install the stable package from NuGet.org:
 
-Add this `NuGet.config` beside your solution. Package source mapping keeps the
-managed and runtime `MBW.GHLinguist` packages on the GitHub feed while normal
-dependencies continue to come from NuGet.org. If the solution already has a
-`NuGet.config`, merge these entries instead of replacing its other sources and
-mappings:
+```powershell
+dotnet package add MBW.GHLinguist
+```
+
+Set the deployment runtime identifier on the executable project:
+
+```xml
+<PropertyGroup>
+  <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+</PropertyGroup>
+```
+
+Use `linux-x64` when building and deploying on Linux. The managed package has
+exact dependencies on both RID packages because NuGet cannot condition package
+dependencies on a runtime identifier. Only the native bridge and closure matching
+the selected `RuntimeIdentifier` are included in build and publish output. Do not
+reference the runtime packages directly.
+
+Restore, build, and publish with the same RID. A missing or unsupported RID fails
+the build with an actionable error.
+
+### Development packages
+
+Development prereleases are published to GitHub Packages and require a classic
+GitHub personal access token with `read:packages`. Add this source to an existing
+`NuGet.config`, or create one beside the solution:
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <configuration>
   <packageSources>
-    <clear />
     <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
     <add key="github_lordmike" value="https://nuget.pkg.github.com/LordMike/index.json" />
   </packageSources>
-  <packageSourceMapping>
-    <packageSource key="github_lordmike">
-      <package pattern="MBW.GHLinguist*" />
-    </packageSource>
-    <packageSource key="nuget.org">
-      <package pattern="*" />
-    </packageSource>
-  </packageSourceMapping>
 </configuration>
 ```
 
-Keep credentials outside the file. From the directory containing the consuming
-`.csproj`, set credentials for the current PowerShell session and add the latest
-prerelease runtime package for the deployment RID. It brings the matching managed
-package as an exact transitive dependency:
+Keep credentials outside the file. Set them for the current PowerShell session,
+then install the prerelease managed package:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN = "YOUR_CLASSIC_PAT"
 $env:NuGetPackageSourceCredentials_github_lordmike = "Username=YOUR_GITHUB_USERNAME;Password=$env:GITHUB_PACKAGES_TOKEN;ValidAuthenticationTypes=Basic"
 
-dotnet package add MBW.GHLinguist.Runtime.win-x64 --prerelease
+dotnet package add MBW.GHLinguist --prerelease --source github_lordmike
 ```
 
 The environment-variable name must end with the exact source key from
 `NuGet.config`: `github_lordmike`. Do not commit a token or a generated
 configuration containing a clear-text password. In GitHub Actions, prefer the
 workflow's `GITHUB_TOKEN` with `packages: read` after granting that repository
-access to the package.
-
-Use `MBW.GHLinguist.Runtime.linux-x64` on Linux. Each runtime package carries
-only its own complete CRuby, Linguist, gem, tokenizer, and ICU closure.
-`dotnet package add` resolves the latest eligible prerelease once and writes
-that exact version to the project; review and commit the resulting
-`PackageReference`.
+access to the package. `dotnet package add` writes the resolved prerelease
+version to the project; review and commit the resulting `PackageReference`.
 
 Common authentication failures:
 
@@ -379,11 +377,10 @@ publishing or cross-building:
 </PropertyGroup>
 ```
 
-Use `linux-x64` on Linux and reference the matching runtime package. If no RID
-is specified, the runtime package falls back to the .NET SDK host RID. That is
-convenient for local builds but unsafe for cross-publishing. Referencing a
-runtime package for a different RID fails the build rather than deploying the
-wrong closure.
+Use `linux-x64` on Linux. The managed package supplies both runtime packages as
+exact transitive dependencies, and build-transitive assets select the matching
+closure. A missing RID or a RID other than `win-x64` or `linux-x64` fails the
+build rather than deploying an incompatible closure.
 
 Restore/build success therefore does not prove that native deployment is valid.
 Publish for the target RID and run the produced directory on that platform:
@@ -397,8 +394,8 @@ In CI, verify that the publish directory contains `ghlinguist.dll` on Windows or
 
 ### Preserve the complete output layout
 
-The selected runtime package's transitive build target copies its closure beside
-the managed assembly while preserving subdirectories. Do not copy only
+The selected runtime package exposes its closure as normal transitive content
+beside the managed assembly while preserving subdirectories. Do not copy only
 `ghlinguist.dll` or `ghlinguist.so`, and do not flatten, rename, trim, or
 selectively clean the copied files. The bridge also needs the adjacent CRuby
 runtime, Ruby standard library, gems, ICU libraries, Linguist sources and data,
@@ -532,6 +529,6 @@ command. See `eng/linguist/README.md` for the native build prerequisites.
 RID-specific native builds stage package-ready files beneath
 `.tmp/artifacts/native/<rid>`. The corresponding runtime package exposes the
 ABI bridge under `runtimes/<rid>/native` and stores its complete relocatable
-closure under `nativeassets/<rid>`. Its `buildTransitive` target copies that
-closure with its relative layout intact for build and publish. When a project
-does not set `RuntimeIdentifier`, the target selects the .NET SDK host RID.
+closure under `nativeassets/<rid>`. Its `buildTransitive` target contributes the
+closure as normal content with its relative layout intact for build and publish.
+The managed package requires an explicit supported `RuntimeIdentifier`.
