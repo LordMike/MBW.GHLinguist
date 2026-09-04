@@ -40,6 +40,7 @@ linguist_revision="$(manifest_value linguist.revision)"
 [[ "$(git -C "$linguist_root" rev-parse HEAD)" == "$linguist_revision" ]] || fail "Expected Linguist revision $linguist_revision."
 [[ "$(tr -d '[:space:]' < "$linguist_root/lib/linguist/VERSION")" == "$linguist_version" ]] || fail "Expected Linguist $linguist_version."
 ruby_description="$(ruby -e 'print RUBY_DESCRIPTION')"
+[[ "$(manifest_value schemaVersion)" == "6" ]] || fail "The native dependency manifest uses an unsupported schema."
 
 ruby_prefix="$(ruby -rrbconfig -e 'print RbConfig::CONFIG.fetch("prefix")')"
 ruby_include_dir="$(ruby -rrbconfig -e 'print RbConfig::CONFIG.fetch("rubyhdrdir")')"
@@ -99,11 +100,24 @@ copy_gem_licenses() {
   done
 }
 
-cp -a "$ruby_prefix/bin/ruby" "$native_asset_root/bin/ruby"
-shopt -s nullglob
-ruby_libraries=("$ruby_prefix/lib"/libruby.so*)
-(( ${#ruby_libraries[@]} > 0 )) || fail "Ruby shared runtime library is missing under $ruby_prefix/lib."
-cp -a "${ruby_libraries[@]}" "$native_asset_root/lib/"
+declare -A copied_library_sources=()
+while IFS='|' read -r source destination expected_sha256; do
+  [[ "$source" == /* && "$source" != *'..'* && "$source" != *'\\'* ]] || fail "Invalid Linux native runtime source: $source"
+  [[ -n "$destination" && "$destination" != /* && "$destination" != *'..'* && "$destination" != *'\\'* ]] || fail "Invalid Linux native runtime destination: $destination"
+  [[ "$expected_sha256" =~ ^[a-f0-9]{64}$ ]] || fail "Invalid SHA-256 for Linux native runtime file $destination."
+  require_path "$source" "allowlisted native runtime source"
+  [[ "$(sha256sum "$source" | awk '{ print $1 }')" == "$expected_sha256" ]] || fail "SHA-256 mismatch for allowlisted native runtime source $source."
+  destination_path="$native_asset_root/$destination"
+  mkdir -p "$(dirname "$destination_path")"
+  cp -aL "$source" "$destination_path"
+  copied_library_sources["$destination_path"]="$(readlink -f "$source")"
+done < <(ruby -rjson -e '
+  runtime = JSON.parse(File.read(ARGV.fetch(0))).fetch("nativeRuntime").fetch("linux-x64")
+  abort "The Linux native runtime allowlist is empty" if runtime.empty?
+  runtime.each do |file|
+    file.fetch("destinations").each { |destination| puts [file.fetch("source"), destination, file.fetch("sha256")].join("|") }
+  end
+' "$manifest_path")
 cp -a "$ruby_prefix/lib/ruby" "$native_asset_root/lib/ruby"
 
 gem_home="$native_asset_root/lib/ruby/gems/$ruby_abi_version"
@@ -146,12 +160,6 @@ ruby -rjson -e '
   end
   abort "Linux package versions do not match the dependency manifest: #{actual.inspect}; expected #{expected.inspect}" unless actual == expected
 ' "$manifest_path" "$apt_packages_path"
-
-for library in icudata icui18n icuuc; do
-  library_path="$(ldconfig -p | awk -v name="lib${library}.so" '$1 ~ ("^" name) { print $NF; exit }')"
-  [[ -n "$library_path" ]] || fail "Required ICU library lib${library}.so is unavailable in the Docker image."
-  cp -aL "$library_path" "$native_asset_root/lib/"
-done
 
 while IFS= read -r path; do
   [[ -n "$path" ]] || continue
@@ -197,15 +205,6 @@ bridge_path="$(find "$bridge_build" -type f -name 'libghlinguist.so' -print -qui
 [[ -n "$bridge_path" ]] || fail "ghlinguist bridge build completed without producing libghlinguist.so."
 cp -a "$bridge_path" "$native_asset_root/ghlinguist.so"
 
-declare -A copied_library_sources=()
-for library_path in "${ruby_libraries[@]}"; do
-  copied_library_sources["$native_asset_root/lib/$(basename "$library_path")"]="$(readlink -f "$library_path")"
-done
-for library in icudata icui18n icuuc; do
-  library_path="$(ldconfig -p | awk -v name="lib${library}.so" '$1 ~ ("^" name) { print $NF; exit }')"
-  copied_library_sources["$native_asset_root/lib/$(basename "$library_path")"]="$(readlink -f "$library_path")"
-done
-
 mapfile -d '' dependency_queue < <(find "$native_asset_root" -type f \( -name '*.so' -o -name '*.so.*' \) -print0)
 dependency_queue+=("$native_asset_root/bin/ruby")
 declare -A inspected_dependencies=()
@@ -229,12 +228,8 @@ while (( dependency_index < ${#dependency_queue[@]} )); do
         continue
         ;;
     esac
-    destination="$native_asset_root/lib/$dependency_name"
-    if [[ ! -e "$destination" ]]; then
-      cp -aL "$dependency" "$destination"
-      copied_library_sources["$destination"]="$(readlink -f "$dependency")"
-      dependency_queue+=("$destination")
-    fi
+    resolved="$(realpath "$dependency")"
+    [[ "$resolved" == "$native_asset_root/"* ]] || fail "ELF dependency resolved outside the native closure: $dependency_name => $resolved"
   done < <(awk '$2 == "=>" && $3 ~ /^\// { print $3 }' <<<"$ldd_output")
 done
 

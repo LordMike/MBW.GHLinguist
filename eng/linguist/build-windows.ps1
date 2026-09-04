@@ -226,16 +226,37 @@ if ($LASTEXITCODE -ne 0 -or -not $rubyDescription) {
 Remove-Item -LiteralPath $buildRoot, $nativeAssetRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $buildRoot, $nativeAssetRoot -Force | Out-Null
 
-# Keep Ruby's executable and all adjacent DLLs together so its loader never falls back to a machine-wide Ruby.
-New-Item -ItemType Directory -Path (Join-Path $nativeAssetRoot 'bin') -Force | Out-Null
-Copy-Item -LiteralPath $ruby -Destination (Join-Path $nativeAssetRoot 'bin/ruby.exe')
-Get-ChildItem -LiteralPath (Join-Path $RubyRoot 'bin') -Filter '*.dll' -File |
-  Copy-Item -Destination (Join-Path $nativeAssetRoot 'bin') -Force
-Get-ChildItem -LiteralPath (Join-Path $RubyRoot 'bin') -Filter '*.dll' -File |
-  Copy-Item -Destination $nativeAssetRoot -Force
-$rubyBuiltinDlls = Join-Path $RubyRoot 'bin/ruby_builtin_dlls'
-Copy-RequiredDirectory $rubyBuiltinDlls (Join-Path $nativeAssetRoot 'bin/ruby_builtin_dlls') 'Ruby built-in DLL private assembly'
-Copy-RequiredDirectory $rubyBuiltinDlls (Join-Path $nativeAssetRoot 'ruby_builtin_dlls') 'Ruby built-in DLL private assembly'
+$runtimeFiles = @($manifest.nativeRuntime.'win-x64')
+if ($manifest.schemaVersion -ne 6 -or $runtimeFiles.Count -eq 0) {
+  throw 'The Windows native runtime allowlist is missing or uses an unsupported schema.'
+}
+foreach ($runtimeFile in $runtimeFiles) {
+  if ([string]::IsNullOrWhiteSpace($runtimeFile.source) -or
+      $runtimeFile.source.Contains('\') -or
+      $runtimeFile.source.Split('/') -contains '..' -or
+      @($runtimeFile.destinations).Count -eq 0 -or
+      $runtimeFile.sha256 -notmatch '^[a-f0-9]{64}$') {
+    throw "Invalid Windows native runtime allowlist entry: $($runtimeFile | ConvertTo-Json -Compress)"
+  }
+
+  $sourcePath = Join-Path $RubyRoot $runtimeFile.source
+  Require-Path $sourcePath "allowlisted native runtime source '$($runtimeFile.source)'"
+  $sourceSha256 = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($sourceSha256 -ne $runtimeFile.sha256) {
+    throw "SHA-256 mismatch for allowlisted native runtime source '$($runtimeFile.source)'."
+  }
+
+  foreach ($destination in $runtimeFile.destinations) {
+    if ([string]::IsNullOrWhiteSpace($destination) -or
+        $destination.Contains('\') -or
+        $destination.Split('/') -contains '..') {
+      throw "Invalid Windows native runtime destination '$destination'."
+    }
+    $destinationPath = Join-Path $nativeAssetRoot $destination
+    New-Item -ItemType Directory -Path (Split-Path -Parent $destinationPath) -Force | Out-Null
+    Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
+  }
+}
 Copy-RequiredDirectory (Join-Path $RubyRoot 'lib/ruby') (Join-Path $nativeAssetRoot 'lib/ruby') 'Ruby standard library'
 
 $gemHome = Join-Path $nativeAssetRoot "lib/ruby/gems/$($manifest.ruby.abiVersion)"
@@ -274,24 +295,6 @@ $expectedGems = @($manifest.gems | ForEach-Object { "$($_.name)-$($_.version)" }
 $actualGems = @(Get-ChildItem -LiteralPath (Join-Path $gemHome 'gems') -Directory | ForEach-Object Name | Sort-Object)
 if (($actualGems -join '|') -ne ($expectedGems -join '|')) {
   throw "Unexpected staged gems: $($actualGems -join ', '); expected $($expectedGems -join ', ')."
-}
-
-foreach ($pattern in $manifest.icu.windowsPatterns) {
-  $matches = foreach ($searchPath in $manifest.icu.windowsSearchPaths) {
-    Get-ChildItem -Path (Join-Path (Join-Path $RubyRoot $searchPath) $pattern) -File
-  }
-  if (-not $matches) {
-    throw "Required ICU dependency matching '$pattern' is missing under $RubyRoot/bin or $RubyRoot/msys64/ucrt64/bin."
-  }
-  $matches | Copy-Item -Destination (Join-Path $nativeAssetRoot 'bin') -Force
-  $matches | Copy-Item -Destination $nativeAssetRoot -Force
-}
-
-foreach ($runtimeDll in 'libgcc_s_seh-1.dll', 'libstdc++-6.dll', 'libwinpthread-1.dll') {
-  $runtimeDllPath = Join-Path $msysBin $runtimeDll
-  Require-Path $runtimeDllPath 'MinGW runtime dependency'
-  Copy-Item -LiteralPath $runtimeDllPath -Destination (Join-Path $nativeAssetRoot 'bin') -Force
-  Copy-Item -LiteralPath $runtimeDllPath -Destination $nativeAssetRoot -Force
 }
 
 Copy-FirstRequiredLicense -Sources @((Join-Path $repoRoot 'LICENSE')) -Destination (Join-Path $nativeAssetRoot 'licenses/MBW.GHLinguist/LICENSE') -Description 'MBW.GHLinguist'
