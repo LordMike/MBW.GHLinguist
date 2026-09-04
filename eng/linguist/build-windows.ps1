@@ -33,6 +33,14 @@ function Require-Path {
   }
 }
 
+function Get-NormalizedTextSha256 {
+  param([Parameter(Mandatory)] [string] $Path)
+
+  $text = [System.IO.File]::ReadAllText($Path).Replace("`r`n", "`n").Replace("`r", "`n")
+  $bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($text)
+  return [System.Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+}
+
 function Copy-RequiredDirectory {
   param([Parameter(Mandatory)] [string] $Source, [Parameter(Mandatory)] [string] $Destination, [Parameter(Mandatory)] [string] $Description)
   Require-Path $Source $Description
@@ -114,8 +122,8 @@ function Write-Provenance {
     lockInputs = [ordered]@{
       nativeDependenciesSha256 = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
       thirdPartyRedistributionSha256 = (Get-FileHash -LiteralPath $licenseInventoryPath -Algorithm SHA256).Hash.ToLowerInvariant()
-      bridgeSha256 = (Get-FileHash -LiteralPath (Join-Path $repoRoot 'src/MBW.GHLinguist.Native/ruby/ghlinguist/bridge.rb') -Algorithm SHA256).Hash.ToLowerInvariant()
-      linguistVersionSha256 = (Get-FileHash -LiteralPath (Join-Path $LinguistRoot 'lib/linguist/VERSION') -Algorithm SHA256).Hash.ToLowerInvariant()
+      bridgeSha256 = Get-NormalizedTextSha256 (Join-Path $repoRoot 'src/MBW.GHLinguist.Native/ruby/ghlinguist/bridge.rb')
+      linguistVersionSha256 = Get-NormalizedTextSha256 (Join-Path $LinguistRoot 'lib/linguist/VERSION')
     }
     externalDependencies = [ordered]@{
       ruby = [ordered]@{
