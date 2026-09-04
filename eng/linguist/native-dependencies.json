@@ -6,9 +6,9 @@
     "windowsPlatform": "x64-mingw-ucrt",
     "dockerImage": "ruby:4.0.6-bookworm@sha256:b4aa7093ffca123d849e79b3e2bc582064f6dd9c22940e69c08bc47d74e355db",
     "windowsArtifact": {
-      "name": "rubyinstaller-4.0.6-1-x64.7z",
-      "url": "https://github.com/oneclick/rubyinstaller2/releases/download/RubyInstaller-4.0.6-1/rubyinstaller-4.0.6-1-x64.7z",
-      "sha256": "328d7a86bea2f4c432783025050c9ffa1c36fcfc54ebccc466b63450ec3af223"
+      "name": "rubyinstaller-devkit-4.0.6-1-x64.exe",
+      "url": "https://github.com/oneclick/rubyinstaller2/releases/download/RubyInstaller-4.0.6-1/rubyinstaller-devkit-4.0.6-1-x64.exe",
+      "sha256": "fd20063ac6c00c8f695d91e7db9f171461d95bf25fb8e2967e5aaed34a36703d"
     },
     "licenseFiles": [
       {
@@ -127,10 +127,10 @@
       "mingw-w64-ucrt-x86_64-icu"
     ],
     "pacmanPackageVersions": {
-      "mingw-w64-ucrt-x86_64-gcc": "15.2.0-9",
-      "mingw-w64-ucrt-x86_64-make": "4.4.1-4",
+      "mingw-w64-ucrt-x86_64-gcc": "16.1.0-5",
+      "mingw-w64-ucrt-x86_64-make": "4.4.1-5",
       "mingw-w64-ucrt-x86_64-ninja": "1.13.2-1",
-      "mingw-w64-ucrt-x86_64-icu": "78.2-1"
+      "mingw-w64-ucrt-x86_64-icu": "78.3-3"
     }
   },
   "build": {

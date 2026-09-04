@@ -61,15 +61,22 @@ jobs:
           Invoke-WebRequest -Uri $rubyArtifact.url -OutFile $rubyArtifactPath
           $actualRubyArtifactSha256 = (Get-FileHash -LiteralPath $rubyArtifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actualRubyArtifactSha256 -ne $rubyArtifact.sha256) { throw 'The RubyInstaller artifact SHA-256 does not match the manifest.' }
-          $extractRoot = Join-Path $env:RUNNER_TEMP 'ghlinguist-ruby'
-          New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
-          $sevenZip = (Get-Command 7z -ErrorAction SilentlyContinue).Source
-          if (-not $sevenZip) { $sevenZip = Join-Path $env:ProgramFiles '7-Zip/7z.exe' }
-          if (-not (Test-Path -LiteralPath $sevenZip -PathType Leaf)) { throw '7-Zip is unavailable on the Windows runner.' }
-          & $sevenZip x $rubyArtifactPath "-o$extractRoot" -y
-          if ($LASTEXITCODE -ne 0) { throw 'Failed to extract the pinned RubyInstaller artifact.' }
-          $rubyRoot = Join-Path $extractRoot ([IO.Path]::GetFileNameWithoutExtension($rubyArtifact.name))
+          if ([IO.Path]::GetExtension($rubyArtifact.name) -cne '.exe') { throw 'The pinned RubyInstaller Devkit artifact must be an installer executable.' }
+          $rubyRoot = Join-Path $env:RUNNER_TEMP 'ghlinguist-ruby'
+          $install = Start-Process -FilePath $rubyArtifactPath -ArgumentList @(
+            '/VERYSILENT'
+            '/SUPPRESSMSGBOXES'
+            '/NORESTART'
+            '/SP-'
+            "/DIR=`"$rubyRoot`""
+            '/TASKS=""'
+          ) -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Failed to install the pinned RubyInstaller Devkit artifact: $($install.ExitCode)." }
           if (-not (Test-Path -LiteralPath (Join-Path $rubyRoot 'bin/ruby.exe') -PathType Leaf)) { throw 'The pinned RubyInstaller artifact has an unexpected layout.' }
+          $msysBash = Join-Path $rubyRoot 'msys64/usr/bin/bash.exe'
+          if (-not (Test-Path -LiteralPath $msysBash -PathType Leaf)) { throw 'The pinned RubyInstaller artifact does not contain MSYS2.' }
+          & $msysBash -lc 'true'
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to initialize the pinned MSYS2 environment.' }
           "RUBY_ROOT=$rubyRoot" >> $env:GITHUB_ENV
           Join-Path $rubyRoot 'bin' >> $env:GITHUB_PATH
           Join-Path $rubyRoot 'msys64/ucrt64/bin' >> $env:GITHUB_PATH
