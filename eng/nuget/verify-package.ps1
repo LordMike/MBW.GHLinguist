@@ -87,6 +87,26 @@ try {
     }
   }
 
+  $allowedPackageEntries = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::Ordinal)
+  foreach ($allowedEntry in @(
+    $requiredEntries
+    'MBW.GHLinguist.nuspec'
+    '_rels/.rels'
+    '[Content_Types].xml'
+    'package/services/metadata/core-properties/nuget.psmdcp'
+  )) {
+    [void] $allowedPackageEntries.Add($allowedEntry)
+  }
+  foreach ($entry in $entries) {
+    if ($entry.StartsWith('nativeassets/linux-x64/', [System.StringComparison]::Ordinal) -or
+        $entry.StartsWith('nativeassets/win-x64/', [System.StringComparison]::Ordinal) -or
+        $allowedPackageEntries.Contains($entry)) {
+      continue
+    }
+    throw "Package contains an unexpected entry: $entry"
+  }
+
   $inventoryPath = Join-Path $PSScriptRoot '../linguist/third-party-redistribution.json'
   $inventoryEntries = @($fileEntries | Where-Object { $_.FullName -ceq 'THIRD-PARTY-REDISTRIBUTION.json' })
   if ($inventoryEntries.Count -ne 1) {
