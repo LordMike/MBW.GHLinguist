@@ -224,17 +224,17 @@ ghl_status fail(ghl_status status, const std::string& message, ghl_error** out_e
 
 ghl_status unsupported(ghl_error** out_error) { return fail(GHL_STATUS_UNSUPPORTED, kUnsupported, out_error); }
 ghl_status invalid(const char* message, ghl_error** out_error = nullptr) { return fail(GHL_STATUS_INVALID_ARGUMENT, message, out_error); }
+ghl_status invalid_utf8(const char* message, ghl_error** out_error = nullptr) { return fail(GHL_STATUS_INVALID_UTF8, message, out_error); }
 
-bool valid_runtime_options(const ghl_runtime_options* options) {
+bool valid_runtime_options_layout(const ghl_runtime_options* options) {
     return options != nullptr && options->struct_size >= sizeof(*options) && options->flags == 0 &&
-        options->asset_root.data != nullptr && options->asset_root.length != 0 && valid_utf8(options->asset_root) &&
-        reserved_zero(options->reserved);
+        options->asset_root.data != nullptr && options->asset_root.length != 0 && reserved_zero(options->reserved);
 }
 
-bool valid_blob(const ghl_blob_input* blob) {
+bool valid_blob_layout(const ghl_blob_input* blob) {
     return blob != nullptr && blob->struct_size >= sizeof(*blob) &&
         (blob->flags & ~(GHL_BLOB_INPUT_SYMLINK | GHL_BLOB_INPUT_LFS_TRACKED)) == 0 &&
-        valid_utf8(blob->path) && valid_utf8(blob->name) && valid_bytes(blob->data) && reserved_zero(blob->reserved);
+        valid_bytes(blob->data) && reserved_zero(blob->reserved);
 }
 
 bool valid_analysis_options(const ghl_analysis_options* options) {
@@ -813,7 +813,8 @@ ghl_status GHL_CALL ghl_runtime_create(const ghl_runtime_options* options, ghl_r
     clear_error(out_error);
     if (out_runtime == nullptr) return invalid("out_runtime must not be null.", out_error);
     *out_runtime = nullptr;
-    if (!valid_runtime_options(options)) return invalid("runtime options are invalid or use an incompatible layout.", out_error);
+    if (!valid_runtime_options_layout(options)) return invalid("runtime options are invalid or use an incompatible layout.", out_error);
+    if (!valid_utf8(options->asset_root)) return invalid_utf8("asset_root must contain valid UTF-8.", out_error);
 
     std::string asset_root;
     std::string asset_error;
@@ -904,8 +905,9 @@ ghl_status GHL_CALL ghl_runtime_language_collection_value(const ghl_runtime* run
 }
 ghl_status GHL_CALL ghl_runtime_lookup_languages(const ghl_runtime* runtime, ghl_lookup_kind kind, ghl_string_view value, ghl_language_id_list** out_languages, ghl_error** out_error) {
     clear_error(out_error);
-    if (out_languages == nullptr || !valid_runtime(runtime) || !valid_utf8(value)) return invalid("lookup arguments are invalid.", out_error);
+    if (out_languages == nullptr || !valid_runtime(runtime)) return invalid("lookup arguments are invalid.", out_error);
     *out_languages = nullptr;
+    if (!valid_utf8(value)) return invalid_utf8("lookup value must contain valid UTF-8.", out_error);
     if (kind < GHL_LOOKUP_NAME || kind > GHL_LOOKUP_INTERPRETER) return invalid("lookup kind is invalid.", out_error);
     if (!runtime->languages) return unsupported(out_error);
     ghl_language_id_list* languages = new (std::nothrow) ghl_language_id_list{find_languages(*runtime->languages, kind, std::string(value.data, value.length))};
@@ -915,8 +917,9 @@ ghl_status GHL_CALL ghl_runtime_lookup_languages(const ghl_runtime* runtime, ghl
 }
 ghl_status GHL_CALL ghl_runtime_analyze(const ghl_runtime* runtime, const ghl_blob_input* blob, const ghl_analysis_options* options, ghl_analysis** out_analysis, ghl_error** out_error) {
     clear_error(out_error);
-    if (out_analysis == nullptr || !valid_runtime(runtime) || !valid_blob(blob) || !valid_analysis_options(options)) return invalid("analysis arguments are invalid or use an incompatible layout.", out_error);
+    if (out_analysis == nullptr || !valid_runtime(runtime) || !valid_blob_layout(blob) || !valid_analysis_options(options)) return invalid("analysis arguments are invalid or use an incompatible layout.", out_error);
     *out_analysis = nullptr;
+    if (!valid_utf8(blob->path) || !valid_utf8(blob->name)) return invalid_utf8("blob path and name must contain valid UTF-8.", out_error);
     if (!runtime->bridge_loaded) return unsupported(out_error);
     try {
         AnalysisRequest request;

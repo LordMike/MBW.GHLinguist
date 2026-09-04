@@ -8,7 +8,7 @@ public sealed class NativeRuntimeIntegrationTests
     private const string ClassifierSha256 = "24af803786a1157cb36a59feb5b4f2f3341a034ef7b5edd5b762a6d6ccb5d95d";
 
     [Fact]
-    public void PackagedRuntimeExecutesThePublicManagedSurface()
+    public async Task PackagedRuntimeExecutesThePublicManagedSurface()
     {
         if (!string.Equals(Environment.GetEnvironmentVariable("GHL_RUN_NATIVE_INTEGRATION"), "true", StringComparison.OrdinalIgnoreCase))
         {
@@ -67,6 +67,9 @@ public sealed class NativeRuntimeIntegrationTests
         Assert.True(analysis.IsText);
         Assert.True(analysis.IsDetectable);
         Assert.True(analysis.IsIncludedInLanguageStatistics);
+        Assert.Equal("application/x-ruby", analysis.MimeType);
+        Assert.Equal("inline", analysis.Disposition);
+        Assert.Equal("ISO-8859-1", analysis.Encoding);
         Assert.Equal(5UL, analysis.LineCount);
         Assert.NotEmpty(analysis.StrategyTrace);
         Assert.Contains(analysis.StrategyTrace, entry => entry.Strategy == DetectionStrategy.Extension && entry.Candidates.Contains(ruby));
@@ -96,6 +99,13 @@ public sealed class NativeRuntimeIntegrationTests
             new BlobInput { Path = "src/example.h", Name = "example.h" });
         Assert.Equal(objectiveC, heuristic.Language);
         Assert.Equal(DetectionStrategy.Heuristics, heuristic.Strategy);
+
+        LinguistLanguage xml = Assert.IsType<LinguistLanguage>(runtime.FindByName("XML"));
+        BlobAnalysis xmlDeclaration = runtime.Analyze(
+            "<?xml version=\"1.0\"?><project><name>demo</name></project>\n"u8,
+            new BlobInput { Path = "source", Name = "source" });
+        Assert.Equal(xml, xmlDeclaration.Language);
+        Assert.Equal(DetectionStrategy.Xml, xmlDeclaration.Strategy);
 
         BlobAnalysis vendored = runtime.Analyze(
             "puts :ok\n"u8,
@@ -158,6 +168,89 @@ public sealed class NativeRuntimeIntegrationTests
                 Assert.Equal(python, result.Language);
                 Assert.Equal(0.15510731503460715, result.Score, 12);
             });
+
+        LinguistLanguage javascript = Assert.IsType<LinguistLanguage>(runtime.FindByName("JavaScript"));
+        LinguistLanguage json = Assert.IsType<LinguistLanguage>(runtime.FindByName("JSON"));
+        LinguistLanguage yaml = Assert.IsType<LinguistLanguage>(runtime.FindByName("YAML"));
+        ulong[] contentCandidateIds = [csharp.Id, python.Id, javascript.Id, json.Id, xml.Id, yaml.Id];
+        (LinguistLanguage Expected, string Source)[] contentCases =
+        [
+            (csharp, "using System;\nnamespace Demo { public sealed class Greeter { public void Hello() { Console.WriteLine(\"hello\"); } } }\n"),
+            (python, "def greet(name):\n    message = f\"Hello {name}\"\n    print(message)\n\nfor item in [\"a\", \"b\"]:\n    greet(item)\n"),
+            (javascript, "export function greet(name) {\n  const message = `Hello ${name}`;\n  console.log(message);\n}\n[\"a\", \"b\"].forEach(greet);\n"),
+            (json, "{\n  \"name\": \"demo\",\n  \"enabled\": true,\n  \"items\": [1, 2, 3],\n  \"metadata\": { \"owner\": \"team\" }\n}\n"),
+            (xml, "<?xml version=\"1.0\"?>\n<project><name>demo</name><items><item id=\"1\">one</item></items></project>\n"),
+            (yaml, "name: demo\nenabled: true\nitems:\n  - one\n  - two\nmetadata:\n  owner: team\n"),
+            (csharp, "using System;\npublic class Broken {\n  public static void Main(string[] args) {\n    Console.WriteLine(\"unfinished\"\n"),
+        ];
+        foreach ((LinguistLanguage expected, string sample) in contentCases)
+        {
+            byte[] repeatedSource = Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat(sample, 8)));
+            ClassificationResults contentClassification = runtime.Classify(
+                repeatedSource,
+                new ClassificationOptions { CandidateLanguageIds = contentCandidateIds });
+            Assert.Equal(expected, contentClassification.Results[0].Language);
+        }
+
+        LinguistLanguage html = Assert.IsType<LinguistLanguage>(runtime.FindByName("HTML"));
+        (LanguageTypeMask Mask, LinguistLanguage Expected, string Source)[] typeCases =
+        [
+            (LanguageTypeMask.Programming, ruby, "class Demo\n  def run\n    puts :ok\n  end\nend\n"),
+            (LanguageTypeMask.Markup, html, "<!doctype html><html><head><title>Demo</title></head><body><main><h1>Hello</h1></main></body></html>\n"),
+            (LanguageTypeMask.Data, json, "{\"name\":\"demo\",\"enabled\":true,\"items\":[1,2,3]}\n"),
+            (LanguageTypeMask.Prose, markdown, "# Project Guide\n\nThis document explains how to install and configure the application.\n\n## Usage\n\nRun the command and review the output.\n"),
+        ];
+        ulong[] typeCandidateIds = [ruby.Id, html.Id, json.Id, markdown.Id];
+        foreach ((LanguageTypeMask mask, LinguistLanguage expected, string sample) in typeCases)
+        {
+            byte[] repeatedSource = Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat(sample, 10)));
+            ClassificationResults filtered = runtime.Classify(
+                repeatedSource,
+                new ClassificationOptions { AllowedTypes = mask, CandidateLanguageIds = typeCandidateIds });
+            Assert.Equal(expected, Assert.Single(filtered.Results).Language);
+        }
+
+        ClassificationResults noCandidates = runtime.Classify(
+            source,
+            new ClassificationOptions { CandidateLanguageIds = [] });
+        Assert.Equal(0, noCandidates.ConsideredBytes);
+        Assert.Empty(noCandidates.Results);
+
+        byte[] oversizedSource = Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat("puts 'Hello'\n", 5000)));
+        ClassificationResults bounded = runtime.Classify(
+            oversizedSource,
+            new ClassificationOptions { CandidateLanguageIds = [ruby.Id] });
+        Assert.Equal(ClassificationOptions.DefaultMaximumBytes, bounded.ConsideredBytes);
+
+        Task<BlobAnalysis>[] concurrentCalls = Enumerable.Range(0, 16)
+            .Select(index => Task.Run(() => runtime.Analyze(
+                source,
+                new BlobInput { Path = $"src/concurrent-{index}.rb", Name = $"concurrent-{index}.rb" })))
+            .ToArray();
+        BlobAnalysis[] concurrentResults = await Task.WhenAll(concurrentCalls);
+        Assert.All(concurrentResults, result => Assert.Equal(ruby, result.Language));
+
+        for (int index = 0; index < 50; index++)
+        {
+            Assert.Equal(ruby, runtime.Analyze(source, new BlobInput { Name = $"repeated-{index}.rb" }).Language);
+        }
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        using (LinguistRuntime sharedRuntime = LinguistRuntime.Create())
+        {
+            Assert.Equal(runtime.Version.ClassifierSha256, sharedRuntime.Version.ClassifierSha256);
+            Assert.Equal(ruby, sharedRuntime.Analyze(source, new BlobInput { Name = "shared.rb" }).Language);
+        }
+
+        LinguistRuntime disposableRuntime = LinguistRuntime.Create();
+        LinguistLanguage copiedLanguage = Assert.IsType<LinguistLanguage>(disposableRuntime.FindByName("Ruby"));
+        BlobAnalysis copiedAnalysis = disposableRuntime.Analyze(source, new BlobInput { Name = "copied.rb" });
+        disposableRuntime.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => disposableRuntime.Analyze(source));
+        Assert.Equal("Ruby", copiedLanguage.Name);
+        Assert.Equal(copiedLanguage, copiedAnalysis.Language);
 
         Assert.Throws<ArgumentException>(() => runtime.Classify(
             source,

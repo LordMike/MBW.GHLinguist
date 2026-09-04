@@ -36,6 +36,15 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    ghl_runtime* shared_runtime = nullptr;
+    if (ghl_runtime_create(&options, &shared_runtime, &error) != GHL_STATUS_OK || shared_runtime == nullptr) {
+        std::fprintf(stderr, "Repeated runtime creation failed.\n");
+        ghl_error_release(error);
+        ghl_runtime_release(runtime);
+        return 1;
+    }
+    ghl_runtime_release(shared_runtime);
+
     ghl_version_info version = {};
     version.struct_size = sizeof(version);
     const auto view_equals = [](ghl_string_view value, const char* expected) {
@@ -48,6 +57,14 @@ int main(int argc, char** argv) {
         !view_equals(version.linguist_revision, "196b2a14418cab005065c72c9759370934c184bc") ||
         !view_equals(version.classifier_sha256, "24af803786a1157cb36a59feb5b4f2f3341a034ef7b5edd5b762a6d6ccb5d95d")) {
         std::fprintf(stderr, "Runtime version projection did not match the locked release inputs.\n");
+        ghl_runtime_release(runtime);
+        return 1;
+    }
+    ghl_version_info undersized_version = {};
+    undersized_version.struct_size = sizeof(undersized_version) - 1;
+    if (ghl_runtime_version(runtime, &undersized_version) != GHL_STATUS_ABI_MISMATCH ||
+        ghl_runtime_language_id_at(runtime, 0, nullptr) != GHL_STATUS_INVALID_ARGUMENT) {
+        std::fprintf(stderr, "ABI layout or null-output validation failed.\n");
         ghl_runtime_release(runtime);
         return 1;
     }
@@ -82,6 +99,28 @@ int main(int argc, char** argv) {
         return 1;
     }
     ghl_language_id_list_release(matches);
+
+    uint64_t invalid_index_id = 0;
+    if (ghl_runtime_language_id_at(runtime, ghl_runtime_language_count(runtime), &invalid_index_id) != GHL_STATUS_NOT_FOUND) {
+        std::fprintf(stderr, "Language registry index validation failed.\n");
+        ghl_runtime_release(runtime);
+        return 1;
+    }
+
+    const char invalid_utf8_bytes[] = {static_cast<char>(0xc3), static_cast<char>(0x28)};
+    matches = nullptr;
+    error = nullptr;
+    if (ghl_runtime_lookup_languages(runtime, GHL_LOOKUP_NAME, {invalid_utf8_bytes, sizeof(invalid_utf8_bytes)},
+            &matches, &error) != GHL_STATUS_INVALID_UTF8 || matches != nullptr || error == nullptr ||
+        ghl_error_status(error) != GHL_STATUS_INVALID_UTF8 || ghl_error_message(error).length == 0) {
+        std::fprintf(stderr, "Invalid UTF-8 lookup validation failed.\n");
+        ghl_error_release(error);
+        ghl_language_id_list_release(matches);
+        ghl_runtime_release(runtime);
+        return 1;
+    }
+    ghl_error_release(error);
+    error = nullptr;
 
     const ghl_string_view python = {"Python", 6};
     matches = nullptr;
@@ -224,6 +263,23 @@ int main(int argc, char** argv) {
     }
     ghl_classification_release(classification);
     classification = nullptr;
+
+    const uint64_t unknown_candidate = UINT64_C(123456789);
+    ghl_classify_options unknown_candidate_options = classify_options;
+    unknown_candidate_options.candidate_language_ids = &unknown_candidate;
+    unknown_candidate_options.candidate_language_count = 1;
+    if (ghl_runtime_classify(runtime, {reinterpret_cast<const uint8_t*>(source), sizeof(source) - 1}, &unknown_candidate_options,
+            &classification, &error) != GHL_STATUS_RUBY_EXCEPTION || classification != nullptr || error == nullptr ||
+        ghl_error_status(error) != GHL_STATUS_RUBY_EXCEPTION ||
+        !view_equals(ghl_error_ruby_class(error), "ArgumentError") || ghl_error_ruby_backtrace(error).length == 0) {
+        std::fprintf(stderr, "Ruby exception projection failed.\n");
+        ghl_error_release(error);
+        ghl_classification_release(classification);
+        ghl_runtime_release(runtime);
+        return 1;
+    }
+    ghl_error_release(error);
+    error = nullptr;
 
     std::vector<uint64_t> too_many_candidates(4097, ruby_id);
     ghl_classify_options invalid_candidate_options = classify_options;
