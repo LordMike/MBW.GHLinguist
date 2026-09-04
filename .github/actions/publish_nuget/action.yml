@@ -33,7 +33,11 @@ runs:
         PACKAGE_TOKEN: ${{ env.NUGET_GITHUB_TOKEN }}
       run: |
         set -euo pipefail
-        mapfile -t packages < <(find .artifacts/nuget -maxdepth 1 -type f -name '*.nupkg' ! -name '*.snupkg' -print | sort)
+        mapfile -t runtime_packages < <(find .artifacts/nuget -maxdepth 1 -type f -name 'MBW.GHLinguist.Runtime.*.nupkg' -print | sort)
+        mapfile -t managed_packages < <(find .artifacts/nuget -maxdepth 1 -type f -name 'MBW.GHLinguist.*.nupkg' ! -name 'MBW.GHLinguist.Runtime.*.nupkg' -print | sort)
+        [ "${#runtime_packages[@]}" -eq 2 ] || { echo "::error::Expected exactly two runtime packages, found ${#runtime_packages[@]}."; exit 1; }
+        [ "${#managed_packages[@]}" -eq 1 ] || { echo "::error::Expected exactly one managed package, found ${#managed_packages[@]}."; exit 1; }
+        packages=("${runtime_packages[@]}" "${managed_packages[@]}")
         for package in "${packages[@]}"; do
           dotnet nuget push "$package" \
             --no-symbols \
@@ -54,7 +58,11 @@ runs:
           exit 1
         fi
 
-        mapfile -t packages < <(find .artifacts/nuget -maxdepth 1 -type f -name '*.nupkg' ! -name '*.snupkg' -print | sort)
+        mapfile -t runtime_packages < <(find .artifacts/nuget -maxdepth 1 -type f -name 'MBW.GHLinguist.Runtime.*.nupkg' -print | sort)
+        mapfile -t managed_packages < <(find .artifacts/nuget -maxdepth 1 -type f -name 'MBW.GHLinguist.*.nupkg' ! -name 'MBW.GHLinguist.Runtime.*.nupkg' -print | sort)
+        [ "${#runtime_packages[@]}" -eq 2 ] || { echo "::error::Expected exactly two runtime packages, found ${#runtime_packages[@]}."; exit 1; }
+        [ "${#managed_packages[@]}" -eq 1 ] || { echo "::error::Expected exactly one managed package, found ${#managed_packages[@]}."; exit 1; }
+        packages=("${runtime_packages[@]}" "${managed_packages[@]}")
         for package in "${packages[@]}"; do
           dotnet nuget push "$package" \
             --skip-duplicate \
