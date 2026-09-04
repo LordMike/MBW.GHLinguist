@@ -31,7 +31,7 @@ public sealed class PackageIntegrationTests
         Assert.Equal("CopyFilesToPublishDirectory", (string?)publishCopy.Attribute("AfterTargets"));
         Assert.Contains("nativeassets", target.ToString(), StringComparison.Ordinal);
         Assert.Contains("NETCoreSdkRuntimeIdentifier", target.ToString(), StringComparison.Ordinal);
-        Assert.Contains("**\\*", outputCopy.ToString(), StringComparison.Ordinal);
+        Assert.Contains("/**/*", outputCopy.ToString(), StringComparison.Ordinal);
         Assert.Contains("$(OutDir)%(RecursiveDir)%(Filename)%(Extension)", outputCopy.ToString(), StringComparison.Ordinal);
         Assert.Contains("$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)", publishCopy.ToString(), StringComparison.Ordinal);
     }

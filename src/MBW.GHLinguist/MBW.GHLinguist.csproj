@@ -59,7 +59,7 @@
           AfterTargets="Build"
           Condition="'$(RuntimeIdentifier)' != '' and Exists('$(RidNativeAssetRoot)\$(RuntimeIdentifier)')">
     <ItemGroup>
-      <_CurrentRidNativeAsset Include="$(RidNativeAssetRoot)\$(RuntimeIdentifier)\**\*" />
+      <_CurrentRidNativeAsset Include="$(RidNativeAssetRoot)/$(RuntimeIdentifier)/**/*" />
     </ItemGroup>
 
     <Copy SourceFiles="@(_CurrentRidNativeAsset)"

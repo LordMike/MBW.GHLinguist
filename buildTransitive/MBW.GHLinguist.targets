@@ -2,14 +2,14 @@
   <PropertyGroup>
     <MBWGHLinguistRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</MBWGHLinguistRuntimeIdentifier>
     <MBWGHLinguistRuntimeIdentifier Condition="'$(MBWGHLinguistRuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</MBWGHLinguistRuntimeIdentifier>
-    <MBWGHLinguistNativeAssetRoot>$(MSBuildThisFileDirectory)..\nativeassets\$(MBWGHLinguistRuntimeIdentifier)</MBWGHLinguistNativeAssetRoot>
+    <MBWGHLinguistNativeAssetRoot>$(MSBuildThisFileDirectory)../nativeassets/$(MBWGHLinguistRuntimeIdentifier)</MBWGHLinguistNativeAssetRoot>
   </PropertyGroup>
 
   <Target Name="CopyMBWGHLinguistNativeClosureToOutput"
           AfterTargets="CopyFilesToOutputDirectory"
           Condition="'$(MBWGHLinguistRuntimeIdentifier)' != '' and Exists('$(MBWGHLinguistNativeAssetRoot)')">
     <ItemGroup>
-      <_MBWGHLinguistNativeAsset Include="$(MBWGHLinguistNativeAssetRoot)\**\*" />
+      <_MBWGHLinguistNativeAsset Include="$(MBWGHLinguistNativeAssetRoot)/**/*" />
     </ItemGroup>
 
     <Copy SourceFiles="@(_MBWGHLinguistNativeAsset)"
@@ -21,7 +21,7 @@
           AfterTargets="CopyFilesToPublishDirectory"
           Condition="'$(MBWGHLinguistRuntimeIdentifier)' != '' and Exists('$(MBWGHLinguistNativeAssetRoot)')">
     <ItemGroup>
-      <_MBWGHLinguistNativePublishAsset Include="$(MBWGHLinguistNativeAssetRoot)\**\*" />
+      <_MBWGHLinguistNativePublishAsset Include="$(MBWGHLinguistNativeAssetRoot)/**/*" />
     </ItemGroup>
 
     <Copy SourceFiles="@(_MBWGHLinguistNativePublishAsset)"

@@ -28,7 +28,7 @@
     <Error Condition="'$(RuntimeIdentifier)' == ''" Text="RunNativeIntegrationTests requires a RuntimeIdentifier." />
     <Error Condition="!Exists('$(NativeIntegrationAssetRoot)')" Text="The staged native closure is missing: $(NativeIntegrationAssetRoot)" />
     <ItemGroup>
-      <_NativeIntegrationAsset Include="$(NativeIntegrationAssetRoot)\**\*" />
+      <_NativeIntegrationAsset Include="$(NativeIntegrationAssetRoot)/**/*" />
     </ItemGroup>
     <Copy SourceFiles="@(_NativeIntegrationAsset)" DestinationFiles="@(_NativeIntegrationAsset->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
