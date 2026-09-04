@@ -85,6 +85,10 @@ jobs:
         shell: pwsh
         run: ./eng/linguist/build-windows.ps1
 
+      - name: Inspect win-x64 exports and dependencies
+        shell: pwsh
+        run: ./eng/linguist/inspect-windows.ps1
+
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
         with:
@@ -118,6 +122,10 @@ jobs:
       - name: Build and validate linux-x64 native closure
         shell: pwsh
         run: ./eng/linguist/build-docker.ps1
+
+      - name: Inspect linux-x64 exports and dependencies
+        shell: bash
+        run: ./eng/linguist/inspect-linux.sh
 
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
