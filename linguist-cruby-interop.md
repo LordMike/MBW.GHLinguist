@@ -492,24 +492,37 @@ content-classifier capabilities.
 
 ## NuGet package
 
-Make `MBW.GHLinguist.csproj` packable and include the managed assembly, native ABI bridges under `runtimes/<rid>/native/`, and complete relocatable closures under `nativeassets/<rid>/`.
+Publish one managed package and one runtime package for each supported RID. The
+runtime packages depend on the exact matching version of the managed package.
 
-The package layout is:
+The managed `MBW.GHLinguist` package layout is:
 
 ```text
 lib/net10.0/MBW.GHLinguist.dll
-runtimes/win-x64/native/ghlinguist.dll
-runtimes/linux-x64/native/ghlinguist.so
-nativeassets/win-x64/*
-nativeassets/linux-x64/*
-buildTransitive/MBW.GHLinguist.Runtime.<rid>.targets
+lib/net10.0/MBW.GHLinguist.xml
+buildTransitive/MBW.GHLinguist.targets
 LICENSE
 THIRD-PARTY-NOTICES.md
-nativeassets/<rid>/licenses/*
 native/include/ghlinguist.h
 ```
 
-Use `buildTransitive` to copy the selected complete closure while preserving subdirectories. Prefer an explicit supported `RuntimeIdentifier`; when it is absent, select the .NET SDK host RID. Normal build and publish consumption must be automatic after one `PackageReference`.
+Each `MBW.GHLinguist.Runtime.<rid>` package contains only its matching closure:
+
+```text
+runtimes/<rid>/native/ghlinguist.dll|so
+nativeassets/<rid>/*
+nativeassets/<rid>/licenses/*
+buildTransitive/MBW.GHLinguist.Runtime.<rid>.targets
+LICENSE
+THIRD-PARTY-NOTICES.md
+```
+
+Use `buildTransitive` to copy the complete selected closure while preserving
+subdirectories. Prefer an explicit supported `RuntimeIdentifier`; when it is
+absent, select the .NET SDK host RID. Referencing a runtime package must provide
+the managed assembly and native closure automatically. Referencing only the
+managed package must fail with guidance to select exactly one supported runtime
+package.
 
 ## Work
 
@@ -520,10 +533,10 @@ Use `buildTransitive` to copy the selected complete closure while preserving sub
 5. Add a Ruby `InteropBlob` matching Linguist's blob contract. Implement standard strategy detection, strategy tracing, unrestricted or candidate-filtered classification, language registry projection, binary and encoding analysis, MIME results, generated/vendored/documentation predicates, line counts, and statistics eligibility. Copy all returned data into native-owned result objects before leaving the worker.
 6. Produce reviewed `win-x64` and `linux-x64` directories containing the primary interop library, CRuby runtime, Linguist tokenizer, Charlock Holmes, ICU, Psych/libyaml, required Ruby standard-library files, Linguist Ruby files, classifier data, language data, MIME data, and licenses. Configure Windows adjacent-DLL loading and Linux `$ORIGIN` lookup without consulting system Ruby or system ICU.
 7. Add the managed facade and keep all native handles internal. Copy native result values into immutable managed records so callers do not manage result lifetimes or native string views.
-8. Pack the managed facade, native dependency closures, public header, provenance, and third-party notices as `MBW.GHLinguist`.
+8. Pack the managed facade, public header, and notices as `MBW.GHLinguist`. Pack each native dependency closure, provenance file, and RID-specific copy target as `MBW.GHLinguist.Runtime.<rid>` with an exact dependency on the managed package version.
 9. Add `tests/MBW.GHLinguist.Tests` as an xUnit v3 project that references the managed facade and invokes the actual native runtime.
-10. Pack into an ignored `.tmp/packages` feed and restore a minimal fixture consumer using only `PackageReference`. Build and run it without Ruby, Linguist, ICU, or other development tools installed globally.
-11. Add `MBW.GHLinguist` under `/src/` and `MBW.GHLinguist.Tests` under `/tests/` in `MBW.GHLinguist.slnx`. Keep native build orchestration beneath the interop project rather than registering a non-MSBuild project directly.
+10. Pack all three packages into an ignored `.tmp/packages` feed and restore a minimal fixture consumer using one RID runtime `PackageReference`. Build and run it without Ruby, Linguist, ICU, or other development tools installed globally.
+11. Add the managed package project, both runtime package projects, and `MBW.GHLinguist.Tests` to `MBW.GHLinguist.slnx`. Keep native build orchestration beneath the interop project rather than registering a non-MSBuild project directly.
 
 ## Tests
 
@@ -541,13 +554,17 @@ Use `buildTransitive` to copy the selected complete closure while preserving sub
 - Verify disposal, forced GC, repeated result creation, and no use-after-release.
 - Verify missing, corrupt, incorrect-RID, and hash-mismatched assets.
 - Verify exact result equality across `win-x64` and `linux-x64`.
-- Verify the nupkg contains the expected RID assets, notices, header, managed assembly, and no build-machine paths.
+- Verify the managed nupkg contains the notices, header, managed assembly, and no runtime closure assets. Verify each runtime nupkg contains only its expected RID closure, provenance, licenses, copy target, and exact managed-package dependency, with no build-machine paths.
 
 ## Validation
 
 ```powershell
 dotnet build src/MBW.GHLinguist/MBW.GHLinguist.csproj --configuration Release --nologo
 dotnet pack src/MBW.GHLinguist/MBW.GHLinguist.csproj --configuration Release --no-build --nologo --output .tmp/packages
+dotnet build src/MBW.GHLinguist.Runtime.win-x64/MBW.GHLinguist.Runtime.win-x64.csproj --configuration Release --nologo
+dotnet pack src/MBW.GHLinguist.Runtime.win-x64/MBW.GHLinguist.Runtime.win-x64.csproj --configuration Release --no-build --nologo --output .tmp/packages -p:ValidateRidAssets=true
+dotnet build src/MBW.GHLinguist.Runtime.linux-x64/MBW.GHLinguist.Runtime.linux-x64.csproj --configuration Release --nologo
+dotnet pack src/MBW.GHLinguist.Runtime.linux-x64/MBW.GHLinguist.Runtime.linux-x64.csproj --configuration Release --no-build --nologo --output .tmp/packages -p:ValidateRidAssets=true
 dotnet build MBW.GHLinguist.slnx --configuration Release --nologo
 dotnet test --solution MBW.GHLinguist.slnx --configuration Release --no-build --minimum-expected-tests 1
 git diff --check
@@ -557,7 +574,12 @@ Inspect Windows exports with `dumpbin /exports`, Linux exports with `nm -D`, dep
 
 ## Completion
 
-This plan is complete when a clean .NET consumer can add one NuGet reference, initialize the runtime once, invoke the complete blob and classifier APIs repeatedly from arbitrary managed threads, receive deterministic copied results through the managed facade or documented C ABI, and run successfully on both supported RIDs without a system Ruby installation or runtime downloads.
+This plan is complete when a clean .NET consumer can add one matching runtime
+package reference, receive the exact managed dependency automatically, initialize
+the runtime once, invoke the complete blob and classifier APIs repeatedly from
+arbitrary managed threads, receive deterministic copied results through the
+managed facade or documented C ABI, and run successfully on both supported RIDs
+without a system Ruby installation or runtime downloads.
 
 ## Deferred
 

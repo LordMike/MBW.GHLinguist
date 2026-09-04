@@ -314,7 +314,9 @@ jobs:
           dotnet pack src/MBW.GHLinguist.Runtime.win-x64/MBW.GHLinguist.Runtime.win-x64.csproj --configuration Release --no-build --output .artifacts/nuget -p:ValidateRidAssets=true "${version_args[@]}"
           dotnet pack src/MBW.GHLinguist.Runtime.linux-x64/MBW.GHLinguist.Runtime.linux-x64.csproj --configuration Release --no-build --output .artifacts/nuget -p:ValidateRidAssets=true "${version_args[@]}"
           mapfile -t packages < <(find .artifacts/nuget -maxdepth 1 -type f -name '*.nupkg' ! -name '*.snupkg' -print | sort)
+          mapfile -t symbols < <(find .artifacts/nuget -maxdepth 1 -type f -name '*.snupkg' -print | sort)
           [ "${#packages[@]}" -eq 3 ] || { echo "Expected exactly three nupkg files, found ${#packages[@]}."; exit 1; }
+          [ "${#symbols[@]}" -eq 1 ] || { echo "Expected exactly one snupkg file, found ${#symbols[@]}."; exit 1; }
 
       - name: Verify NuGet package contents
         id: package_context

@@ -190,8 +190,13 @@ try {
       throw "Runtime package provenance does not describe $RuntimeIdentifier using schema version 2."
     }
 
+    $provenanceFiles = @($provenance.files)
+    if ($provenanceFiles.Count -eq 0) {
+      throw "Runtime package provenance for $RuntimeIdentifier does not describe any native assets."
+    }
+
     $provenancePaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-    foreach ($provenanceFile in @($provenance.files)) {
+    foreach ($provenanceFile in $provenanceFiles) {
       $relativePath = [string] $provenanceFile.path
       if ([string]::IsNullOrWhiteSpace($relativePath) -or
           [System.IO.Path]::IsPathRooted($relativePath) -or
