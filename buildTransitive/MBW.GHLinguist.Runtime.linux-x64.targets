@@ -12,31 +12,12 @@
     <Error Text="MBW.GHLinguist.Runtime.linux-x64 requires RuntimeIdentifier linux-x64; found $(MBWGHLinguistLinuxX64RuntimeIdentifier)." />
   </Target>
 
-  <Target Name="CopyMBWGHLinguistLinuxX64NativeClosureToOutput"
-          AfterTargets="CopyFilesToOutputDirectory"
-          Condition="'$(MBWGHLinguistLinuxX64RuntimeIdentifier)' == 'linux-x64' and Exists('$(MBWGHLinguistLinuxX64AssetRoot)')">
-    <ItemGroup>
-      <_MBWGHLinguistLinuxX64NativeAsset Include="$(MBWGHLinguistLinuxX64AssetRoot)/**/*" />
-      <_MBWGHLinguistLinuxX64NativeAsset Remove="@(_MBWGHLinguistLinuxX64NativeAsset)"
-                                           Condition="$([System.IO.Directory]::Exists('%(_MBWGHLinguistLinuxX64NativeAsset.FullPath)'))" />
-    </ItemGroup>
-
-    <Copy SourceFiles="@(_MBWGHLinguistLinuxX64NativeAsset)"
-          DestinationFiles="@(_MBWGHLinguistLinuxX64NativeAsset->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-  </Target>
-
-  <Target Name="CopyMBWGHLinguistLinuxX64NativeClosureToPublish"
-          AfterTargets="CopyFilesToPublishDirectory"
-          Condition="'$(MBWGHLinguistLinuxX64RuntimeIdentifier)' == 'linux-x64' and Exists('$(MBWGHLinguistLinuxX64AssetRoot)')">
-    <ItemGroup>
-      <_MBWGHLinguistLinuxX64NativePublishAsset Include="$(MBWGHLinguistLinuxX64AssetRoot)/**/*" />
-      <_MBWGHLinguistLinuxX64NativePublishAsset Remove="@(_MBWGHLinguistLinuxX64NativePublishAsset)"
-                                                  Condition="$([System.IO.Directory]::Exists('%(_MBWGHLinguistLinuxX64NativePublishAsset.FullPath)'))" />
-    </ItemGroup>
-
-    <Copy SourceFiles="@(_MBWGHLinguistLinuxX64NativePublishAsset)"
-          DestinationFiles="@(_MBWGHLinguistLinuxX64NativePublishAsset->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-  </Target>
+  <ItemGroup Condition="'$(MBWGHLinguistLinuxX64RuntimeIdentifier)' == 'linux-x64' and Exists('$(MBWGHLinguistLinuxX64AssetRoot)')">
+    <Content Include="$(MBWGHLinguistLinuxX64AssetRoot)/**/*"
+             Exclude="$(MBWGHLinguistLinuxX64AssetRoot)/ghlinguist.so"
+             Link="%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest"
+             Visible="false" />
+  </ItemGroup>
 </Project>

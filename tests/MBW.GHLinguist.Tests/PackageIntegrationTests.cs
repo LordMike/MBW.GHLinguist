@@ -84,27 +84,26 @@ public sealed class PackageIntegrationTests
     }
 
     [Theory]
-    [InlineData("MBW.GHLinguist.Runtime.win-x64.targets", "win-x64", "CopyMBWGHLinguistWinX64NativeClosure")]
-    [InlineData("MBW.GHLinguist.Runtime.linux-x64.targets", "linux-x64", "CopyMBWGHLinguistLinuxX64NativeClosure")]
-    public void RuntimePackageBuildTransitiveTargetCopiesTheCompleteNativeClosureWithRelativeLayout(
+    [InlineData("MBW.GHLinguist.Runtime.win-x64.targets", "win-x64", "ghlinguist.dll")]
+    [InlineData("MBW.GHLinguist.Runtime.linux-x64.targets", "linux-x64", "ghlinguist.so")]
+    public void RuntimePackageBuildTransitiveTargetPublishesTheNativeClosureAsContent(
         string targetFile,
         string runtimeIdentifier,
-        string targetNamePrefix)
+        string bridgeName)
     {
         XDocument target = XDocument.Load(Path.Combine(AppContext.BaseDirectory, targetFile));
-        XElement outputCopy = target.Descendants("Target").Single(element => (string?)element.Attribute("Name") == targetNamePrefix + "ToOutput");
-        XElement publishCopy = target.Descendants("Target").Single(element => (string?)element.Attribute("Name") == targetNamePrefix + "ToPublish");
+        XElement itemGroup = target.Descendants("ItemGroup").Single();
+        XElement content = itemGroup.Element("Content")!;
+        XElement assetRoot = target.Descendants("PropertyGroup").Single().Elements().Single(element => element.Name.LocalName.EndsWith("AssetRoot", StringComparison.Ordinal));
 
-        Assert.Equal("CopyFilesToOutputDirectory", (string?)outputCopy.Attribute("AfterTargets"));
-        Assert.Equal("CopyFilesToPublishDirectory", (string?)publishCopy.Attribute("AfterTargets"));
-        Assert.Contains("nativeassets", target.ToString(), StringComparison.Ordinal);
-        Assert.Contains("NETCoreSdkRuntimeIdentifier", target.ToString(), StringComparison.Ordinal);
-        Assert.Contains(runtimeIdentifier, target.ToString(), StringComparison.Ordinal);
-        Assert.Contains("/**/*", outputCopy.ToString(), StringComparison.Ordinal);
-        Assert.Contains("[System.IO.Directory]::Exists", outputCopy.ToString(), StringComparison.Ordinal);
-        Assert.Contains("[System.IO.Directory]::Exists", publishCopy.ToString(), StringComparison.Ordinal);
-        Assert.Contains("$(OutDir)%(RecursiveDir)%(Filename)%(Extension)", outputCopy.ToString(), StringComparison.Ordinal);
-        Assert.Contains("$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)", publishCopy.ToString(), StringComparison.Ordinal);
+        Assert.Contains(runtimeIdentifier, (string?)itemGroup.Attribute("Condition"), StringComparison.Ordinal);
+        Assert.Contains("nativeassets", assetRoot.Value, StringComparison.Ordinal);
+        Assert.Contains("/**/*", (string?)content.Attribute("Include"), StringComparison.Ordinal);
+        Assert.EndsWith(bridgeName, (string?)content.Attribute("Exclude"), StringComparison.Ordinal);
+        Assert.Equal("%(RecursiveDir)%(Filename)%(Extension)", (string?)content.Attribute("Link"));
+        Assert.Equal("PreserveNewest", (string?)content.Attribute("CopyToOutputDirectory"));
+        Assert.Equal("PreserveNewest", (string?)content.Attribute("CopyToPublishDirectory"));
+        Assert.DoesNotContain(target.Descendants("Copy"), _ => true);
     }
 
     [Fact]

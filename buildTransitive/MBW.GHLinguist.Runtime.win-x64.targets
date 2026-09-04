@@ -12,31 +12,12 @@
     <Error Text="MBW.GHLinguist.Runtime.win-x64 requires RuntimeIdentifier win-x64; found $(MBWGHLinguistWinX64RuntimeIdentifier)." />
   </Target>
 
-  <Target Name="CopyMBWGHLinguistWinX64NativeClosureToOutput"
-          AfterTargets="CopyFilesToOutputDirectory"
-          Condition="'$(MBWGHLinguistWinX64RuntimeIdentifier)' == 'win-x64' and Exists('$(MBWGHLinguistWinX64AssetRoot)')">
-    <ItemGroup>
-      <_MBWGHLinguistWinX64NativeAsset Include="$(MBWGHLinguistWinX64AssetRoot)/**/*" />
-      <_MBWGHLinguistWinX64NativeAsset Remove="@(_MBWGHLinguistWinX64NativeAsset)"
-                                         Condition="$([System.IO.Directory]::Exists('%(_MBWGHLinguistWinX64NativeAsset.FullPath)'))" />
-    </ItemGroup>
-
-    <Copy SourceFiles="@(_MBWGHLinguistWinX64NativeAsset)"
-          DestinationFiles="@(_MBWGHLinguistWinX64NativeAsset->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-  </Target>
-
-  <Target Name="CopyMBWGHLinguistWinX64NativeClosureToPublish"
-          AfterTargets="CopyFilesToPublishDirectory"
-          Condition="'$(MBWGHLinguistWinX64RuntimeIdentifier)' == 'win-x64' and Exists('$(MBWGHLinguistWinX64AssetRoot)')">
-    <ItemGroup>
-      <_MBWGHLinguistWinX64NativePublishAsset Include="$(MBWGHLinguistWinX64AssetRoot)/**/*" />
-      <_MBWGHLinguistWinX64NativePublishAsset Remove="@(_MBWGHLinguistWinX64NativePublishAsset)"
-                                                Condition="$([System.IO.Directory]::Exists('%(_MBWGHLinguistWinX64NativePublishAsset.FullPath)'))" />
-    </ItemGroup>
-
-    <Copy SourceFiles="@(_MBWGHLinguistWinX64NativePublishAsset)"
-          DestinationFiles="@(_MBWGHLinguistWinX64NativePublishAsset->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-  </Target>
+  <ItemGroup Condition="'$(MBWGHLinguistWinX64RuntimeIdentifier)' == 'win-x64' and Exists('$(MBWGHLinguistWinX64AssetRoot)')">
+    <Content Include="$(MBWGHLinguistWinX64AssetRoot)/**/*"
+             Exclude="$(MBWGHLinguistWinX64AssetRoot)/ghlinguist.dll"
+             Link="%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest"
+             Visible="false" />
+  </ItemGroup>
 </Project>
