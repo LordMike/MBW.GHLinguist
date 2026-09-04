@@ -28,8 +28,9 @@ are implemented for the supported runtime identifiers. The package does not
 require a system Ruby installation or runtime downloads.
 
 The supported runtime identifiers are `win-x64` and `linux-x64`. The package
-targets .NET 10 and currently embeds CRuby 4.0.1 and GitHub Linguist 9.6.0 at
+targets .NET 10 and currently embeds CRuby 4.0.6 and GitHub Linguist 9.6.0 at
 revision `196b2a14418cab005065c72c9759370934c184bc`.
+Its explicit Ruby gem closure includes `zlib` 3.2.3 and `resolv` 0.7.2.
 
 Development packages are published to GitHub Packages as incrementing
 prereleases. NuGet.org publication is reserved for explicitly approved tagged

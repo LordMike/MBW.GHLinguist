@@ -8,7 +8,7 @@ Require(Directory.Exists(Path.Combine(AppContext.BaseDirectory, "lib", "ruby")),
 Require(File.Exists(Path.Combine(AppContext.BaseDirectory, "provenance.json")), "Missing packaged provenance manifest.");
 
 using LinguistRuntime runtime = LinguistRuntime.Create();
-Require(runtime.Version.RubyVersion == "4.0.1", $"Unexpected Ruby version {runtime.Version.RubyVersion}.");
+Require(runtime.Version.RubyVersion == "4.0.6", $"Unexpected Ruby version {runtime.Version.RubyVersion}.");
 Require(runtime.Version.LinguistVersion == "9.6.0", $"Unexpected Linguist version {runtime.Version.LinguistVersion}.");
 Require(runtime.Version.LinguistRevision == expectedRevision, $"Unexpected Linguist revision {runtime.Version.LinguistRevision}.");
 Require(runtime.Version.ClassifierSha256.Length == 64, "The classifier digest was not embedded.");

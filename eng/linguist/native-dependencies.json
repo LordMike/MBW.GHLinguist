@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "ruby": {
-    "version": "4.0.1",
+    "version": "4.0.6",
     "abiVersion": "4.0.0",
     "windowsPlatform": "x64-mingw-ucrt",
-    "dockerImage": "ruby:4.0.1-bookworm@sha256:4ca45c63e012dd4ace6d74ef21192591994015a761a59b8b267cde348f937847",
+    "dockerImage": "ruby:4.0.6-bookworm@sha256:b4aa7093ffca123d849e79b3e2bc582064f6dd9c22940e69c08bc47d74e355db",
     "runtimeFiles": [
       "bin/ruby.exe",
       "bin/x64-ucrt-ruby400.dll",
@@ -34,6 +34,16 @@
       "name": "charlock_holmes",
       "version": "0.7.9",
       "nativeExtension": true
+    },
+    {
+      "name": "zlib",
+      "version": "3.2.3",
+      "nativeExtension": true
+    },
+    {
+      "name": "resolv",
+      "version": "0.7.2",
+      "nativeExtension": false
     }
   ],
   "icu": {

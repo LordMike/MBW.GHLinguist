@@ -1,7 +1,7 @@
 # Linguist build scripts
 
 `native-dependencies.json` is the checked-in, non-secret source of truth for
-the CRuby 4.0.1, Linguist 9.6.0, gem, ICU, and exclusion pins. It explicitly
+the CRuby 4.0.6, Linguist 9.6.0, gem, ICU, and exclusion pins. It explicitly
 excludes Rugged and libgit2 because this package does not expose repository
 traversal.
 
@@ -32,7 +32,7 @@ CMake, and ICU development files needed to build this closure.
 
 ## Windows x64
 
-Requires an existing RubyInstaller 4.0.1 x64-ucrt root with the MSYS2 Devkit,
+Requires an existing RubyInstaller 4.0.6 x64-ucrt root with the MSYS2 Devkit,
 the pinned gems, and ICU DLLs. By default the script uses `ruby` on `PATH` and
 `extern/linguist`; pass explicit roots when staging a different installed asset
 root:

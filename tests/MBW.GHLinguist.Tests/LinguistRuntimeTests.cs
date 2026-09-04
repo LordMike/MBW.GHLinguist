@@ -371,7 +371,7 @@ public sealed class LinguistRuntimeTests
                 ["ruby"],
                 ["Gemfile"]);
             Languages = Array.AsReadOnly([Language]);
-            Version = new LinguistVersionInfo(1, 0, "1.0.0", "4.0.1", "9.6.0", "196b2a1", "sha256");
+            Version = new LinguistVersionInfo(1, 0, "1.0.0", "4.0.6", "9.6.0", "196b2a1", "sha256");
             Analysis = new BlobAnalysis(
                 Language,
                 DetectionStrategy.Extension,

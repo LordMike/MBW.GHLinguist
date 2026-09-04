@@ -49,7 +49,7 @@ jobs:
       - name: Set up the pinned Ruby runtime
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '4.0.1'
+          ruby-version: '4.0.6'
           bundler: none
 
       - name: Install Windows native prerequisites

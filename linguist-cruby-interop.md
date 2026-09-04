@@ -9,7 +9,7 @@ created: 2026-09-02T18:21:01+02:00
 
 Package GitHub Linguist 9.6.0 at commit `196b2a14418cab005065c72c9759370934c184bc` behind a stable C ABI and managed .NET facade. Support complete single-blob analysis, content classification, and language metadata without requiring Ruby installation on the consuming machine.
 
-Pin CRuby 4.0.1 and lock every native and Ruby dependency by version, source hash, license, RID, and built-binary hash.
+Pin CRuby 4.0.6 and lock every native and Ruby dependency by version, source hash, license, RID, and built-binary hash.
 
 ## Settled decisions
 
@@ -513,7 +513,7 @@ Use `buildTransitive` to copy the selected complete closure while preserving sub
 ## Work
 
 1. Obtain approval for the project documentation changes, then document the C ABI, process-lifetime runtime, supported RIDs, copied-result ownership, serialized execution, unsupported unloading, package layout, and deferred repository API without changing schema, format, or documentation versions.
-2. Pin CRuby 4.0.1 and Linguist 9.6.0 commit `196b2a14418cab005065c72c9759370934c184bc`. Generate a locked dependency manifest for `charlock_holmes`, ICU, `mini_mime`, CGI, Psych/libyaml, and the Linguist tokenizer extension. Exclude Rugged/libgit2 because repository behavior is deferred. Record source and binary SHA-256 values, licenses, patches, build flags, and redistribution decisions.
+2. Pin CRuby 4.0.6 and Linguist 9.6.0 commit `196b2a14418cab005065c72c9759370934c184bc`. Generate a locked dependency manifest for `charlock_holmes`, ICU, `mini_mime`, CGI, `zlib`, `resolv`, Psych/libyaml, and the Linguist tokenizer extension. Exclude Rugged/libgit2 because repository behavior is deferred. Record source and binary SHA-256 values, licenses, patches, build flags, and redistribution decisions.
 3. Add `src/MBW.GHLinguist.Native` with CMake-based Windows and Linux builds, the public header, C ABI implementation, worker queue, process runtime, Ruby bridge, export lists, symbol-visibility controls, and deterministic asset-location logic.
 4. Start one native worker on the first runtime creation and initialize CRuby on that thread. Cache Ruby constants, method IDs, language metadata, classifier data, and immutable native copies. Send every Ruby operation through the synchronous request queue. Do not use `rb_thread_call_with_gvl` from arbitrary managed threads.
 5. Add a Ruby `InteropBlob` matching Linguist's blob contract. Implement standard strategy detection, strategy tracing, unrestricted or candidate-filtered classification, language registry projection, binary and encoding analysis, MIME results, generated/vendored/documentation predicates, line counts, and statistics eligibility. Copy all returned data into native-owned result objects before leaving the worker.

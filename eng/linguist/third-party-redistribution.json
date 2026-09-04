@@ -14,7 +14,7 @@
       "output": "licenses/MBW.GHLinguist/"
     },
     {
-      "component": "CRuby 4.0.1",
+      "component": "CRuby 4.0.6",
       "license": "Ruby License (Ruby 1.9.3 license text)",
       "licenseSource": {
         "linux-x64": [
@@ -52,7 +52,7 @@
       "output": "licenses/linguist/LICENSE"
     },
     {
-      "component": "Configured gems: cgi 0.4.2, mini_mime 1.1.5, charlock_holmes 0.7.9",
+      "component": "Configured gems: cgi 0.4.2, mini_mime 1.1.5, charlock_holmes 0.7.9, zlib 3.2.3, resolv 0.7.2",
       "license": "The license or copying files shipped in each installed gem",
       "licenseSource": {
         "all": [

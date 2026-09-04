@@ -20,7 +20,7 @@ public sealed class NativeRuntimeIntegrationTests
 
         Assert.Equal(1U, runtime.Version.AbiMajor);
         Assert.Equal(0U, runtime.Version.AbiMinor);
-        Assert.Equal("4.0.1", runtime.Version.RubyVersion);
+        Assert.Equal("4.0.6", runtime.Version.RubyVersion);
         Assert.Equal("9.6.0", runtime.Version.LinguistVersion);
         Assert.Equal(LinguistRevision, runtime.Version.LinguistRevision);
         Assert.Matches("^[0-9a-f]{64}$", runtime.Version.ClassifierSha256);

@@ -2,7 +2,7 @@ namespace MBW.GHLinguist;
 
 /// <summary>Identifies the managed wrapper, native ABI, embedded Ruby, and Linguist data loaded by a runtime.</summary>
 /// <example>
-/// A runtime may report values such as ABI <c>1.0</c>, Linguist <c>9.6.0</c>, and Ruby <c>4.0.1</c>.
+/// A runtime may report values such as ABI <c>1.0</c>, Linguist <c>9.6.0</c>, and Ruby <c>4.0.6</c>.
 /// </example>
 public sealed class LinguistVersionInfo
 {
