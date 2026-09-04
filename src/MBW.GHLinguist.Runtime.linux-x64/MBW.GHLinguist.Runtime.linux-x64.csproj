@@ -6,7 +6,7 @@
     <IncludeSymbols>false</IncludeSymbols>
     <PackageId>MBW.GHLinguist.Runtime.linux-x64</PackageId>
     <Title>MBW.GHLinguist.Runtime.linux-x64</Title>
-    <Description>Linux x64 native runtime closure for MBW.GHLinguist.</Description>
+    <Description>Linux x64 native runtime closure for MBW.GHLinguist. Installed transitively; reference MBW.GHLinguist instead.</Description>
     <PackageLicenseFile>PACKAGE-LICENSES.md</PackageLicenseFile>
     <PackageProjectUrl>https://github.com/LordMike/MBW.GHLinguist</PackageProjectUrl>
     <RepositoryUrl>https://github.com/LordMike/MBW.GHLinguist</RepositoryUrl>

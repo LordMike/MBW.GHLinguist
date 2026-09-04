@@ -5,7 +5,7 @@
     <IsPackable>true</IsPackable>
     <PackageId>MBW.GHLinguist</PackageId>
     <Title>MBW.GHLinguist</Title>
-    <Description>GitHub Linguist interop for .NET.</Description>
+    <Description>GitHub Linguist interop for .NET 10. Set RuntimeIdentifier to win-x64 or linux-x64; matching native assets are selected automatically.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/LordMike/MBW.GHLinguist</PackageProjectUrl>
     <RepositoryUrl>https://github.com/LordMike/MBW.GHLinguist</RepositoryUrl>

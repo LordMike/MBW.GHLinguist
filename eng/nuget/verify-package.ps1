@@ -243,7 +243,7 @@ try {
     [ordered]@{
       id = 'MBW.GHLinguist'
       title = 'MBW.GHLinguist'
-      description = 'GitHub Linguist interop for .NET.'
+      description = 'GitHub Linguist interop for .NET 10. Set RuntimeIdentifier to win-x64 or linux-x64; matching native assets are selected automatically.'
       tags = 'github linguist language-detection code-analysis dotnet native'
     }
   }
@@ -251,7 +251,7 @@ try {
     [ordered]@{
       id = "MBW.GHLinguist.Runtime.$RuntimeIdentifier"
       title = "MBW.GHLinguist.Runtime.$RuntimeIdentifier"
-      description = "$(if ($RuntimeIdentifier -eq 'win-x64') { 'Windows' } else { 'Linux' }) x64 native runtime closure for MBW.GHLinguist."
+      description = "$(if ($RuntimeIdentifier -eq 'win-x64') { 'Windows' } else { 'Linux' }) x64 native runtime closure for MBW.GHLinguist. Installed transitively; reference MBW.GHLinguist instead."
       tags = "github linguist language-detection code-analysis dotnet native $RuntimeIdentifier"
     }
   }
