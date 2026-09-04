@@ -47,7 +47,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up the pinned Ruby runtime
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@6e5d382445ae5590b7449d8b3bc8cb1c2c27f617 # v1.317.0
         with:
           ruby-version: '4.0.6'
           bundler: none
@@ -56,14 +56,26 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          ridk exec pacman --noconfirm -S --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-make mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-icu
           $manifest = Get-Content eng/linguist/native-dependencies.json -Raw | ConvertFrom-Json
+          $packages = @($manifest.windows.pacmanPackages)
+          if ($packages.Count -eq 0) { throw 'The pacman package allowlist is empty.' }
+          ridk exec pacman --noconfirm -S --needed @packages
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to install the allowlisted Windows native prerequisites.' }
+          $gemCache = Join-Path $env:RUNNER_TEMP 'ghlinguist-gems'
+          New-Item -ItemType Directory -Path $gemCache -Force | Out-Null
           foreach ($gem in $manifest.gems) {
-            $arguments = @('install', '--no-document', $gem.name, '--version', $gem.version)
+            if ($gem.artifact -ne "$($gem.name)-$($gem.version).gem") { throw "Unexpected artifact name for $($gem.name) $($gem.version)." }
+            if ($gem.artifactUrl -ne "https://rubygems.org/downloads/$($gem.artifact)") { throw "Unexpected artifact URL for $($gem.name) $($gem.version)." }
+            if ($gem.sha256 -notmatch '^[a-f0-9]{64}$') { throw "Invalid SHA-256 for $($gem.name) $($gem.version)." }
+            $artifactPath = Join-Path $gemCache $gem.artifact
+            Invoke-WebRequest -Uri $gem.artifactUrl -OutFile $artifactPath
+            $actualSha256 = (Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actualSha256 -ne $gem.sha256) { throw "SHA-256 mismatch for gem artifact $($gem.artifact)." }
+            $arguments = @('install', '--local', '--no-document', '--ignore-dependencies', $artifactPath)
             if ($gem.name -eq 'charlock_holmes') {
               $arguments += @('--', '--with-icui18nlib=icuin', '--with-icudatalib=icudt')
             }
-            gem @arguments
+            & gem @arguments
             if ($LASTEXITCODE -ne 0) { throw "Failed to install $($gem.name) $($gem.version)." }
           }
 
@@ -161,14 +173,34 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $manifestHash = (Get-FileHash eng/linguist/native-dependencies.json -Algorithm SHA256).Hash.ToLowerInvariant()
+          $manifestPath = 'eng/linguist/native-dependencies.json'
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+          $expectedLocks = [ordered]@{
+            nativeDependenciesSha256 = (Get-FileHash $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            thirdPartyRedistributionSha256 = (Get-FileHash eng/linguist/third-party-redistribution.json -Algorithm SHA256).Hash.ToLowerInvariant()
+            bridgeSha256 = (Get-FileHash src/MBW.GHLinguist.Native/ruby/ghlinguist/bridge.rb -Algorithm SHA256).Hash.ToLowerInvariant()
+            linguistVersionSha256 = (Get-FileHash extern/linguist/lib/linguist/VERSION -Algorithm SHA256).Hash.ToLowerInvariant()
+          }
           foreach ($rid in 'win-x64', 'linux-x64') {
             $root = Join-Path '.tmp/artifacts/native' $rid
             $provenancePath = Join-Path $root 'provenance.json'
             if (-not (Test-Path -LiteralPath $provenancePath)) { throw "Missing provenance for $rid." }
             $provenance = Get-Content -LiteralPath $provenancePath -Raw | ConvertFrom-Json
+            if ($provenance.schemaVersion -ne 2) { throw "Unexpected provenance schema version for $rid." }
             if ($provenance.platform -ne $rid) { throw "Provenance platform '$($provenance.platform)' does not match $rid." }
-            if ($provenance.manifestSha256 -ne $manifestHash) { throw "Provenance manifest hash does not match the checked-out source for $rid." }
+            if ($provenance.manifestSha256 -ne $expectedLocks.nativeDependenciesSha256) { throw "Provenance manifest hash does not match the checked-out source for $rid." }
+            foreach ($lockName in $expectedLocks.Keys) {
+              if ($provenance.lockInputs.$lockName -ne $expectedLocks[$lockName]) { throw "Provenance lock input '$lockName' does not match the checked-out source for $rid." }
+            }
+            foreach ($gem in $manifest.gems) {
+              $actualGem = @($provenance.externalDependencies.gems | Where-Object { $_.name -eq $gem.name -and $_.version -eq $gem.version })
+              if ($actualGem.Count -ne 1 -or $actualGem[0].artifact -ne $gem.artifact -or $actualGem[0].artifactUrl -ne $gem.artifactUrl -or $actualGem[0].sha256 -ne $gem.sha256) {
+                throw "Provenance gem artifact identity does not match the manifest for $($gem.name) $($gem.version) in $rid."
+              }
+            }
+            $expectedPackageNames = if ($rid -eq 'win-x64') { @($manifest.windows.pacmanPackages | Sort-Object) } else { @($manifest.linux.aptPackages | Sort-Object) }
+            $actualPackageNames = if ($rid -eq 'win-x64') { @($provenance.externalDependencies.pacmanPackages | ForEach-Object { $_.name } | Sort-Object) } else { @($provenance.externalDependencies.aptPackages | ForEach-Object { $_.name } | Sort-Object) }
+            if (($actualPackageNames -join '|') -ne ($expectedPackageNames -join '|')) { throw "Provenance package identities do not match the strict allowlist for $rid." }
             if (@($provenance.files).Count -eq 0) { throw "Provenance for $rid contains no files." }
             foreach ($file in $provenance.files) {
               $relativePath = [string]$file.path

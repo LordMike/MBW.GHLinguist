@@ -75,7 +75,7 @@ function Copy-RequiredGemLicenses {
 }
 
 function Write-Provenance {
-  param([Parameter(Mandatory)] $Manifest, [Parameter(Mandatory)] [string] $Root)
+  param([Parameter(Mandatory)] $Manifest, [Parameter(Mandatory)] [string] $Root, [Parameter(Mandatory)] [object[]] $PacmanPackages, [Parameter(Mandatory)] [string] $RubyDescription)
 
   $files = Get-ChildItem -LiteralPath $Root -File -Recurse |
     Where-Object { $_.Name -ne 'provenance.json' } |
@@ -88,9 +88,22 @@ function Write-Provenance {
     }
 
   [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     platform = 'win-x64'
     manifestSha256 = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    lockInputs = [ordered]@{
+      nativeDependenciesSha256 = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+      thirdPartyRedistributionSha256 = (Get-FileHash -LiteralPath $licenseInventoryPath -Algorithm SHA256).Hash.ToLowerInvariant()
+      bridgeSha256 = (Get-FileHash -LiteralPath (Join-Path $repoRoot 'src/MBW.GHLinguist.Native/ruby/ghlinguist/bridge.rb') -Algorithm SHA256).Hash.ToLowerInvariant()
+      linguistVersionSha256 = (Get-FileHash -LiteralPath (Join-Path $LinguistRoot 'lib/linguist/VERSION') -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+    externalDependencies = [ordered]@{
+      ruby = [ordered]@{ version = $Manifest.ruby.version; description = $RubyDescription }
+      gems = @($Manifest.gems | ForEach-Object {
+        [ordered]@{ name = $_.name; version = $_.version; artifact = $_.artifact; artifactUrl = $_.artifactUrl; sha256 = $_.sha256 }
+      })
+      pacmanPackages = @($PacmanPackages)
+    }
     rubyVersion = $Manifest.ruby.version
     linguistVersion = $Manifest.linguist.version
     linguistRevision = $Manifest.linguist.revision
@@ -149,6 +162,27 @@ foreach ($command in 'make', 'gcc') {
   if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
     throw "Required RubyInstaller Devkit command is unavailable: $command"
   }
+}
+
+$pacman = Join-Path $RubyRoot 'msys64/usr/bin/pacman.exe'
+Require-Path $pacman 'RubyInstaller MSYS2 package manager'
+$pacmanPackages = foreach ($package in $manifest.windows.pacmanPackages) {
+  if ($package -notmatch '^[a-z0-9][a-z0-9+.-]*$') {
+    throw "Invalid pacman package allowlist entry: $package"
+  }
+  $identity = (& $pacman '-Q' $package).Trim()
+  if ($LASTEXITCODE -ne 0 -or -not $identity) {
+    throw "Required allowlisted pacman package is not installed: $package"
+  }
+  $parts = $identity -split '\s+', 2
+  if ($parts.Count -ne 2) {
+    throw "Unable to parse pacman package identity: $identity"
+  }
+  [ordered]@{ name = $parts[0]; version = $parts[1] }
+}
+$rubyDescription = (& $ruby -e 'print RUBY_DESCRIPTION').Trim()
+if ($LASTEXITCODE -ne 0 -or -not $rubyDescription) {
+  throw 'Unable to identify the pinned Ruby runtime.'
 }
 
 Remove-Item -LiteralPath $buildRoot, $nativeAssetRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -312,5 +346,5 @@ Get-ChildItem -LiteralPath $nativeAssetRoot -Recurse -Force -File |
   Where-Object { $_.Name.StartsWith('.', [StringComparison]::Ordinal) } |
   Remove-Item -Force
 
-Write-Provenance $manifest $nativeAssetRoot
+Write-Provenance $manifest $nativeAssetRoot $pacmanPackages $rubyDescription
 Write-Host "Staged complete Windows native closure: $nativeAssetRoot"

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "ruby": {
     "version": "4.0.6",
     "abiVersion": "4.0.0",
@@ -23,29 +23,61 @@
     {
       "name": "cgi",
       "version": "0.4.2",
+      "artifact": "cgi-0.4.2.gem",
+      "artifactUrl": "https://rubygems.org/downloads/cgi-0.4.2.gem",
+      "sha256": "a3cb190d46a820ca01a3e28bd5b64e67003ff99d7884b70512448566f35347e6",
       "nativeExtension": false
     },
     {
       "name": "mini_mime",
       "version": "1.1.5",
+      "artifact": "mini_mime-1.1.5.gem",
+      "artifactUrl": "https://rubygems.org/downloads/mini_mime-1.1.5.gem",
+      "sha256": "8681b7e2e4215f2a159f9400b5816d85e9d8c6c6b491e96a12797e798f8bccef",
       "nativeExtension": false
     },
     {
       "name": "charlock_holmes",
       "version": "0.7.9",
+      "artifact": "charlock_holmes-0.7.9.gem",
+      "artifactUrl": "https://rubygems.org/downloads/charlock_holmes-0.7.9.gem",
+      "sha256": "b49e8a11ce1921e2c5b65511bb864ae51720ce9bd1c336ccf0e89e6c8ae62db0",
       "nativeExtension": true
     },
     {
       "name": "zlib",
       "version": "3.2.3",
+      "artifact": "zlib-3.2.3.gem",
+      "artifactUrl": "https://rubygems.org/downloads/zlib-3.2.3.gem",
+      "sha256": "5bd316698b32f31a64ab910a8b6c282442ca1626a81bbd6a1674e8522e319c20",
       "nativeExtension": true
     },
     {
       "name": "resolv",
       "version": "0.7.2",
+      "artifact": "resolv-0.7.2.gem",
+      "artifactUrl": "https://rubygems.org/downloads/resolv-0.7.2.gem",
+      "sha256": "626d044d975ab2daac759bf898416f1b51e2cb8dcd6727c2b5b5b28b97ead2e1",
       "nativeExtension": false
     }
   ],
+  "linux": {
+    "aptPackages": [
+      "binutils",
+      "build-essential",
+      "cmake",
+      "libicu-dev",
+      "patchelf"
+    ]
+  },
+  "windows": {
+    "pacmanPackages": [
+      "mingw-w64-ucrt-x86_64-gcc",
+      "mingw-w64-ucrt-x86_64-make",
+      "mingw-w64-ucrt-x86_64-ninja",
+      "mingw-w64-ucrt-x86_64-icu"
+    ]
+  },
   "icu": {
     "requiredLibraries": [
       "icudt",

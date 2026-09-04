@@ -19,7 +19,7 @@ require_path() {
   [[ -e "$1" ]] || fail "Required $2 is missing: $1"
 }
 
-for command in git ruby gem make cc cmake ldd patchelf readelf dpkg-query; do
+for command in git ruby gem make cc cmake ldd patchelf readelf dpkg-query sha256sum; do
   command -v "$command" >/dev/null 2>&1 || fail "Required command is unavailable: $command"
 done
 require_path "$manifest_path" "native dependency manifest"
@@ -51,7 +51,7 @@ require_path "$ruby_arch_include_dir/ruby/config.h" "Ruby architecture headers"
 require_path "$ruby_shared_library" "Ruby shared runtime library"
 
 rm -rf "$build_root" "$native_asset_root"
-mkdir -p "$build_root/tokenizer" "$native_asset_root/bin" "$native_asset_root/lib" "$native_asset_root/linguist" "$native_asset_root/licenses"
+mkdir -p "$build_root/tokenizer" "$build_root/gems" "$native_asset_root/bin" "$native_asset_root/lib" "$native_asset_root/linguist" "$native_asset_root/licenses"
 
 copy_required_license() {
   local destination="$1"
@@ -97,12 +97,27 @@ cp -a "$ruby_prefix/lib/ruby" "$native_asset_root/lib/ruby"
 
 gem_home="$native_asset_root/lib/ruby/gems/$ruby_abi_version"
 mkdir -p "$gem_home"
-while IFS=$'\t' read -r gem_name gem_version; do
+while IFS=$'\t' read -r gem_name gem_version gem_artifact gem_sha256 gem_url; do
   [[ -n "$gem_name" ]] || continue
-  GEM_HOME="$gem_home" GEM_PATH="$gem_home" gem install --no-document --ignore-dependencies --install-dir "$gem_home" "$gem_name" --version "$gem_version"
+  [[ "$gem_artifact" == "$gem_name-$gem_version.gem" ]] || fail "Unexpected artifact name for gem $gem_name $gem_version: $gem_artifact"
+  [[ "$gem_url" == "https://rubygems.org/downloads/$gem_artifact" ]] || fail "Unexpected artifact URL for gem $gem_name $gem_version."
+  [[ "$gem_sha256" =~ ^[a-f0-9]{64}$ ]] || fail "Invalid SHA-256 for gem $gem_name $gem_version."
+  gem_artifact_path="$build_root/gems/$gem_artifact"
+  GEM_URL="$gem_url" GEM_ARTIFACT_PATH="$gem_artifact_path" ruby -ropen-uri -e 'URI.open(ENV.fetch("GEM_URL"), "rb") { |source| File.open(ENV.fetch("GEM_ARTIFACT_PATH"), "wb") { |destination| IO.copy_stream(source, destination) } }'
+  [[ "$(sha256sum "$gem_artifact_path" | awk '{ print $1 }')" == "$gem_sha256" ]] || fail "SHA-256 mismatch for gem artifact $gem_artifact."
+  GEM_HOME="$gem_home" GEM_PATH="$gem_home" gem install --local --no-document --ignore-dependencies --install-dir "$gem_home" "$gem_artifact_path"
   copy_gem_licenses "$gem_name" "$gem_version"
-done < <(ruby -rjson -e 'JSON.parse(File.read(ARGV.fetch(0))).fetch("gems").each { |gem| puts "#{gem.fetch("name")}\t#{gem.fetch("version")}" }' "$manifest_path")
+done < <(ruby -rjson -e 'JSON.parse(File.read(ARGV.fetch(0))).fetch("gems").each { |gem| puts [gem.fetch("name"), gem.fetch("version"), gem.fetch("artifact"), gem.fetch("sha256"), gem.fetch("artifactUrl")].join("\t") }' "$manifest_path")
 find "$gem_home/gems" -mindepth 2 -maxdepth 2 -type d -name ext -prune -exec rm -rf {} +
+
+apt_packages_path="$build_root/apt-packages.tsv"
+mapfile -t apt_packages < <(ruby -rjson -e 'puts JSON.parse(File.read(ARGV.fetch(0))).fetch("linux").fetch("aptPackages")' "$manifest_path")
+(( ${#apt_packages[@]} > 0 )) || fail "The apt package allowlist is empty."
+: > "$apt_packages_path"
+for apt_package in "${apt_packages[@]}"; do
+  [[ "$apt_package" =~ ^[a-z0-9][a-z0-9+.-]*$ ]] || fail "Invalid apt package allowlist entry: $apt_package"
+  dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' "$apt_package" >> "$apt_packages_path"
+done
 
 for library in icudata icui18n icuuc; do
   library_path="$(ldconfig -p | awk -v name="lib${library}.so" '$1 ~ ("^" name) { print $NF; exit }')"
@@ -196,13 +211,18 @@ done
 
 copy_required_license "$native_asset_root/licenses/MBW.GHLinguist/LICENSE" "$repo_root/LICENSE"
 copy_required_license "$native_asset_root/licenses/MBW.GHLinguist/THIRD-PARTY-NOTICES.md" "$repo_root/THIRD-PARTY-NOTICES.md"
-copy_required_license "$native_asset_root/licenses/ruby/COPYING" "$ruby_prefix/COPYING" "$ruby_prefix/share/doc/ruby/COPYING"
+copy_required_license "$native_asset_root/licenses/ruby/COPYING" "$ruby_prefix/COPYING" "$ruby_prefix/share/doc/ruby/COPYING" "$repo_root/eng/licenses/ruby-4.0.6-COPYING"
 copy_required_license "$native_asset_root/licenses/linguist/LICENSE" "$linguist_root/LICENSE"
 
 declare -A documented_debian_packages=()
 for copied_source in "${copied_library_sources[@]}"; do
+  # CRuby is supplied by the pinned container image and is documented above.
+  [[ "$copied_source" == "$ruby_prefix/"* ]] && continue
   [[ "$copied_source" == /usr/* || "$copied_source" == /lib/* ]] || continue
   package_owner="$(dpkg-query -S "$copied_source" 2>/dev/null | head -n 1 || true)"
+  if [[ -z "$package_owner" && "$copied_source" == /usr/lib/* ]]; then
+    package_owner="$(dpkg-query -S "${copied_source#/usr}" 2>/dev/null | head -n 1 || true)"
+  fi
   [[ -n "$package_owner" ]] || fail "Unable to identify the Debian package owning copied ELF library: $copied_source"
   debian_package="${package_owner%%:*}"
   [[ -n "${documented_debian_packages[$debian_package]:-}" ]] && continue
@@ -251,19 +271,37 @@ RUBYLIB="$native_asset_root/lib:$native_asset_root" \
   GHL_DEPENDENCY_MANIFEST="$manifest_path" \
   "$native_asset_root/bin/ruby" "$script_dir/validate.rb"
 
-NATIVE_ASSET_ROOT="$native_asset_root" MANIFEST_PATH="$manifest_path" ruby -rjson -rdigest -e '
+NATIVE_ASSET_ROOT="$native_asset_root" MANIFEST_PATH="$manifest_path" LICENSE_INVENTORY_PATH="$license_inventory_path" BRIDGE_SOURCE_PATH="$bridge_source" LINGUIST_VERSION_PATH="$linguist_root/lib/linguist/VERSION" APT_PACKAGES_PATH="$apt_packages_path" ruby -rjson -rdigest -e '
   root = ENV.fetch("NATIVE_ASSET_ROOT")
   files = Dir.chdir(root) do
     Dir.glob("**/*", File::FNM_DOTMATCH).select { |path| File.file?(path) && path != "provenance.json" }.sort.map do |path|
       { "path" => path, "sha256" => Digest::SHA256.file(path).hexdigest }
     end
   end
-  manifest = JSON.parse(File.read(ENV.fetch("MANIFEST_PATH")))
-  output = {
-    "schemaVersion" => 1,
-    "platform" => "linux-x64",
-    "manifestSha256" => Digest::SHA256.file(ENV.fetch("MANIFEST_PATH")).hexdigest,
-    "rubyVersion" => manifest.fetch("ruby").fetch("version"),
+   manifest = JSON.parse(File.read(ENV.fetch("MANIFEST_PATH")))
+   gem_artifacts = manifest.fetch("gems").map do |gem|
+     gem.slice("name", "version", "artifact", "artifactUrl", "sha256")
+   end
+   apt_packages = File.readlines(ENV.fetch("APT_PACKAGES_PATH"), chomp: true).map do |line|
+     name, version, architecture = line.split("\t", 3)
+     { "name" => name, "version" => version, "architecture" => architecture }
+   end
+   output = {
+     "schemaVersion" => 2,
+     "platform" => "linux-x64",
+     "manifestSha256" => Digest::SHA256.file(ENV.fetch("MANIFEST_PATH")).hexdigest,
+     "lockInputs" => {
+       "nativeDependenciesSha256" => Digest::SHA256.file(ENV.fetch("MANIFEST_PATH")).hexdigest,
+       "thirdPartyRedistributionSha256" => Digest::SHA256.file(ENV.fetch("LICENSE_INVENTORY_PATH")).hexdigest,
+       "bridgeSha256" => Digest::SHA256.file(ENV.fetch("BRIDGE_SOURCE_PATH")).hexdigest,
+       "linguistVersionSha256" => Digest::SHA256.file(ENV.fetch("LINGUIST_VERSION_PATH")).hexdigest
+     },
+     "externalDependencies" => {
+       "rubyDockerImage" => manifest.fetch("ruby").fetch("dockerImage"),
+       "gems" => gem_artifacts,
+       "aptPackages" => apt_packages
+     },
+     "rubyVersion" => manifest.fetch("ruby").fetch("version"),
     "linguistVersion" => manifest.fetch("linguist").fetch("version"),
     "linguistRevision" => manifest.fetch("linguist").fetch("revision"),
     "files" => files
