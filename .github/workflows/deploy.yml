@@ -17,8 +17,81 @@ on:
         type: string
 
 jobs:
-  no_deployment:
-    if: ${{ false }}
+  github_release:
+    name: Publish verified package release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - run: ':'
+      - name: Checkout exact tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download verified package artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4.3.0
+        with:
+          name: package-artifacts
+          path: .artifacts
+
+      - name: Validate release context and stage attachments
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release-tag }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          IS_PRERELEASE: ${{ inputs.is-prerelease }}
+          IS_PLAIN_VERSION: ${{ inputs.is-plain-version }}
+        run: |
+          set -euo pipefail
+
+          expected_version="${RELEASE_TAG#v}"
+          [ "$RELEASE_VERSION" = "$expected_version" ] || {
+            echo "::error::Release tag $RELEASE_TAG does not match package version $RELEASE_VERSION."
+            exit 1
+          }
+          [[ "$IS_PRERELEASE" =~ ^(true|false)$ ]] || {
+            echo "::error::Invalid prerelease flag: $IS_PRERELEASE"
+            exit 1
+          }
+          [[ "$IS_PLAIN_VERSION" =~ ^(true|false)$ ]] || {
+            echo "::error::Invalid plain-version flag: $IS_PLAIN_VERSION"
+            exit 1
+          }
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
+            [ "$IS_PRERELEASE" = true ] || {
+              echo '::error::A prerelease package must create a prerelease GitHub Release.'
+              exit 1
+            }
+          else
+            [ "$IS_PRERELEASE" = false ] || {
+              echo '::error::A stable package must create a stable GitHub Release.'
+              exit 1
+            }
+          fi
+
+          mapfile -t packages < <(find .artifacts/nuget -maxdepth 1 -type f -name '*.nupkg' ! -name '*.snupkg' -print | sort)
+          mapfile -t symbols < <(find .artifacts/nuget -maxdepth 1 -type f -name '*.snupkg' -print | sort)
+          [ "${#packages[@]}" -eq 1 ] || {
+            echo "::error::Expected exactly one primary package, found ${#packages[@]}."
+            exit 1
+          }
+          [ "${#symbols[@]}" -eq 1 ] || {
+            echo "::error::Expected exactly one symbol package, found ${#symbols[@]}."
+            exit 1
+          }
+
+          mkdir -p .artifacts/release
+          cp "${packages[0]}" "${symbols[0]}" .artifacts/ci-metadata.json .artifacts/release/
+          (
+            cd .artifacts/release
+            sha256sum "$(basename "${packages[0]}")" "$(basename "${symbols[0]}")" ci-metadata.json > SHA256SUMS
+          )
+
+      - name: Create GitHub Release
+        uses: ./.github/actions/publish_github_release
+        with:
+          release-tag: ${{ inputs.release-tag }}
+          is-prerelease: ${{ inputs.is-prerelease }}
+        env:
+          GITHUB_RELEASE_TOKEN: ${{ github.token }}
