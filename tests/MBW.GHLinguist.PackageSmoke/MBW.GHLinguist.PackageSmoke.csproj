@@ -5,10 +5,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MBW.GHLinguist" Version="$(MBWGHLinguistPackageVersion)" />
+    <PackageReference Include="$(MBWGHLinguistRuntimePackageId)" Version="$(MBWGHLinguistPackageVersion)" />
   </ItemGroup>
 
   <Target Name="ValidatePackageVersion" BeforeTargets="Restore">
     <Error Condition="'$(MBWGHLinguistPackageVersion)' == ''" Text="MBWGHLinguistPackageVersion must identify the package under test." />
+    <Error Condition="'$(MBWGHLinguistRuntimePackageId)' == ''" Text="MBWGHLinguistRuntimePackageId must identify the runtime package under test." />
   </Target>
 </Project>

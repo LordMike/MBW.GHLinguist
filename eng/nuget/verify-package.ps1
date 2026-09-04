@@ -8,11 +8,22 @@ param(
 
   [Parameter(Mandatory)]
   [ValidatePattern('^[a-fA-F0-9]{40}$')]
-  [string] $ExpectedCommit
+  [string] $ExpectedCommit,
+
+  [Parameter(Mandatory)]
+  [ValidateSet('managed', 'runtime')]
+  [string] $Kind,
+
+  [ValidateSet('win-x64', 'linux-x64')]
+  [string] $RuntimeIdentifier
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+if (($Kind -eq 'runtime') -ne (-not [string]::IsNullOrWhiteSpace($RuntimeIdentifier))) {
+  throw 'RuntimeIdentifier is required only when validating a runtime package.'
+}
 
 $packageMatches = @(Resolve-Path -Path $Package)
 if ($packageMatches.Count -ne 1) {
@@ -20,106 +31,73 @@ if ($packageMatches.Count -ne 1) {
 }
 
 $packagePath = $packageMatches[0].Path
-Add-Type -AssemblyName System.IO.Compression.FileSystem
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+$inventoryPath = Join-Path $repoRoot 'eng/linguist/third-party-redistribution.json'
+$commonEntries = @(
+  'README.md'
+  'LICENSE'
+  'THIRD-PARTY-NOTICES.md'
+  'THIRD-PARTY-REDISTRIBUTION.json'
+  'icon.png'
+)
 
+function Read-EntryText {
+  param([Parameter(Mandatory)] $Entry)
+
+  $reader = [System.IO.StreamReader]::new($Entry.Open())
+  try {
+    return $reader.ReadToEnd()
+  }
+  finally {
+    $reader.Dispose()
+  }
+}
+
+function Get-EntrySha256 {
+  param([Parameter(Mandatory)] $Entry)
+
+  $stream = $Entry.Open()
+  $hash = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    return [System.Convert]::ToHexString($hash.ComputeHash($stream)).ToLowerInvariant()
+  }
+  finally {
+    $hash.Dispose()
+    $stream.Dispose()
+  }
+}
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [System.IO.Compression.ZipFile]::OpenRead($packagePath)
 try {
   $fileEntries = @($archive.Entries | Where-Object { -not $_.FullName.EndsWith('/') })
   $entries = @($fileEntries.FullName)
-
-  foreach ($entry in $entries) {
-    $segments = $entry.Split('/')
-    if ([string]::IsNullOrWhiteSpace($entry) -or
-        $entry.Contains('\') -or
-        $entry.StartsWith('/') -or
-        $entry -match '^[A-Za-z]:' -or
+  $entriesByName = @{}
+  foreach ($entry in $fileEntries) {
+    $segments = $entry.FullName.Split('/')
+    if ([string]::IsNullOrWhiteSpace($entry.FullName) -or
+        $entry.FullName.Contains('\') -or
+        $entry.FullName.StartsWith('/') -or
+        $entry.FullName -match '^[A-Za-z]:' -or
         $segments -contains '' -or
         $segments -contains '.' -or
         $segments -contains '..') {
-      throw "Package contains an invalid entry path: $entry"
+      throw "Package contains an invalid entry path: $($entry.FullName)"
     }
+    if ($entriesByName.ContainsKey($entry.FullName)) {
+      throw "Package contains duplicate or case-colliding entry paths: $($entry.FullName)"
+    }
+    $entriesByName[$entry.FullName] = $entry
   }
 
-  $entryNames = [System.Collections.Generic.HashSet[string]]::new(
-    [System.StringComparer]::OrdinalIgnoreCase)
-  foreach ($entry in $entries) {
-    if (-not $entryNames.Add($entry)) {
-      throw "Package contains duplicate or case-colliding entry paths: $entry"
-    }
-  }
-
-  $requiredEntries = @(
-    'README.md'
-    'LICENSE'
-    'THIRD-PARTY-NOTICES.md'
-    'THIRD-PARTY-REDISTRIBUTION.json'
-    'icon.png'
-    'lib/net10.0/MBW.GHLinguist.dll'
-    'lib/net10.0/MBW.GHLinguist.xml'
-    'buildTransitive/MBW.GHLinguist.targets'
-    'native/include/ghlinguist.h'
-    'runtimes/linux-x64/native/ghlinguist.so'
-    'runtimes/win-x64/native/ghlinguist.dll'
-    'nativeassets/linux-x64/provenance.json'
-    'nativeassets/win-x64/provenance.json'
-    'nativeassets/linux-x64/licenses/MBW.GHLinguist/LICENSE'
-    'nativeassets/linux-x64/licenses/MBW.GHLinguist/THIRD-PARTY-NOTICES.md'
-    'nativeassets/linux-x64/licenses/ruby/COPYING'
-    'nativeassets/linux-x64/licenses/ruby/BSDL'
-    'nativeassets/linux-x64/licenses/ruby/LEGAL'
-    'nativeassets/linux-x64/licenses/linguist/LICENSE'
-    'nativeassets/win-x64/licenses/MBW.GHLinguist/LICENSE'
-    'nativeassets/win-x64/licenses/MBW.GHLinguist/THIRD-PARTY-NOTICES.md'
-    'nativeassets/win-x64/licenses/ruby/COPYING'
-    'nativeassets/win-x64/licenses/ruby/BSDL'
-    'nativeassets/win-x64/licenses/ruby/LEGAL'
-    'nativeassets/win-x64/licenses/rubyinstaller/LICENSE'
-    'nativeassets/win-x64/licenses/linguist/LICENSE'
-    'nativeassets/win-x64/licenses/msys2/icu/LICENSE'
-    'nativeassets/win-x64/licenses/msys2/gcc/COPYING3'
-    'nativeassets/win-x64/licenses/msys2/gcc/COPYING.RUNTIME'
-    'nativeassets/win-x64/licenses/msys2/winpthreads/COPYING'
-  )
-
-  foreach ($requiredEntry in $requiredEntries) {
-    if ($requiredEntry -notin $entries) {
+  foreach ($requiredEntry in $commonEntries) {
+    if (-not $entriesByName.ContainsKey($requiredEntry)) {
       throw "Package is missing required entry: $requiredEntry"
     }
   }
 
-  $allowedPackageEntries = [System.Collections.Generic.HashSet[string]]::new(
-    [System.StringComparer]::Ordinal)
-  foreach ($allowedEntry in @(
-    $requiredEntries
-    'MBW.GHLinguist.nuspec'
-    '_rels/.rels'
-    '[Content_Types].xml'
-    'package/services/metadata/core-properties/nuget.psmdcp'
-  )) {
-    [void] $allowedPackageEntries.Add($allowedEntry)
-  }
-  foreach ($entry in $entries) {
-    if ($entry.StartsWith('nativeassets/linux-x64/', [System.StringComparison]::Ordinal) -or
-        $entry.StartsWith('nativeassets/win-x64/', [System.StringComparison]::Ordinal) -or
-        $allowedPackageEntries.Contains($entry)) {
-      continue
-    }
-    throw "Package contains an unexpected entry: $entry"
-  }
-
-  $inventoryPath = Join-Path $PSScriptRoot '../linguist/third-party-redistribution.json'
-  $inventoryEntries = @($fileEntries | Where-Object { $_.FullName -ceq 'THIRD-PARTY-REDISTRIBUTION.json' })
-  if ($inventoryEntries.Count -ne 1) {
-    throw 'Package must contain exactly one third-party redistribution inventory.'
-  }
-  $inventoryReader = [System.IO.StreamReader]::new($inventoryEntries[0].Open())
-  try {
-    $packagedInventoryText = $inventoryReader.ReadToEnd()
-  }
-  finally {
-    $inventoryReader.Dispose()
-  }
   $sourceInventoryText = [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $inventoryPath).Path)
+  $packagedInventoryText = Read-EntryText $entriesByName['THIRD-PARTY-REDISTRIBUTION.json']
   if ($packagedInventoryText -cne $sourceInventoryText) {
     throw 'Package third-party redistribution inventory does not match the checked-out source.'
   }
@@ -128,164 +106,150 @@ try {
     throw 'Package third-party redistribution inventory has an unsupported or empty schema.'
   }
 
-  foreach ($component in $redistributionInventory.components) {
-    $requiredOutputProperties = @($component.requiredOutputs.PSObject.Properties)
-    if ($requiredOutputProperties.Count -eq 0) {
-      throw "Redistribution component '$($component.component)' declares no required license outputs."
-    }
-    foreach ($ridProperty in $requiredOutputProperties) {
-      $rid = $ridProperty.Name
-      if ($rid -notin @('linux-x64', 'win-x64')) {
-        throw "Redistribution component '$($component.component)' declares unsupported RID '$rid'."
+  $allowedEntries = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+  foreach ($entry in @(
+    $commonEntries
+    'MBW.GHLinguist.nuspec'
+    'MBW.GHLinguist.Runtime.win-x64.nuspec'
+    'MBW.GHLinguist.Runtime.linux-x64.nuspec'
+    '_rels/.rels'
+    '[Content_Types].xml'
+    'package/services/metadata/core-properties/nuget.psmdcp'
+  )) {
+    [void] $allowedEntries.Add($entry)
+  }
+
+  if ($Kind -eq 'managed') {
+    foreach ($entry in @(
+      'lib/net10.0/MBW.GHLinguist.dll'
+      'lib/net10.0/MBW.GHLinguist.xml'
+      'native/include/ghlinguist.h'
+      'buildTransitive/MBW.GHLinguist.targets'
+    )) {
+      if (-not $entriesByName.ContainsKey($entry)) {
+        throw "Managed package is missing required entry: $entry"
       }
-      foreach ($relativeOutput in @($ridProperty.Value)) {
+      [void] $allowedEntries.Add($entry)
+    }
+    foreach ($entry in $entries) {
+      if ($entry.StartsWith('nativeassets/', [System.StringComparison]::Ordinal) -or
+          $entry.StartsWith('runtimes/', [System.StringComparison]::Ordinal)) {
+        throw "Managed package must not contain runtime closure assets: $entry"
+      }
+      if (-not $allowedEntries.Contains($entry)) {
+        throw "Managed package contains an unexpected entry: $entry"
+      }
+    }
+  }
+  else {
+    $bridgeName = if ($RuntimeIdentifier -eq 'win-x64') { 'ghlinguist.dll' } else { 'ghlinguist.so' }
+    $closurePrefix = "nativeassets/$RuntimeIdentifier/"
+    foreach ($entry in @(
+      "runtimes/$RuntimeIdentifier/native/$bridgeName"
+      "buildTransitive/MBW.GHLinguist.Runtime.$RuntimeIdentifier.targets"
+      ($closurePrefix + 'provenance.json')
+    )) {
+      if (-not $entriesByName.ContainsKey($entry)) {
+        throw "Runtime package is missing required entry: $entry"
+      }
+      [void] $allowedEntries.Add($entry)
+    }
+
+    foreach ($entry in $entries) {
+      if ($entry.StartsWith($closurePrefix, [System.StringComparison]::Ordinal) -or $allowedEntries.Contains($entry)) {
+        continue
+      }
+      throw "Runtime package contains an unexpected entry: $entry"
+    }
+    if (@($entries | Where-Object { $_.StartsWith('lib/', [System.StringComparison]::Ordinal) }).Count -ne 0) {
+      throw 'Runtime packages must not contain managed compile assets.'
+    }
+
+    foreach ($component in $redistributionInventory.components) {
+      $requiredOutputProperty = $component.requiredOutputs.PSObject.Properties[$RuntimeIdentifier]
+      if (-not $requiredOutputProperty) {
+        continue
+      }
+      foreach ($relativeOutput in @($requiredOutputProperty.Value)) {
         if ([string]::IsNullOrWhiteSpace($relativeOutput) -or
             $relativeOutput.Contains('\') -or
             $relativeOutput.StartsWith('/') -or
             $relativeOutput.Split('/') -contains '..') {
           throw "Redistribution component '$($component.component)' declares invalid output '$relativeOutput'."
         }
-        $packageOutput = "nativeassets/$rid/$relativeOutput"
-        if ($packageOutput -cnotin $entries) {
-          throw "Package is missing declared license output for '$($component.component)': $packageOutput"
+        $packageOutput = $closurePrefix + $relativeOutput
+        if (-not $entriesByName.ContainsKey($packageOutput)) {
+          throw "Runtime package is missing declared license output for '$($component.component)': $packageOutput"
         }
       }
     }
-  }
 
-  foreach ($rid in 'linux-x64', 'win-x64') {
-    $prefix = "nativeassets/$rid/"
-    $provenancePath = $prefix + 'provenance.json'
-    $provenanceEntries = @($fileEntries | Where-Object { $_.FullName -ceq $provenancePath })
-    if ($provenanceEntries.Count -ne 1) {
-      throw "Package native closure for $rid must contain exactly one provenance file."
+    $provenancePath = $closurePrefix + 'provenance.json'
+    $provenance = (Read-EntryText $entriesByName[$provenancePath]) | ConvertFrom-Json
+    if ($provenance.platform -ne $RuntimeIdentifier -or $provenance.schemaVersion -ne 2) {
+      throw "Runtime package provenance does not describe $RuntimeIdentifier using schema version 2."
     }
 
-    $reader = [System.IO.StreamReader]::new($provenanceEntries[0].Open())
-    try {
-      $provenance = $reader.ReadToEnd() | ConvertFrom-Json
-    }
-    finally {
-      $reader.Dispose()
-    }
-
-    if ($provenance.platform -ne $rid) {
-      throw "Package native closure provenance platform '$($provenance.platform)' does not match $rid."
-    }
-    if ($provenance.schemaVersion -ne 2) {
-      throw "Package native closure provenance for $rid has unsupported schema version '$($provenance.schemaVersion)'."
-    }
-
-    $provenanceFiles = @($provenance.files)
-    if ($provenanceFiles.Count -eq 0) {
-      throw "Package native closure provenance for $rid does not describe any files."
-    }
-
-    $provenancePaths = [System.Collections.Generic.HashSet[string]]::new(
-      [System.StringComparer]::Ordinal)
-    foreach ($provenanceFile in $provenanceFiles) {
+    $provenancePaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($provenanceFile in @($provenance.files)) {
       $relativePath = [string] $provenanceFile.path
       if ([string]::IsNullOrWhiteSpace($relativePath) -or
           [System.IO.Path]::IsPathRooted($relativePath) -or
-          $relativePath.Replace('\', '/').Split('/') -contains '..') {
-        throw "Package native closure provenance for $rid contains an invalid path '$relativePath'."
+          $relativePath.Replace('\', '/').Split('/') -contains '..' -or
+          [string] $provenanceFile.sha256 -notmatch '^[a-f0-9]{64}$') {
+        throw "Runtime package provenance contains an invalid file entry: $relativePath"
       }
-
       $normalizedPath = $relativePath.Replace('\', '/')
       if (-not $provenancePaths.Add($normalizedPath)) {
-        throw "Package native closure provenance for $rid contains duplicate path '$normalizedPath'."
+        throw "Runtime package provenance contains duplicate path '$normalizedPath'."
       }
-      if ([string] $provenanceFile.sha256 -notmatch '^[a-f0-9]{64}$') {
-        throw "Package native closure provenance for $rid contains an invalid SHA-256 for '$normalizedPath'."
+      $assetPath = $closurePrefix + $normalizedPath
+      if (-not $entriesByName.ContainsKey($assetPath)) {
+        throw "Runtime package provenance references missing asset: $assetPath"
       }
-
-      $assetPath = $prefix + $normalizedPath
-      $assetEntries = @($fileEntries | Where-Object { $_.FullName -ceq $assetPath })
-      if ($assetEntries.Count -ne 1) {
-        throw "Package native closure provenance for $rid references missing asset: $assetPath"
-      }
-
-      $stream = $assetEntries[0].Open()
-      $hash = [System.Security.Cryptography.SHA256]::Create()
-      try {
-        $actualHash = [System.Convert]::ToHexString($hash.ComputeHash($stream)).ToLowerInvariant()
-      }
-      finally {
-        $hash.Dispose()
-        $stream.Dispose()
-      }
-
-      if ($actualHash -ne $provenanceFile.sha256) {
-        throw "Package native closure asset hash does not match provenance: $assetPath"
+      if ((Get-EntrySha256 $entriesByName[$assetPath]) -ne $provenanceFile.sha256) {
+        throw "Runtime package native asset hash does not match provenance: $assetPath"
       }
     }
 
-    $closureEntries = @($entries | Where-Object {
-      $_.StartsWith($prefix, [System.StringComparison]::Ordinal) -and $_ -cne $provenancePath
-    })
-    foreach ($closureEntry in $closureEntries) {
-      $relativePath = $closureEntry.Substring($prefix.Length)
-      if (-not $provenancePaths.Contains($relativePath)) {
-        throw "Package native closure for $rid contains an asset absent from provenance: $closureEntry"
-      }
-    }
+    $closureEntries = @($entries | Where-Object { $_.StartsWith($closurePrefix, [System.StringComparison]::Ordinal) -and $_ -cne $provenancePath })
     if ($closureEntries.Count -ne $provenancePaths.Count) {
-      throw "Package native closure for $rid does not exactly match its provenance file list."
+      throw 'Runtime package native closure does not exactly match its provenance file list.'
     }
-    if (@($provenancePaths | Where-Object { $_.Contains('/') }).Count -eq 0) {
-      throw "Package native closure for $rid does not preserve nested asset layout."
-    }
-
-    $expectedGemLicenseDirectories = @(
-      'cgi-0.4.2'
-      'mini_mime-1.1.5'
-      'charlock_holmes-0.7.9'
-      'zlib-3.2.3'
-      'resolv-0.7.2'
-    )
-    $gemLicensePrefix = $prefix + 'licenses/gems/'
-    $actualGemLicenseDirectories = @($entries |
-      Where-Object { $_.StartsWith($gemLicensePrefix, [System.StringComparison]::Ordinal) } |
-      ForEach-Object { $_.Substring($gemLicensePrefix.Length).Split('/')[0] } |
-      Sort-Object -Unique)
-    if (($actualGemLicenseDirectories -join '|') -cne (($expectedGemLicenseDirectories | Sort-Object) -join '|')) {
-      throw "Package native closure for $rid does not contain exactly the configured gem license directories."
+    foreach ($closureEntry in $closureEntries) {
+      if (-not $provenancePaths.Contains($closureEntry.Substring($closurePrefix.Length))) {
+        throw "Runtime package closure contains an asset absent from provenance: $closureEntry"
+      }
     }
   }
 
-  $nuspecEntries = @($archive.Entries | Where-Object { $_.FullName -like '*.nuspec' })
+  $nuspecEntries = @($fileEntries | Where-Object { $_.FullName -like '*.nuspec' })
   if ($nuspecEntries.Count -ne 1) {
     throw "Expected exactly one nuspec entry, found $($nuspecEntries.Count)."
   }
-
-  $reader = [System.IO.StreamReader]::new($nuspecEntries[0].Open())
-  try {
-    [xml] $nuspec = $reader.ReadToEnd()
+  [xml] $nuspec = Read-EntryText $nuspecEntries[0]
+  $metadata = $nuspec.SelectSingleNode("/*[local-name()='package']/*[local-name()='metadata']")
+  $expectedMetadata = if ($Kind -eq 'managed') {
+    [ordered]@{
+      id = 'MBW.GHLinguist'
+      title = 'MBW.GHLinguist'
+      description = 'GitHub Linguist interop for .NET.'
+      tags = 'github linguist language-detection code-analysis dotnet native'
+    }
   }
-  finally {
-    $reader.Dispose()
+  else {
+    [ordered]@{
+      id = "MBW.GHLinguist.Runtime.$RuntimeIdentifier"
+      title = "MBW.GHLinguist.Runtime.$RuntimeIdentifier"
+      description = "$(if ($RuntimeIdentifier -eq 'win-x64') { 'Windows' } else { 'Linux' }) x64 native runtime closure for MBW.GHLinguist."
+      tags = "github linguist language-detection code-analysis dotnet native $RuntimeIdentifier"
+    }
   }
-
-  $versionNode = $nuspec.SelectSingleNode(
-    "/*[local-name()='package']/*[local-name()='metadata']/*[local-name()='version']")
-  if (-not $versionNode -or $versionNode.InnerText -ne $ExpectedVersion) {
-    $actualVersion = if ($versionNode) { $versionNode.InnerText } else { '<missing>' }
-    throw "Expected package version '$ExpectedVersion', found '$actualVersion'."
-  }
-
-  $metadata = $nuspec.SelectSingleNode(
-    "/*[local-name()='package']/*[local-name()='metadata']")
-  $expectedMetadata = [ordered]@{
-    id = 'MBW.GHLinguist'
-    title = 'MBW.GHLinguist'
-    authors = 'LordMike'
-    description = 'GitHub Linguist interop for .NET.'
-    projectUrl = 'https://github.com/LordMike/MBW.GHLinguist'
-    icon = 'icon.png'
-    readme = 'README.md'
-    releaseNotes = 'See the GitHub release for changes in this version.'
-    tags = 'github linguist language-detection code-analysis dotnet native'
-  }
+  $expectedMetadata['authors'] = 'LordMike'
+  $expectedMetadata['projectUrl'] = 'https://github.com/LordMike/MBW.GHLinguist'
+  $expectedMetadata['icon'] = 'icon.png'
+  $expectedMetadata['readme'] = 'README.md'
+  $expectedMetadata['releaseNotes'] = 'See the GitHub release for changes in this version.'
   foreach ($name in $expectedMetadata.Keys) {
     $node = $metadata.SelectSingleNode("*[local-name()='$name']")
     $actualValue = if ($node) { $node.InnerText } else { '<missing>' }
@@ -294,11 +258,14 @@ try {
     }
   }
 
+  $versionNode = $metadata.SelectSingleNode("*[local-name()='version']")
+  if (-not $versionNode -or $versionNode.InnerText -ne $ExpectedVersion) {
+    throw "Expected package version '$ExpectedVersion', found '$(if ($versionNode) { $versionNode.InnerText } else { '<missing>' })'."
+  }
   $licenseNode = $metadata.SelectSingleNode("*[local-name()='license']")
   if (-not $licenseNode -or $licenseNode.GetAttribute('type') -cne 'expression' -or $licenseNode.InnerText -cne 'MIT') {
     throw 'Package nuspec must declare the MIT license expression.'
   }
-
   $repositoryNode = $metadata.SelectSingleNode("*[local-name()='repository']")
   if (-not $repositoryNode -or
       $repositoryNode.GetAttribute('type') -cne 'git' -or
@@ -307,16 +274,24 @@ try {
     throw 'Package nuspec must identify the exact source repository and commit.'
   }
 
-  $dependencyGroups = @($metadata.SelectNodes(
-    "*[local-name()='dependencies']/*[local-name()='group']"))
-  if ($dependencyGroups.Count -ne 1 -or
-      $dependencyGroups[0].GetAttribute('targetFramework') -cne 'net10.0' -or
-      $dependencyGroups[0].SelectNodes("*[local-name()='dependency']").Count -ne 0) {
-    throw 'Package nuspec must contain one dependency-free net10.0 group.'
+  $dependencyGroups = @($metadata.SelectNodes("*[local-name()='dependencies']/*[local-name()='group']"))
+  if ($dependencyGroups.Count -ne 1 -or $dependencyGroups[0].GetAttribute('targetFramework') -cne 'net10.0') {
+    throw 'Package nuspec must contain exactly one net10.0 dependency group.'
+  }
+  $dependencies = @($dependencyGroups[0].SelectNodes("*[local-name()='dependency']"))
+  if ($Kind -eq 'managed' -and $dependencies.Count -ne 0) {
+    throw 'Managed package must not declare runtime package dependencies.'
+  }
+  if ($Kind -eq 'runtime') {
+    if ($dependencies.Count -ne 1 -or
+        $dependencies[0].GetAttribute('id') -cne 'MBW.GHLinguist' -or
+        $dependencies[0].GetAttribute('version') -cne "[$ExpectedVersion]") {
+      throw 'Runtime package must declare an exact dependency on the matching managed package version.'
+    }
   }
 }
 finally {
   $archive.Dispose()
 }
 
-Write-Host "Validated NuGet package: $packagePath"
+Write-Host "Validated $Kind NuGet package: $packagePath"

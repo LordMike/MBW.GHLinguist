@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <PackageId>MBW.GHLinguist.Runtime.win-x64</PackageId>
+    <Title>MBW.GHLinguist.Runtime.win-x64</Title>
+    <Description>Windows x64 native runtime closure for MBW.GHLinguist.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/LordMike/MBW.GHLinguist</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/LordMike/MBW.GHLinguist</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>github;linguist;language-detection;code-analysis;dotnet;native;win-x64</PackageTags>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageReleaseNotes>See the GitHub release for changes in this version.</PackageReleaseNotes>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RidNativeAssetRoot>$(MSBuildThisFileDirectory)..\..\.tmp\artifacts\native</RidNativeAssetRoot>
+    <NoWarn>$(NoWarn);NU5100;NU5128</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MBW.GHLinguist\MBW.GHLinguist.csproj" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
+    <None Include="..\..\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\eng\linguist\third-party-redistribution.json"
+          Pack="true"
+          PackagePath="THIRD-PARTY-REDISTRIBUTION.json"
+          Visible="false" />
+    <None Include="..\..\eng\nuget\icon.png" Pack="true" PackagePath="\" />
+    <None Include="..\..\buildTransitive\MBW.GHLinguist.Runtime.win-x64.targets"
+          Pack="true"
+          PackagePath="buildTransitive\MBW.GHLinguist.Runtime.win-x64.targets"
+          Visible="false" />
+    <None Include="$(RidNativeAssetRoot)\win-x64\ghlinguist.dll"
+          Pack="true"
+          PackagePath="runtimes/win-x64/native/ghlinguist.dll"
+          Visible="false" />
+    <None Include="$(RidNativeAssetRoot)\win-x64\**\*"
+          Pack="true"
+          PackagePath="nativeassets/win-x64/"
+          Visible="false" />
+  </ItemGroup>
+
+  <Target Name="ValidateWinX64NativeAssetsForPack"
+          BeforeTargets="GenerateNuspec"
+          Condition="'$(ValidateRidAssets)' == 'true'">
+    <Error Condition="!Exists('$(RidNativeAssetRoot)\win-x64\ghlinguist.dll')"
+           Text="Missing win-x64 native bridge at $(RidNativeAssetRoot)\win-x64\ghlinguist.dll." />
+    <Error Condition="!Exists('$(RidNativeAssetRoot)\win-x64\provenance.json')"
+           Text="Missing win-x64 native closure provenance at $(RidNativeAssetRoot)\win-x64\provenance.json." />
+  </Target>
+
+  <Target Name="UseExactManagedPackageDependency"
+          AfterTargets="_GetProjectReferenceVersions"
+          BeforeTargets="GenerateNuspec">
+    <ItemGroup>
+      <_ProjectReferencesWithVersions Update="@(_ProjectReferencesWithVersions)">
+        <ProjectVersion>[$(PackageVersion)]</ProjectVersion>
+      </_ProjectReferencesWithVersions>
+    </ItemGroup>
+  </Target>
+</Project>

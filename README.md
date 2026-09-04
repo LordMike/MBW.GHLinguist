@@ -24,8 +24,9 @@ Ruby or native handles to callers.
 ## Status
 
 The managed API, native ABI bridge, and relocatable CRuby dependency closures
-are implemented for the supported runtime identifiers. The package does not
-require a system Ruby installation or runtime downloads.
+are implemented for the supported runtime identifiers. The managed package and
+the selected runtime package do not require a system Ruby installation or
+runtime downloads.
 
 The supported runtime identifiers are `win-x64` and `linux-x64`. The package
 targets .NET 10 and currently embeds CRuby 4.0.6 and GitHub Linguist 9.6.0 at
@@ -59,10 +60,11 @@ to the package. See GitHub's
 [NuGet registry documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-nuget-registry)
 for token and package-access details.
 
-Add this `NuGet.config` beside your solution. Package source mapping keeps
-`MBW.GHLinguist` on the GitHub feed while normal dependencies continue to come
-from NuGet.org. If the solution already has a `NuGet.config`, merge these entries
-instead of replacing its other sources and mappings:
+Add this `NuGet.config` beside your solution. Package source mapping keeps the
+managed and runtime `MBW.GHLinguist` packages on the GitHub feed while normal
+dependencies continue to come from NuGet.org. If the solution already has a
+`NuGet.config`, merge these entries instead of replacing its other sources and
+mappings:
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -74,7 +76,7 @@ instead of replacing its other sources and mappings:
   </packageSources>
   <packageSourceMapping>
     <packageSource key="github_lordmike">
-      <package pattern="MBW.GHLinguist" />
+      <package pattern="MBW.GHLinguist*" />
     </packageSource>
     <packageSource key="nuget.org">
       <package pattern="*" />
@@ -85,13 +87,14 @@ instead of replacing its other sources and mappings:
 
 Keep credentials outside the file. From the directory containing the consuming
 `.csproj`, set credentials for the current PowerShell session and add the latest
-prerelease:
+prerelease runtime package for the deployment RID. It brings the matching managed
+package as an exact transitive dependency:
 
 ```powershell
 $env:GITHUB_PACKAGES_TOKEN = "YOUR_CLASSIC_PAT"
 $env:NuGetPackageSourceCredentials_github_lordmike = "Username=YOUR_GITHUB_USERNAME;Password=$env:GITHUB_PACKAGES_TOKEN;ValidAuthenticationTypes=Basic"
 
-dotnet package add MBW.GHLinguist --prerelease
+dotnet package add MBW.GHLinguist.Runtime.win-x64 --prerelease
 ```
 
 The environment-variable name must end with the exact source key from
@@ -100,10 +103,11 @@ configuration containing a clear-text password. In GitHub Actions, prefer the
 workflow's `GITHUB_TOKEN` with `packages: read` after granting that repository
 access to the package.
 
-The package is large because it carries complete Windows and Linux CRuby,
-Linguist, gem, tokenizer, and ICU closures. `dotnet package add` resolves the
-latest eligible prerelease once and writes that exact version to the project;
-review and commit the resulting `PackageReference`.
+Use `MBW.GHLinguist.Runtime.linux-x64` on Linux. Each runtime package carries
+only its own complete CRuby, Linguist, gem, tokenizer, and ICU closure.
+`dotnet package add` resolves the latest eligible prerelease once and writes
+that exact version to the project; review and commit the resulting
+`PackageReference`.
 
 Common authentication failures:
 
@@ -375,11 +379,11 @@ publishing or cross-building:
 </PropertyGroup>
 ```
 
-Use `linux-x64` on Linux. If no RID is specified, the package falls back to the
-.NET SDK host RID. That is convenient for local builds but unsafe for
-cross-publishing. An unsupported RID can produce a successful managed build
-without copying a native closure, followed by `DllNotFoundException` when the
-application starts.
+Use `linux-x64` on Linux and reference the matching runtime package. If no RID
+is specified, the runtime package falls back to the .NET SDK host RID. That is
+convenient for local builds but unsafe for cross-publishing. Referencing a
+runtime package for a different RID fails the build rather than deploying the
+wrong closure.
 
 Restore/build success therefore does not prove that native deployment is valid.
 Publish for the target RID and run the produced directory on that platform:
@@ -393,8 +397,8 @@ In CI, verify that the publish directory contains `ghlinguist.dll` on Windows or
 
 ### Preserve the complete output layout
 
-The package's transitive build target copies the selected closure beside the
-managed assembly while preserving subdirectories. Do not copy only
+The selected runtime package's transitive build target copies its closure beside
+the managed assembly while preserving subdirectories. Do not copy only
 `ghlinguist.dll` or `ghlinguist.so`, and do not flatten, rename, trim, or
 selectively clean the copied files. The bridge also needs the adjacent CRuby
 runtime, Ruby standard library, gems, ICU libraries, Linguist sources and data,
@@ -526,8 +530,8 @@ command. See `eng/linguist/README.md` for the native build prerequisites.
 ## Building native assets
 
 RID-specific native builds stage package-ready files beneath
-`.tmp/artifacts/native/<rid>`. The package exposes the ABI bridge under
-`runtimes/<rid>/native` and stores each complete relocatable closure under
-`nativeassets/<rid>`. Its `buildTransitive` target copies the selected closure
-with its relative layout intact for build and publish. When a project does not
-set `RuntimeIdentifier`, the target selects the .NET SDK host RID.
+`.tmp/artifacts/native/<rid>`. The corresponding runtime package exposes the
+ABI bridge under `runtimes/<rid>/native` and stores its complete relocatable
+closure under `nativeassets/<rid>`. Its `buildTransitive` target copies that
+closure with its relative layout intact for build and publish. When a project
+does not set `RuntimeIdentifier`, the target selects the .NET SDK host RID.

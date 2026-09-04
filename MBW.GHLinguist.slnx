@@ -1,5 +1,11 @@
 <Solution>
   <Project Path="src\MBW.GHLinguist\MBW.GHLinguist.csproj" />
+  <Project Path="src\MBW.GHLinguist.Runtime.win-x64\MBW.GHLinguist.Runtime.win-x64.csproj">
+    <BuildDependency Project="src\MBW.GHLinguist\MBW.GHLinguist.csproj" />
+  </Project>
+  <Project Path="src\MBW.GHLinguist.Runtime.linux-x64\MBW.GHLinguist.Runtime.linux-x64.csproj">
+    <BuildDependency Project="src\MBW.GHLinguist\MBW.GHLinguist.csproj" />
+  </Project>
   <Project Path="tests\MBW.GHLinguist.Tests\MBW.GHLinguist.Tests.csproj">
     <BuildDependency Project="src\MBW.GHLinguist\MBW.GHLinguist.csproj" />
   </Project>

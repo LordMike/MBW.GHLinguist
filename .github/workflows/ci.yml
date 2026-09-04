@@ -291,11 +291,15 @@ jobs:
         with:
           dotnet-version: 10.0.400
 
-      - name: Build package project
+      - name: Build package projects
         shell: bash
-        run: dotnet build src/MBW.GHLinguist/MBW.GHLinguist.csproj --configuration Release
+        run: |
+          set -euo pipefail
+          dotnet build src/MBW.GHLinguist/MBW.GHLinguist.csproj --configuration Release
+          dotnet build src/MBW.GHLinguist.Runtime.win-x64/MBW.GHLinguist.Runtime.win-x64.csproj --configuration Release
+          dotnet build src/MBW.GHLinguist.Runtime.linux-x64/MBW.GHLinguist.Runtime.linux-x64.csproj --configuration Release
 
-      - name: Build exactly one NuGet package
+      - name: Build the managed and RID runtime NuGet packages
         shell: bash
         env:
           CI_VERSION: ${{ steps.context.outputs.version }}
@@ -306,29 +310,45 @@ jobs:
           if [ -n "$CI_VERSION" ]; then
             version_args+=("-p:MinVerVersionOverride=$CI_VERSION")
           fi
-          dotnet pack src/MBW.GHLinguist/MBW.GHLinguist.csproj --configuration Release --no-build --output .artifacts/nuget -p:ValidateRidAssets=true "${version_args[@]}"
+          dotnet pack src/MBW.GHLinguist/MBW.GHLinguist.csproj --configuration Release --no-build --output .artifacts/nuget "${version_args[@]}"
+          dotnet pack src/MBW.GHLinguist.Runtime.win-x64/MBW.GHLinguist.Runtime.win-x64.csproj --configuration Release --no-build --output .artifacts/nuget -p:ValidateRidAssets=true "${version_args[@]}"
+          dotnet pack src/MBW.GHLinguist.Runtime.linux-x64/MBW.GHLinguist.Runtime.linux-x64.csproj --configuration Release --no-build --output .artifacts/nuget -p:ValidateRidAssets=true "${version_args[@]}"
           mapfile -t packages < <(find .artifacts/nuget -maxdepth 1 -type f -name '*.nupkg' ! -name '*.snupkg' -print | sort)
-          [ "${#packages[@]}" -eq 1 ] || { echo "Expected exactly one nupkg, found ${#packages[@]}."; exit 1; }
+          [ "${#packages[@]}" -eq 3 ] || { echo "Expected exactly three nupkg files, found ${#packages[@]}."; exit 1; }
 
       - name: Verify NuGet package contents
         id: package_context
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $package = @(Get-ChildItem .artifacts/nuget -Filter '*.nupkg' -File |
+          $packages = @(Get-ChildItem .artifacts/nuget -Filter '*.nupkg' -File |
             Where-Object { $_.Name -notlike '*.snupkg' })
-          if ($package.Count -ne 1) { throw "Expected exactly one nupkg, found $($package.Count)." }
+          if ($packages.Count -ne 3) { throw "Expected exactly three nupkg files, found $($packages.Count)." }
           Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $archive = [System.IO.Compression.ZipFile]::OpenRead($package[0].FullName)
-          try {
-            $nuspec = @($archive.Entries | Where-Object { $_.FullName -like '*.nuspec' })
-            if ($nuspec.Count -ne 1) { throw "Expected exactly one nuspec, found $($nuspec.Count)." }
-            $reader = [IO.StreamReader]::new($nuspec.Open())
-            try { [xml]$document = $reader.ReadToEnd() } finally { $reader.Dispose() }
-            $version = $document.SelectSingleNode("/*[local-name()='package']/*[local-name()='metadata']/*[local-name()='version']").InnerText
+          $packageById = @{}
+          foreach ($package in $packages) {
+            $archive = [System.IO.Compression.ZipFile]::OpenRead($package.FullName)
+            try {
+              $nuspec = @($archive.Entries | Where-Object { $_.FullName -like '*.nuspec' })
+              if ($nuspec.Count -ne 1) { throw "Expected exactly one nuspec in $($package.Name), found $($nuspec.Count)." }
+              $reader = [IO.StreamReader]::new($nuspec[0].Open())
+              try { [xml]$document = $reader.ReadToEnd() } finally { $reader.Dispose() }
+              $id = $document.SelectSingleNode("/*[local-name()='package']/*[local-name()='metadata']/*[local-name()='id']").InnerText
+              $version = $document.SelectSingleNode("/*[local-name()='package']/*[local-name()='metadata']/*[local-name()='version']").InnerText
+              if ($packageById.ContainsKey($id)) { throw "Multiple packages declare ID $id." }
+              $packageById[$id] = [pscustomobject]@{ File = $package; Version = $version }
+            }
+            finally { $archive.Dispose() }
           }
-          finally { $archive.Dispose() }
-          ./eng/nuget/verify-package.ps1 -Package $package[0].FullName -ExpectedVersion $version -ExpectedCommit $env:GITHUB_SHA
+          $managed = $packageById['MBW.GHLinguist']
+          $windows = $packageById['MBW.GHLinguist.Runtime.win-x64']
+          $linux = $packageById['MBW.GHLinguist.Runtime.linux-x64']
+          if (-not $managed -or -not $windows -or -not $linux -or $packageById.Count -ne 3) { throw 'Package output must contain the managed package and both RID runtime packages.' }
+          if ($windows.Version -ne $managed.Version -or $linux.Version -ne $managed.Version) { throw 'Managed and runtime package versions must match exactly.' }
+          ./eng/nuget/verify-package.ps1 -Package $managed.File.FullName -ExpectedVersion $managed.Version -ExpectedCommit $env:GITHUB_SHA -Kind managed
+          ./eng/nuget/verify-package.ps1 -Package $windows.File.FullName -ExpectedVersion $managed.Version -ExpectedCommit $env:GITHUB_SHA -Kind runtime -RuntimeIdentifier win-x64
+          ./eng/nuget/verify-package.ps1 -Package $linux.File.FullName -ExpectedVersion $managed.Version -ExpectedCommit $env:GITHUB_SHA -Kind runtime -RuntimeIdentifier linux-x64
+          $version = $managed.Version
           "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Upload package artifacts
@@ -374,27 +394,29 @@ jobs:
         env:
           PACKAGE_VERSION: ${{ needs.package.outputs.version }}
           TEST_RID: ${{ matrix.rid }}
+          RUNTIME_PACKAGE_ID: MBW.GHLinguist.Runtime.${{ matrix.rid }}
         run: |
           $ErrorActionPreference = 'Stop'
           if (-not $env:PACKAGE_VERSION) { throw 'The package job did not report a package version.' }
           $project = 'tests/MBW.GHLinguist.PackageSmoke/MBW.GHLinguist.PackageSmoke.csproj'
           $source = (Resolve-Path '.artifacts/nuget').Path
-          dotnet restore $project --runtime $env:TEST_RID "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" --source https://api.nuget.org/v3/index.json --source $source
-          dotnet run --project $project --configuration Release --runtime $env:TEST_RID --no-restore "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION"
+          dotnet restore $project --runtime $env:TEST_RID "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID" --source https://api.nuget.org/v3/index.json --source $source
+          dotnet run --project $project --configuration Release --runtime $env:TEST_RID --no-restore "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID"
 
       - name: Restore, publish, and run framework-dependent package consumer
         shell: pwsh
         env:
           PACKAGE_VERSION: ${{ needs.package.outputs.version }}
           TEST_RID: ${{ matrix.rid }}
+          RUNTIME_PACKAGE_ID: MBW.GHLinguist.Runtime.${{ matrix.rid }}
         run: |
           $ErrorActionPreference = 'Stop'
           if (-not $env:PACKAGE_VERSION) { throw 'The package job did not report a package version.' }
           $project = 'tests/MBW.GHLinguist.PackageSmoke/MBW.GHLinguist.PackageSmoke.csproj'
           $source = (Resolve-Path '.artifacts/nuget').Path
           $publish = Join-Path '.tmp/package-smoke-publish' $env:TEST_RID
-          dotnet restore $project "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" --source https://api.nuget.org/v3/index.json --source $source
-          dotnet publish $project --configuration FrameworkDependent --no-restore --output $publish "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION"
+          dotnet restore $project "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID" --source https://api.nuget.org/v3/index.json --source $source
+          dotnet publish $project --configuration FrameworkDependent --no-restore --output $publish "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID"
           dotnet (Join-Path $publish 'MBW.GHLinguist.PackageSmoke.dll')
 
   publish_github_packages:

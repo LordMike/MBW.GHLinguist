@@ -72,20 +72,20 @@ jobs:
 
           mapfile -t packages < <(find .artifacts/nuget -maxdepth 1 -type f -name '*.nupkg' ! -name '*.snupkg' -print | sort)
           mapfile -t symbols < <(find .artifacts/nuget -maxdepth 1 -type f -name '*.snupkg' -print | sort)
-          [ "${#packages[@]}" -eq 1 ] || {
-            echo "::error::Expected exactly one primary package, found ${#packages[@]}."
+          [ "${#packages[@]}" -eq 3 ] || {
+            echo "::error::Expected exactly three primary packages, found ${#packages[@]}."
             exit 1
           }
-          [ "${#symbols[@]}" -eq 1 ] || {
-            echo "::error::Expected exactly one symbol package, found ${#symbols[@]}."
+          [ "${#symbols[@]}" -eq 3 ] || {
+            echo "::error::Expected exactly three symbol packages, found ${#symbols[@]}."
             exit 1
           }
 
           mkdir -p .artifacts/release
-          cp "${packages[0]}" "${symbols[0]}" .artifacts/ci-metadata.json .artifacts/release/
+          cp "${packages[@]}" "${symbols[@]}" .artifacts/ci-metadata.json .artifacts/release/
           (
             cd .artifacts/release
-            sha256sum "$(basename "${packages[0]}")" "$(basename "${symbols[0]}")" ci-metadata.json > SHA256SUMS
+            sha256sum ./*.nupkg ci-metadata.json > SHA256SUMS
           )
 
       - name: Create GitHub Release

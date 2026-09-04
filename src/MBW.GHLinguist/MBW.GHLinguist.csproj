@@ -15,9 +15,6 @@
     <PackageReleaseNotes>See the GitHub release for changes in this version.</PackageReleaseNotes>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
-    <RidNativeAssetRoot>$(MSBuildThisFileDirectory)..\..\.tmp\artifacts\native</RidNativeAssetRoot>
-    <ValidateRidAssets Condition="'$(ValidateRidAssets)' == ''">false</ValidateRidAssets>
     <NoWarn>$(NoWarn);NU5100</NoWarn>
   </PropertyGroup>
 
@@ -39,44 +36,5 @@
           Pack="true"
           PackagePath="buildTransitive\MBW.GHLinguist.targets"
           Visible="false" />
-    <None Include="$(RidNativeAssetRoot)\win-x64\ghlinguist.dll"
-          Condition="Exists('$(RidNativeAssetRoot)\win-x64\ghlinguist.dll')"
-          Pack="true"
-          PackagePath="runtimes/win-x64/native/ghlinguist.dll"
-          Visible="false" />
-    <None Include="$(RidNativeAssetRoot)\linux-x64\ghlinguist.so"
-          Condition="Exists('$(RidNativeAssetRoot)\linux-x64\ghlinguist.so')"
-          Pack="true"
-          PackagePath="runtimes/linux-x64/native/ghlinguist.so"
-          Visible="false" />
-    <None Include="$(RidNativeAssetRoot)\win-x64\**\*"
-          Pack="true"
-          PackagePath="nativeassets/win-x64/"
-          Visible="false" />
-    <None Include="$(RidNativeAssetRoot)\linux-x64\**\*"
-          Pack="true"
-          PackagePath="nativeassets/linux-x64/"
-          Visible="false" />
   </ItemGroup>
-
-  <Target Name="CopyRidNativeAssetsToOutput"
-          AfterTargets="Build"
-          Condition="'$(RuntimeIdentifier)' != '' and Exists('$(RidNativeAssetRoot)\$(RuntimeIdentifier)')">
-    <ItemGroup>
-      <_CurrentRidNativeAsset Include="$(RidNativeAssetRoot)/$(RuntimeIdentifier)/**/*" />
-    </ItemGroup>
-
-    <Copy SourceFiles="@(_CurrentRidNativeAsset)"
-          DestinationFiles="@(_CurrentRidNativeAsset->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-  </Target>
-
-  <Target Name="ValidateNativeAssetsForPack"
-          BeforeTargets="Pack"
-          Condition="'$(ValidateRidAssets)' == 'true'">
-    <Error Condition="!Exists('$(RidNativeAssetRoot)\win-x64')"
-           Text="Missing win-x64 native assets at $(RidNativeAssetRoot)\win-x64." />
-    <Error Condition="!Exists('$(RidNativeAssetRoot)\linux-x64')"
-           Text="Missing linux-x64 native assets at $(RidNativeAssetRoot)\linux-x64." />
-  </Target>
 </Project>

@@ -1,35 +1,7 @@
 <Project>
-  <PropertyGroup>
-    <MBWGHLinguistRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</MBWGHLinguistRuntimeIdentifier>
-    <MBWGHLinguistRuntimeIdentifier Condition="'$(MBWGHLinguistRuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</MBWGHLinguistRuntimeIdentifier>
-    <MBWGHLinguistNativeAssetRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../nativeassets/$(MBWGHLinguistRuntimeIdentifier)'))</MBWGHLinguistNativeAssetRoot>
-  </PropertyGroup>
-
-  <Target Name="CopyMBWGHLinguistNativeClosureToOutput"
-          AfterTargets="CopyFilesToOutputDirectory"
-          Condition="'$(MBWGHLinguistRuntimeIdentifier)' != '' and Exists('$(MBWGHLinguistNativeAssetRoot)')">
-    <ItemGroup>
-      <_MBWGHLinguistNativeAsset Include="$(MBWGHLinguistNativeAssetRoot)/**/*" />
-      <_MBWGHLinguistNativeAsset Remove="@(_MBWGHLinguistNativeAsset)"
-                                  Condition="$([System.IO.Directory]::Exists('%(_MBWGHLinguistNativeAsset.FullPath)'))" />
-    </ItemGroup>
-
-    <Copy SourceFiles="@(_MBWGHLinguistNativeAsset)"
-          DestinationFiles="@(_MBWGHLinguistNativeAsset->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-  </Target>
-
-  <Target Name="CopyMBWGHLinguistNativeClosureToPublish"
-          AfterTargets="CopyFilesToPublishDirectory"
-          Condition="'$(MBWGHLinguistRuntimeIdentifier)' != '' and Exists('$(MBWGHLinguistNativeAssetRoot)')">
-    <ItemGroup>
-      <_MBWGHLinguistNativePublishAsset Include="$(MBWGHLinguistNativeAssetRoot)/**/*" />
-      <_MBWGHLinguistNativePublishAsset Remove="@(_MBWGHLinguistNativePublishAsset)"
-                                         Condition="$([System.IO.Directory]::Exists('%(_MBWGHLinguistNativePublishAsset.FullPath)'))" />
-    </ItemGroup>
-
-    <Copy SourceFiles="@(_MBWGHLinguistNativePublishAsset)"
-          DestinationFiles="@(_MBWGHLinguistNativePublishAsset->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
+  <Target Name="RequireMBWGHLinguistRuntimePackage"
+          BeforeTargets="CopyFilesToOutputDirectory;CopyFilesToPublishDirectory"
+          Condition="'$(MBWGHLinguistRuntimePackageInstalled)' != 'true'">
+    <Error Text="Reference exactly one supported runtime package: MBW.GHLinguist.Runtime.win-x64 or MBW.GHLinguist.Runtime.linux-x64." />
   </Target>
 </Project>

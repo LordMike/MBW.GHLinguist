@@ -83,22 +83,40 @@ public sealed class PackageIntegrationTests
         Assert.Contains("invalid asset path", exception.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void BuildTransitiveTargetCopiesTheCompleteNativeClosureWithRelativeLayout()
+    [Theory]
+    [InlineData("MBW.GHLinguist.Runtime.win-x64.targets", "win-x64", "CopyMBWGHLinguistWinX64NativeClosure")]
+    [InlineData("MBW.GHLinguist.Runtime.linux-x64.targets", "linux-x64", "CopyMBWGHLinguistLinuxX64NativeClosure")]
+    public void RuntimePackageBuildTransitiveTargetCopiesTheCompleteNativeClosureWithRelativeLayout(
+        string targetFile,
+        string runtimeIdentifier,
+        string targetNamePrefix)
     {
-        XDocument target = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "MBW.GHLinguist.targets"));
-        XElement outputCopy = target.Descendants("Target").Single(element => (string?)element.Attribute("Name") == "CopyMBWGHLinguistNativeClosureToOutput");
-        XElement publishCopy = target.Descendants("Target").Single(element => (string?)element.Attribute("Name") == "CopyMBWGHLinguistNativeClosureToPublish");
+        XDocument target = XDocument.Load(Path.Combine(AppContext.BaseDirectory, targetFile));
+        XElement outputCopy = target.Descendants("Target").Single(element => (string?)element.Attribute("Name") == targetNamePrefix + "ToOutput");
+        XElement publishCopy = target.Descendants("Target").Single(element => (string?)element.Attribute("Name") == targetNamePrefix + "ToPublish");
 
         Assert.Equal("CopyFilesToOutputDirectory", (string?)outputCopy.Attribute("AfterTargets"));
         Assert.Equal("CopyFilesToPublishDirectory", (string?)publishCopy.Attribute("AfterTargets"));
         Assert.Contains("nativeassets", target.ToString(), StringComparison.Ordinal);
         Assert.Contains("NETCoreSdkRuntimeIdentifier", target.ToString(), StringComparison.Ordinal);
+        Assert.Contains(runtimeIdentifier, target.ToString(), StringComparison.Ordinal);
         Assert.Contains("/**/*", outputCopy.ToString(), StringComparison.Ordinal);
         Assert.Contains("[System.IO.Directory]::Exists", outputCopy.ToString(), StringComparison.Ordinal);
         Assert.Contains("[System.IO.Directory]::Exists", publishCopy.ToString(), StringComparison.Ordinal);
         Assert.Contains("$(OutDir)%(RecursiveDir)%(Filename)%(Extension)", outputCopy.ToString(), StringComparison.Ordinal);
         Assert.Contains("$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)", publishCopy.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ManagedPackageBuildTransitiveTargetRequiresOneRuntimePackage()
+    {
+        XDocument target = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "MBW.GHLinguist.targets"));
+        XElement validation = target.Descendants("Target").Single(element => (string?)element.Attribute("Name") == "RequireMBWGHLinguistRuntimePackage");
+
+        Assert.Equal("CopyFilesToOutputDirectory;CopyFilesToPublishDirectory", (string?)validation.Attribute("BeforeTargets"));
+        Assert.Contains("MBWGHLinguistRuntimePackageInstalled", validation.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Runtime.win-x64", validation.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Runtime.linux-x64", validation.ToString(), StringComparison.Ordinal);
     }
 
     private sealed class TestNativeClosure : IDisposable

@@ -8,21 +8,4 @@
     <MinVerVersionOverride Condition="'$(CI_VERSION)' != ''">$(CI_VERSION)</MinVerVersionOverride>
     <ValidateRidAssets Condition="'$(CI_PUBLISH_TARGET)' != 'none'">true</ValidateRidAssets>
   </PropertyGroup>
-
-  <Target Name="ValidateStandaloneNativeAssets"
-          BeforeTargets="GenerateNuspec"
-          Condition="'$(ValidateRidAssets)' == 'true' and '$(IsPackable)' == 'true' and '$(RidNativeAssetRoot)' != ''">
-    <Error Condition="!Exists('$(RidNativeAssetRoot)/linux-x64/ghlinguist.so')"
-           Text="Missing linux-x64 native bridge at $(RidNativeAssetRoot)/linux-x64/ghlinguist.so." />
-    <Error Condition="!Exists('$(RidNativeAssetRoot)/win-x64/ghlinguist.dll')"
-           Text="Missing win-x64 native bridge at $(RidNativeAssetRoot)/win-x64/ghlinguist.dll." />
-    <Error Condition="!Exists('$(RidNativeAssetRoot)/linux-x64/provenance.json')"
-           Text="Missing linux-x64 native closure provenance at $(RidNativeAssetRoot)/linux-x64/provenance.json." />
-    <Error Condition="!Exists('$(RidNativeAssetRoot)/win-x64/provenance.json')"
-           Text="Missing win-x64 native closure provenance at $(RidNativeAssetRoot)/win-x64/provenance.json." />
-    <Error Condition="!Exists('$(RidNativeAssetRoot)/linux-x64/lib')"
-           Text="Missing linux-x64 native closure library layout at $(RidNativeAssetRoot)/linux-x64/lib." />
-    <Error Condition="!Exists('$(RidNativeAssetRoot)/win-x64/lib')"
-           Text="Missing win-x64 native closure library layout at $(RidNativeAssetRoot)/win-x64/lib." />
-  </Target>
 </Project>
