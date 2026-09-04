@@ -203,6 +203,11 @@ jobs:
               if ($actualGem.Count -ne 1 -or $actualGem[0].artifact -ne $gem.artifact -or $actualGem[0].artifactUrl -ne $gem.artifactUrl -or $actualGem[0].sha256 -ne $gem.sha256) {
                 throw "Provenance gem artifact identity does not match the manifest for $($gem.name) $($gem.version) in $rid."
               }
+              $expectedBuildArguments = @($gem.windowsBuildArguments)
+              $actualBuildArguments = @($actualGem[0].windowsBuildArguments)
+              if (($actualBuildArguments -join '|') -cne ($expectedBuildArguments -join '|')) {
+                throw "Provenance Windows build arguments do not match the manifest for $($gem.name) $($gem.version) in $rid."
+              }
             }
             $expectedPackageNames = if ($rid -eq 'win-x64') { @($manifest.windows.pacmanPackages | Sort-Object) } else { @($manifest.linux.aptPackages | Sort-Object) }
             $actualPackageNames = if ($rid -eq 'win-x64') { @($provenance.externalDependencies.pacmanPackages | ForEach-Object { $_.name } | Sort-Object) } else { @($provenance.externalDependencies.aptPackages | ForEach-Object { $_.name } | Sort-Object) }
@@ -260,7 +265,7 @@ jobs:
             $version = $document.SelectSingleNode("/*[local-name()='package']/*[local-name()='metadata']/*[local-name()='version']").InnerText
           }
           finally { $archive.Dispose() }
-          ./eng/nuget/verify-package.ps1 -Package $package[0].FullName -ExpectedVersion $version
+          ./eng/nuget/verify-package.ps1 -Package $package[0].FullName -ExpectedVersion $version -ExpectedCommit $env:GITHUB_SHA
           "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Upload package artifacts

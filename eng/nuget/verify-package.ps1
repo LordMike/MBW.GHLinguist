@@ -4,7 +4,11 @@ param(
   [string] $Package,
 
   [Parameter(Mandatory)]
-  [string] $ExpectedVersion
+  [string] $ExpectedVersion,
+
+  [Parameter(Mandatory)]
+  [ValidatePattern('^[a-fA-F0-9]{40}$')]
+  [string] $ExpectedCommit
 )
 
 $ErrorActionPreference = 'Stop'
@@ -232,7 +236,7 @@ try {
   if (-not $repositoryNode -or
       $repositoryNode.GetAttribute('type') -cne 'git' -or
       $repositoryNode.GetAttribute('url') -cne 'https://github.com/LordMike/MBW.GHLinguist' -or
-      $repositoryNode.GetAttribute('commit') -notmatch '^[a-f0-9]{40}$') {
+      $repositoryNode.GetAttribute('commit') -cne $ExpectedCommit.ToLowerInvariant()) {
     throw 'Package nuspec must identify the exact source repository and commit.'
   }
 
