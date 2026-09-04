@@ -230,11 +230,10 @@ jobs:
           mkdir -p .artifacts/nuget
           version_args=()
           if [ -n "$CI_VERSION" ]; then
-            version_args+=("-p:Version=$CI_VERSION")
+            version_args+=("-p:MinVerVersionOverride=$CI_VERSION")
           fi
           dotnet pack src/MBW.GHLinguist/MBW.GHLinguist.csproj --configuration Release --no-build --output .artifacts/nuget -p:ValidateRidAssets=true "${version_args[@]}"
-          shopt -s nullglob
-          packages=(.artifacts/nuget/*.nupkg)
+          mapfile -t packages < <(find .artifacts/nuget -maxdepth 1 -type f -name '*.nupkg' ! -name '*.snupkg' -print | sort)
           [ "${#packages[@]}" -eq 1 ] || { echo "Expected exactly one nupkg, found ${#packages[@]}."; exit 1; }
 
       - name: Verify NuGet package contents
@@ -242,7 +241,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $package = @(Get-ChildItem .artifacts/nuget -Filter '*.nupkg' -File)
+          $package = @(Get-ChildItem .artifacts/nuget -Filter '*.nupkg' -File |
+            Where-Object { $_.Name -notlike '*.snupkg' })
           if ($package.Count -ne 1) { throw "Expected exactly one nupkg, found $($package.Count)." }
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $archive = [System.IO.Compression.ZipFile]::OpenRead($package[0].FullName)
