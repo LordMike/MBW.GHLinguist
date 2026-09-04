@@ -10,6 +10,7 @@ Set-StrictMode -Version Latest
 $scriptRoot = $PSScriptRoot
 $repoRoot = (Resolve-Path (Join-Path $scriptRoot '../..')).Path
 $manifestPath = Join-Path $scriptRoot 'native-dependencies.json'
+$licenseInventoryPath = Join-Path $scriptRoot 'third-party-redistribution.json'
 $nativeAssetRoot = Join-Path $repoRoot '.tmp/artifacts/native/win-x64'
 $buildRoot = Join-Path $repoRoot '.tmp/build/linguist/win-x64'
 
@@ -46,6 +47,33 @@ function Copy-RequiredDirectoryContents {
   Copy-Item -Path (Join-Path $Source '*') -Destination $Destination -Recurse -Force
 }
 
+function Copy-FirstRequiredLicense {
+  param([Parameter(Mandatory)] [string[]] $Sources, [Parameter(Mandatory)] [string] $Destination, [Parameter(Mandatory)] [string] $Description)
+
+  $source = $Sources | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+  if (-not $source) {
+    throw "Required $Description license text is missing. Expected one of: $($Sources -join '; ')"
+  }
+  New-Item -ItemType Directory -Path (Split-Path -Parent $Destination) -Force | Out-Null
+  Copy-Item -LiteralPath $source -Destination $Destination -Force
+}
+
+function Copy-RequiredGemLicenses {
+  param([Parameter(Mandatory)] [string] $GemRoot, [Parameter(Mandatory)] [string] $Destination, [Parameter(Mandatory)] [string] $Description, [string[]] $FallbackSources = @())
+
+  $licenses = @(Get-ChildItem -LiteralPath $GemRoot -File -Recurse | Where-Object { $_.Name -match '^(?i:license|copying)' })
+  if ($licenses.Count -eq 0) {
+    $licenses = @($FallbackSources | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
+  }
+  if ($licenses.Count -eq 0) {
+    throw "Required license or copying file is missing from $Description."
+  }
+  New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+  foreach ($license in $licenses) {
+    Copy-Item -LiteralPath $license.FullName -Destination (Join-Path $Destination $license.Name) -Force
+  }
+}
+
 function Write-Provenance {
   param([Parameter(Mandatory)] $Manifest, [Parameter(Mandatory)] [string] $Root)
 
@@ -77,6 +105,7 @@ foreach ($command in 'git', 'cmake') {
 }
 
 Require-Path $manifestPath 'native dependency manifest'
+Require-Path $licenseInventoryPath 'third-party redistribution inventory'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 
 if (-not $RubyRoot) {
@@ -148,6 +177,13 @@ foreach ($gem in $manifest.gems) {
   Copy-RequiredDirectory $gemLocation (Join-Path $gemHome "gems/$($gem.name)-$($gem.version)") "gem $($gem.name) $($gem.version)"
   Require-Path $gemSpec "gem specification for $($gem.name) $($gem.version)"
   Copy-Item -LiteralPath $gemSpec -Destination (Join-Path $gemHome "specifications/$($gem.name)-$($gem.version).gemspec") -Force
+  $gemLicenseFallbacks = if ($gem.name -eq 'charlock_holmes' -and $gem.version -eq '0.7.9') {
+    @((Join-Path $scriptRoot 'licenses/charlock_holmes-0.7.9-LICENSE'))
+  }
+  else {
+    @()
+  }
+  Copy-RequiredGemLicenses $gemLocation (Join-Path $nativeAssetRoot "licenses/gems/$($gem.name)-$($gem.version)") "gem $($gem.name) $($gem.version)" $gemLicenseFallbacks
 }
 Get-ChildItem -LiteralPath (Join-Path $gemHome 'gems') -Directory | ForEach-Object {
   Remove-Item -LiteralPath (Join-Path $_.FullName 'ext') -Recurse -Force -ErrorAction SilentlyContinue
@@ -171,6 +207,15 @@ foreach ($runtimeDll in 'libgcc_s_seh-1.dll', 'libstdc++-6.dll', 'libwinpthread-
   Copy-Item -LiteralPath $runtimeDllPath -Destination $nativeAssetRoot -Force
 }
 
+Copy-FirstRequiredLicense -Sources @((Join-Path $repoRoot 'LICENSE')) -Destination (Join-Path $nativeAssetRoot 'licenses/MBW.GHLinguist/LICENSE') -Description 'MBW.GHLinguist'
+Copy-FirstRequiredLicense -Sources @((Join-Path $repoRoot 'THIRD-PARTY-NOTICES.md')) -Destination (Join-Path $nativeAssetRoot 'licenses/MBW.GHLinguist/THIRD-PARTY-NOTICES.md') -Description 'MBW.GHLinguist notices'
+Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'COPYING'), (Join-Path $RubyRoot 'LICENSE'), (Join-Path $RubyRoot 'LICENSE.txt')) -Destination (Join-Path $nativeAssetRoot 'licenses/ruby/COPYING') -Description 'CRuby'
+Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'LICENSE'), (Join-Path $RubyRoot 'LICENSE.txt'), (Join-Path $RubyRoot 'RubyInstaller-LICENSE.txt')) -Destination (Join-Path $nativeAssetRoot 'licenses/rubyinstaller/LICENSE') -Description 'RubyInstaller'
+Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/icu/LICENSE'), (Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/icu/LICENSE.txt')) -Destination (Join-Path $nativeAssetRoot 'licenses/msys2/icu/LICENSE') -Description 'ICU'
+Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/gcc-libs/COPYING3')) -Destination (Join-Path $nativeAssetRoot 'licenses/msys2/gcc/COPYING3') -Description 'GCC'
+Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/gcc-libs/COPYING.RUNTIME')) -Destination (Join-Path $nativeAssetRoot 'licenses/msys2/gcc/COPYING.RUNTIME') -Description 'GCC runtime exception'
+Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/winpthreads/COPYING')) -Destination (Join-Path $nativeAssetRoot 'licenses/msys2/winpthreads/COPYING') -Description 'winpthreads'
+
 foreach ($path in $manifest.linguist.paths) {
   if ($path -eq 'lib') {
     Copy-RequiredDirectoryContents (Join-Path $LinguistRoot $path) (Join-Path $nativeAssetRoot 'lib') "Linguist $path"
@@ -179,6 +224,7 @@ foreach ($path in $manifest.linguist.paths) {
     Copy-RequiredDirectory (Join-Path $LinguistRoot $path) (Join-Path $nativeAssetRoot "linguist/$path") "Linguist $path"
   }
 }
+Copy-FirstRequiredLicense -Sources @((Join-Path $LinguistRoot 'LICENSE')) -Destination (Join-Path $nativeAssetRoot 'licenses/linguist/LICENSE') -Description 'GitHub Linguist'
 New-Item -ItemType Directory -Path (Join-Path $nativeAssetRoot 'ghlinguist') -Force | Out-Null
 Copy-Item -LiteralPath $bridgeSource -Destination (Join-Path $nativeAssetRoot 'ghlinguist/bridge.rb') -Force
 $extensionSource = Join-Path $buildRoot 'tokenizer'

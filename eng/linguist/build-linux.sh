@@ -5,6 +5,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
 manifest_path="$script_dir/native-dependencies.json"
+license_inventory_path="$script_dir/third-party-redistribution.json"
 linguist_root="${LINGUIST_ROOT:-$repo_root/extern/linguist}"
 native_asset_root="$repo_root/.tmp/artifacts/native/linux-x64"
 build_root="$repo_root/.tmp/build/linguist/linux-x64"
@@ -18,10 +19,11 @@ require_path() {
   [[ -e "$1" ]] || fail "Required $2 is missing: $1"
 }
 
-for command in git ruby gem make cc cmake ldd patchelf readelf; do
+for command in git ruby gem make cc cmake ldd patchelf readelf dpkg-query; do
   command -v "$command" >/dev/null 2>&1 || fail "Required command is unavailable: $command"
 done
 require_path "$manifest_path" "native dependency manifest"
+require_path "$license_inventory_path" "third-party redistribution inventory"
 require_path "$linguist_root/ext/linguist/extconf.rb" "Linguist tokenizer source"
 bridge_source="$repo_root/src/MBW.GHLinguist.Native/ruby/ghlinguist/bridge.rb"
 require_path "$bridge_source" "GHLinguist Ruby bridge"
@@ -49,7 +51,42 @@ require_path "$ruby_arch_include_dir/ruby/config.h" "Ruby architecture headers"
 require_path "$ruby_shared_library" "Ruby shared runtime library"
 
 rm -rf "$build_root" "$native_asset_root"
-mkdir -p "$build_root/tokenizer" "$native_asset_root/bin" "$native_asset_root/lib" "$native_asset_root/linguist"
+mkdir -p "$build_root/tokenizer" "$native_asset_root/bin" "$native_asset_root/lib" "$native_asset_root/linguist" "$native_asset_root/licenses"
+
+copy_required_license() {
+  local destination="$1"
+  shift
+  local source
+  for source in "$@"; do
+    if [[ -f "$source" ]]; then
+      mkdir -p "$(dirname "$destination")"
+      cp -a "$source" "$destination"
+      return
+    fi
+  done
+  fail "Required license text is missing. Expected one of: $*"
+}
+
+copy_gem_licenses() {
+  local gem_name="$1"
+  local gem_version="$2"
+  local gem_root="$gem_home/gems/$gem_name-$gem_version"
+  local destination="$native_asset_root/licenses/gems/$gem_name-$gem_version"
+  local license_files=()
+  mapfile -d '' license_files < <(find "$gem_root" -maxdepth 2 -type f \( -iname 'license*' -o -iname 'copying*' \) -print0)
+  if (( ${#license_files[@]} == 0 )); then
+    if [[ "$gem_name" == "charlock_holmes" && "$gem_version" == "0.7.9" ]]; then
+      license_files=("$script_dir/licenses/charlock_holmes-0.7.9-LICENSE")
+    else
+      fail "Required license or copying file is missing from gem $gem_name $gem_version."
+    fi
+  fi
+  mkdir -p "$destination"
+  local license_file
+  for license_file in "${license_files[@]}"; do
+    cp -a "$license_file" "$destination/$(basename "$license_file")"
+  done
+}
 
 cp -a "$ruby_prefix/bin/ruby" "$native_asset_root/bin/ruby"
 shopt -s nullglob
@@ -62,7 +99,8 @@ gem_home="$native_asset_root/lib/ruby/gems/$ruby_abi_version"
 mkdir -p "$gem_home"
 while IFS=$'\t' read -r gem_name gem_version; do
   [[ -n "$gem_name" ]] || continue
-  GEM_HOME="$gem_home" GEM_PATH="$gem_home" gem install --no-document --install-dir "$gem_home" "$gem_name" --version "$gem_version"
+  GEM_HOME="$gem_home" GEM_PATH="$gem_home" gem install --no-document --ignore-dependencies --install-dir "$gem_home" "$gem_name" --version "$gem_version"
+  copy_gem_licenses "$gem_name" "$gem_version"
 done < <(ruby -rjson -e 'JSON.parse(File.read(ARGV.fetch(0))).fetch("gems").each { |gem| puts "#{gem.fetch("name")}\t#{gem.fetch("version")}" }' "$manifest_path")
 find "$gem_home/gems" -mindepth 2 -maxdepth 2 -type d -name ext -prune -exec rm -rf {} +
 
@@ -115,6 +153,15 @@ bridge_path="$(find "$bridge_build" -type f -name 'libghlinguist.so' -print -qui
 [[ -n "$bridge_path" ]] || fail "ghlinguist bridge build completed without producing libghlinguist.so."
 cp -a "$bridge_path" "$native_asset_root/ghlinguist.so"
 
+declare -A copied_library_sources=()
+for library_path in "${ruby_libraries[@]}"; do
+  copied_library_sources["$native_asset_root/lib/$(basename "$library_path")"]="$(readlink -f "$library_path")"
+done
+for library in icudata icui18n icuuc; do
+  library_path="$(ldconfig -p | awk -v name="lib${library}.so" '$1 ~ ("^" name) { print $NF; exit }')"
+  copied_library_sources["$native_asset_root/lib/$(basename "$library_path")"]="$(readlink -f "$library_path")"
+done
+
 mapfile -d '' dependency_queue < <(find "$native_asset_root" -type f \( -name '*.so' -o -name '*.so.*' \) -print0)
 dependency_queue+=("$native_asset_root/bin/ruby")
 declare -A inspected_dependencies=()
@@ -141,9 +188,26 @@ while (( dependency_index < ${#dependency_queue[@]} )); do
     destination="$native_asset_root/lib/$dependency_name"
     if [[ ! -e "$destination" ]]; then
       cp -aL "$dependency" "$destination"
+      copied_library_sources["$destination"]="$(readlink -f "$dependency")"
       dependency_queue+=("$destination")
     fi
   done < <(awk '$2 == "=>" && $3 ~ /^\// { print $3 }' <<<"$ldd_output")
+done
+
+copy_required_license "$native_asset_root/licenses/MBW.GHLinguist/LICENSE" "$repo_root/LICENSE"
+copy_required_license "$native_asset_root/licenses/MBW.GHLinguist/THIRD-PARTY-NOTICES.md" "$repo_root/THIRD-PARTY-NOTICES.md"
+copy_required_license "$native_asset_root/licenses/ruby/COPYING" "$ruby_prefix/COPYING" "$ruby_prefix/share/doc/ruby/COPYING"
+copy_required_license "$native_asset_root/licenses/linguist/LICENSE" "$linguist_root/LICENSE"
+
+declare -A documented_debian_packages=()
+for copied_source in "${copied_library_sources[@]}"; do
+  [[ "$copied_source" == /usr/* || "$copied_source" == /lib/* ]] || continue
+  package_owner="$(dpkg-query -S "$copied_source" 2>/dev/null | head -n 1 || true)"
+  [[ -n "$package_owner" ]] || fail "Unable to identify the Debian package owning copied ELF library: $copied_source"
+  debian_package="${package_owner%%:*}"
+  [[ -n "${documented_debian_packages[$debian_package]:-}" ]] && continue
+  copy_required_license "$native_asset_root/licenses/debian/$debian_package/copyright" "/usr/share/doc/$debian_package/copyright"
+  documented_debian_packages["$debian_package"]=1
 done
 
 find "$native_asset_root" -type f -name '.*' -delete

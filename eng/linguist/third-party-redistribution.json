@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "purpose": "License texts redistributed with each RID-local native closure. Source paths are evaluated by the platform build script; alternatives are tried in order.",
+  "components": [
+    {
+      "component": "MBW.GHLinguist",
+      "license": "MIT",
+      "licenseSource": {
+        "all": [
+          "<repository>/LICENSE",
+          "<repository>/THIRD-PARTY-NOTICES.md"
+        ]
+      },
+      "output": "licenses/MBW.GHLinguist/"
+    },
+    {
+      "component": "CRuby 4.0.1",
+      "license": "Ruby License (Ruby 1.9.3 license text)",
+      "licenseSource": {
+        "linux-x64": [
+          "<ruby-prefix>/COPYING",
+          "<ruby-prefix>/share/doc/ruby/COPYING"
+        ],
+        "win-x64": [
+          "<ruby-root>/COPYING",
+          "<ruby-root>/LICENSE",
+          "<ruby-root>/LICENSE.txt"
+        ]
+      },
+      "output": "licenses/ruby/COPYING"
+    },
+    {
+      "component": "RubyInstaller",
+      "license": "RubyInstaller license; see installed distribution text",
+      "licenseSource": {
+        "win-x64": [
+          "<ruby-root>/LICENSE",
+          "<ruby-root>/LICENSE.txt",
+          "<ruby-root>/RubyInstaller-LICENSE.txt"
+        ]
+      },
+      "output": "licenses/rubyinstaller/LICENSE"
+    },
+    {
+      "component": "GitHub Linguist 9.6.0",
+      "license": "MIT",
+      "licenseSource": {
+        "all": [
+          "<linguist-root>/LICENSE"
+        ]
+      },
+      "output": "licenses/linguist/LICENSE"
+    },
+    {
+      "component": "Configured gems: cgi 0.4.2, mini_mime 1.1.5, charlock_holmes 0.7.9",
+      "license": "The license or copying files shipped in each installed gem",
+      "licenseSource": {
+        "all": [
+          "<gem-root>/(LICENSE*|COPYING*)",
+          "<repository>/eng/linguist/licenses/charlock_holmes-0.7.9-LICENSE"
+        ]
+      },
+      "output": "licenses/gems/<name>-<version>/"
+    },
+    {
+      "component": "Debian packages owning copied ELF libraries",
+      "license": "Package-specific Debian copyright file",
+      "licenseSource": {
+        "linux-x64": [
+          "/usr/share/doc/<debian-package>/copyright"
+        ]
+      },
+      "output": "licenses/debian/<debian-package>/copyright"
+    },
+    {
+      "component": "ICU DLLs",
+      "license": "Unicode-3.0",
+      "licenseSource": {
+        "win-x64": [
+          "<ruby-root>/msys64/ucrt64/share/licenses/icu/LICENSE",
+          "<ruby-root>/msys64/ucrt64/share/licenses/icu/LICENSE.txt"
+        ]
+      },
+      "output": "licenses/msys2/icu/LICENSE"
+    },
+    {
+      "component": "GCC runtime and libstdc++ DLLs",
+      "license": "GPL-3.0-with-GCC-exception",
+      "licenseSource": {
+        "win-x64": [
+          "<ruby-root>/msys64/ucrt64/share/licenses/gcc-libs/COPYING3",
+          "<ruby-root>/msys64/ucrt64/share/licenses/gcc-libs/COPYING.RUNTIME"
+        ]
+      },
+      "output": "licenses/msys2/gcc/"
+    },
+    {
+      "component": "winpthreads DLL",
+      "license": "Zlib",
+      "licenseSource": {
+        "win-x64": [
+          "<ruby-root>/msys64/ucrt64/share/licenses/winpthreads/COPYING"
+        ]
+      },
+      "output": "licenses/msys2/winpthreads/COPYING"
+    }
+  ]
+}

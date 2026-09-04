@@ -11,6 +11,14 @@ CRuby runtime and standard library, pinned gems, ICU libraries, Linguist Ruby
 sources and data, the tokenizer extension, and a `provenance.json` containing
 SHA-256 hashes for every staged file. No native binaries are checked in.
 
+`third-party-redistribution.json` is the checked-in redistribution inventory.
+It identifies every component included in the current closures, its license
+description, platform-specific license source locations, and the exact
+`licenses/` output path. Both build scripts fail when a required license text
+cannot be staged. Linux derives a Debian package copyright file for every
+copied system ELF library; Windows stages the RubyInstaller and MSYS2 license
+texts for Ruby, ICU, GCC/libstdc++, and winpthreads.
+
 ## Linux x64
 
 Requires Docker with Linux containers:

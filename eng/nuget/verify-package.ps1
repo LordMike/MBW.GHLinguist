@@ -30,6 +30,19 @@ try {
     'runtimes/win-x64/native/ghlinguist.dll'
     'nativeassets/linux-x64/provenance.json'
     'nativeassets/win-x64/provenance.json'
+    'nativeassets/linux-x64/licenses/MBW.GHLinguist/LICENSE'
+    'nativeassets/linux-x64/licenses/MBW.GHLinguist/THIRD-PARTY-NOTICES.md'
+    'nativeassets/linux-x64/licenses/ruby/COPYING'
+    'nativeassets/linux-x64/licenses/linguist/LICENSE'
+    'nativeassets/win-x64/licenses/MBW.GHLinguist/LICENSE'
+    'nativeassets/win-x64/licenses/MBW.GHLinguist/THIRD-PARTY-NOTICES.md'
+    'nativeassets/win-x64/licenses/ruby/COPYING'
+    'nativeassets/win-x64/licenses/rubyinstaller/LICENSE'
+    'nativeassets/win-x64/licenses/linguist/LICENSE'
+    'nativeassets/win-x64/licenses/msys2/icu/LICENSE'
+    'nativeassets/win-x64/licenses/msys2/gcc/COPYING3'
+    'nativeassets/win-x64/licenses/msys2/gcc/COPYING.RUNTIME'
+    'nativeassets/win-x64/licenses/msys2/winpthreads/COPYING'
   )
 
   foreach ($requiredEntry in $requiredEntries) {
@@ -100,6 +113,11 @@ try {
 
     if (-not $hasNestedFile) {
       throw "Package native closure for $rid does not preserve nested asset layout."
+    }
+
+    $gemLicenseEntries = @($entries | Where-Object { $_ -like "$prefix`licenses/gems/*" })
+    if ($gemLicenseEntries.Count -eq 0) {
+      throw "Package native closure for $rid does not contain staged gem license files."
     }
   }
 
