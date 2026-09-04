@@ -20,6 +20,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="MBW.GHLinguist.Tests" />
+    <ProjectReference Include="..\MBW.GHLinguist.Runtime.win-x64\MBW.GHLinguist.Runtime.win-x64.csproj" />
+    <ProjectReference Include="..\MBW.GHLinguist.Runtime.linux-x64\MBW.GHLinguist.Runtime.linux-x64.csproj" />
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
     <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
     <None Include="..\..\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" />
@@ -35,6 +37,16 @@
     <None Include="..\..\buildTransitive\MBW.GHLinguist.targets"
           Pack="true"
           PackagePath="buildTransitive\MBW.GHLinguist.targets"
-          Visible="false" />
+           Visible="false" />
   </ItemGroup>
+
+  <Target Name="UseExactRuntimePackageDependencies"
+          AfterTargets="_GetProjectReferenceVersions"
+          BeforeTargets="GenerateNuspec">
+    <ItemGroup>
+      <_ProjectReferencesWithVersions Update="@(_ProjectReferencesWithVersions)">
+        <ProjectVersion>[$(PackageVersion)]</ProjectVersion>
+      </_ProjectReferencesWithVersions>
+    </ItemGroup>
+  </Target>
 </Project>

@@ -1,7 +1,9 @@
 <Project>
-  <Target Name="RequireMBWGHLinguistRuntimePackage"
-          BeforeTargets="CopyFilesToOutputDirectory;CopyFilesToPublishDirectory"
-          Condition="'$(MBWGHLinguistRuntimePackageInstalled)' != 'true'">
-    <Error Text="Reference exactly one supported runtime package: MBW.GHLinguist.Runtime.win-x64 or MBW.GHLinguist.Runtime.linux-x64." />
+  <Target Name="ValidateMBWGHLinguistRuntimeIdentifier"
+          BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(RuntimeIdentifier)' == ''"
+           Text="MBW.GHLinguist requires RuntimeIdentifier win-x64 or linux-x64. Restore and build with the same supported runtime identifier." />
+    <Error Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'win-x64' and '$(RuntimeIdentifier)' != 'linux-x64'"
+           Text="MBW.GHLinguist supports only RuntimeIdentifier win-x64 or linux-x64; found $(RuntimeIdentifier)." />
   </Target>
 </Project>

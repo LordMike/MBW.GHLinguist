@@ -107,15 +107,17 @@ public sealed class PackageIntegrationTests
     }
 
     [Fact]
-    public void ManagedPackageBuildTransitiveTargetRequiresOneRuntimePackage()
+    public void ManagedPackageBuildTransitiveTargetRequiresASupportedRuntimeIdentifier()
     {
         XDocument target = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "MBW.GHLinguist.targets"));
-        XElement validation = target.Descendants("Target").Single(element => (string?)element.Attribute("Name") == "RequireMBWGHLinguistRuntimePackage");
+        XElement validation = target.Descendants("Target").Single(element => (string?)element.Attribute("Name") == "ValidateMBWGHLinguistRuntimeIdentifier");
+        XElement[] errors = validation.Elements("Error").ToArray();
 
-        Assert.Equal("CopyFilesToOutputDirectory;CopyFilesToPublishDirectory", (string?)validation.Attribute("BeforeTargets"));
-        Assert.Contains("MBWGHLinguistRuntimePackageInstalled", validation.ToString(), StringComparison.Ordinal);
-        Assert.Contains("Runtime.win-x64", validation.ToString(), StringComparison.Ordinal);
-        Assert.Contains("Runtime.linux-x64", validation.ToString(), StringComparison.Ordinal);
+        Assert.Equal("PrepareForBuild", (string?)validation.Attribute("BeforeTargets"));
+        Assert.Equal(2, errors.Length);
+        Assert.Contains("RuntimeIdentifier)' == ''", (string?)errors[0].Attribute("Condition"), StringComparison.Ordinal);
+        Assert.Contains("win-x64", validation.ToString(), StringComparison.Ordinal);
+        Assert.Contains("linux-x64", validation.ToString(), StringComparison.Ordinal);
     }
 
     private sealed class TestNativeClosure : IDisposable

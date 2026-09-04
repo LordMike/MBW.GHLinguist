@@ -1,18 +1,9 @@
 <Project>
   <PropertyGroup>
-    <MBWGHLinguistRuntimePackageInstalled>true</MBWGHLinguistRuntimePackageInstalled>
     <MBWGHLinguistLinuxX64AssetRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../nativeassets/linux-x64'))</MBWGHLinguistLinuxX64AssetRoot>
-    <MBWGHLinguistLinuxX64RuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</MBWGHLinguistLinuxX64RuntimeIdentifier>
-    <MBWGHLinguistLinuxX64RuntimeIdentifier Condition="'$(MBWGHLinguistLinuxX64RuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</MBWGHLinguistLinuxX64RuntimeIdentifier>
   </PropertyGroup>
 
-  <Target Name="ValidateMBWGHLinguistLinuxX64RuntimePackage"
-          BeforeTargets="CopyFilesToOutputDirectory;CopyFilesToPublishDirectory"
-          Condition="'$(MBWGHLinguistLinuxX64RuntimeIdentifier)' != '' and '$(MBWGHLinguistLinuxX64RuntimeIdentifier)' != 'linux-x64'">
-    <Error Text="MBW.GHLinguist.Runtime.linux-x64 requires RuntimeIdentifier linux-x64; found $(MBWGHLinguistLinuxX64RuntimeIdentifier)." />
-  </Target>
-
-  <ItemGroup Condition="'$(MBWGHLinguistLinuxX64RuntimeIdentifier)' == 'linux-x64' and Exists('$(MBWGHLinguistLinuxX64AssetRoot)')">
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'linux-x64' and Exists('$(MBWGHLinguistLinuxX64AssetRoot)')">
     <Content Include="$(MBWGHLinguistLinuxX64AssetRoot)/**/*"
              Exclude="$(MBWGHLinguistLinuxX64AssetRoot)/ghlinguist.so"
              Link="%(RecursiveDir)%(Filename)%(Extension)"

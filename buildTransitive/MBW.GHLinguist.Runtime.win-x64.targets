@@ -1,18 +1,9 @@
 <Project>
   <PropertyGroup>
-    <MBWGHLinguistRuntimePackageInstalled>true</MBWGHLinguistRuntimePackageInstalled>
     <MBWGHLinguistWinX64AssetRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../nativeassets/win-x64'))</MBWGHLinguistWinX64AssetRoot>
-    <MBWGHLinguistWinX64RuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</MBWGHLinguistWinX64RuntimeIdentifier>
-    <MBWGHLinguistWinX64RuntimeIdentifier Condition="'$(MBWGHLinguistWinX64RuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</MBWGHLinguistWinX64RuntimeIdentifier>
   </PropertyGroup>
 
-  <Target Name="ValidateMBWGHLinguistWinX64RuntimePackage"
-          BeforeTargets="CopyFilesToOutputDirectory;CopyFilesToPublishDirectory"
-          Condition="'$(MBWGHLinguistWinX64RuntimeIdentifier)' != '' and '$(MBWGHLinguistWinX64RuntimeIdentifier)' != 'win-x64'">
-    <Error Text="MBW.GHLinguist.Runtime.win-x64 requires RuntimeIdentifier win-x64; found $(MBWGHLinguistWinX64RuntimeIdentifier)." />
-  </Target>
-
-  <ItemGroup Condition="'$(MBWGHLinguistWinX64RuntimeIdentifier)' == 'win-x64' and Exists('$(MBWGHLinguistWinX64AssetRoot)')">
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'win-x64' and Exists('$(MBWGHLinguistWinX64AssetRoot)')">
     <Content Include="$(MBWGHLinguistWinX64AssetRoot)/**/*"
              Exclude="$(MBWGHLinguistWinX64AssetRoot)/ghlinguist.dll"
              Link="%(RecursiveDir)%(Filename)%(Extension)"

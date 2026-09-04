@@ -20,7 +20,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\MBW.GHLinguist\MBW.GHLinguist.csproj" />
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
     <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
     <None Include="..\..\PACKAGE-LICENSES.md" Pack="true" PackagePath="\" />
@@ -51,15 +50,5 @@
            Text="Missing win-x64 native bridge at $(RidNativeAssetRoot)\win-x64\ghlinguist.dll." />
     <Error Condition="!Exists('$(RidNativeAssetRoot)\win-x64\provenance.json')"
            Text="Missing win-x64 native closure provenance at $(RidNativeAssetRoot)\win-x64\provenance.json." />
-  </Target>
-
-  <Target Name="UseExactManagedPackageDependency"
-          AfterTargets="_GetProjectReferenceVersions"
-          BeforeTargets="GenerateNuspec">
-    <ItemGroup>
-      <_ProjectReferencesWithVersions Update="@(_ProjectReferencesWithVersions)">
-        <ProjectVersion>[$(PackageVersion)]</ProjectVersion>
-      </_ProjectReferencesWithVersions>
-    </ItemGroup>
   </Target>
 </Project>

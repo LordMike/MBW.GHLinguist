@@ -294,15 +294,26 @@ try {
     throw 'Package nuspec must contain exactly one net10.0 dependency group.'
   }
   $dependencies = @($dependencyGroups[0].SelectNodes("*[local-name()='dependency']"))
-  if ($Kind -eq 'managed' -and $dependencies.Count -ne 0) {
-    throw 'Managed package must not declare runtime package dependencies.'
-  }
-  if ($Kind -eq 'runtime') {
-    if ($dependencies.Count -ne 1 -or
-        $dependencies[0].GetAttribute('id') -cne 'MBW.GHLinguist' -or
-        $dependencies[0].GetAttribute('version') -cne "[$ExpectedVersion]") {
-      throw 'Runtime package must declare an exact dependency on the matching managed package version.'
+  if ($Kind -eq 'managed') {
+    $expectedRuntimeDependencies = @(
+      'MBW.GHLinguist.Runtime.linux-x64'
+      'MBW.GHLinguist.Runtime.win-x64'
+    )
+    if ($dependencies.Count -ne $expectedRuntimeDependencies.Count) {
+      throw 'Managed package must declare both runtime package dependencies.'
     }
+    foreach ($expectedRuntimeDependency in $expectedRuntimeDependencies) {
+      $matches = @($dependencies | Where-Object {
+        $_.GetAttribute('id') -ceq $expectedRuntimeDependency -and
+        $_.GetAttribute('version') -ceq "[$ExpectedVersion]"
+      })
+      if ($matches.Count -ne 1) {
+        throw "Managed package must declare exact dependency $expectedRuntimeDependency [$ExpectedVersion]."
+      }
+    }
+  }
+  elseif ($dependencies.Count -ne 0) {
+    throw 'Runtime packages must not declare package dependencies.'
   }
 }
 finally {
