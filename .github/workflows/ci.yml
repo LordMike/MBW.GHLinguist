@@ -115,7 +115,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 10.0.400
 
       - name: Run managed tests against the win-x64 closure
         shell: pwsh
@@ -153,7 +153,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 10.0.400
 
       - name: Run managed tests against the linux-x64 closure
         shell: pwsh
@@ -282,7 +282,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 10.0.400
 
       - name: Build package project
         shell: bash
@@ -360,7 +360,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 10.0.400
 
       - name: Restore and run clean package consumer
         shell: pwsh
