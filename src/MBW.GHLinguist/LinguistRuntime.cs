@@ -38,7 +38,7 @@ public sealed class LinguistRuntime : IDisposable
     /// <returns>A live runtime. For example, its <see cref="Version" /> property reports the loaded Linguist revision.</returns>
     /// <exception cref="DllNotFoundException">The native runtime or one of its dependencies cannot be found.</exception>
     /// <exception cref="BadImageFormatException">A native asset targets the wrong architecture or platform.</exception>
-    /// <exception cref="LinguistException">The native runtime cannot initialize Linguist.</exception>
+    /// <exception cref="LinguistException">The deployed native closure fails integrity validation or cannot initialize Linguist.</exception>
     /// <example>
     /// <code>using LinguistRuntime runtime = LinguistRuntime.Create();</code>
     /// </example>

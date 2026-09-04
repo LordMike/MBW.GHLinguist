@@ -23,7 +23,9 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
 
     internal static NativeLinguistRuntimeBackend Create()
     {
-        byte[] assetRootBytes = EncodeRequired(GetNativeAssetRoot(), "assetRoot");
+        string assetRoot = GetNativeAssetRoot();
+        NativeAssetIntegrity.Validate(assetRoot, NativeAssetIntegrity.GetCurrentRuntimeIdentifier());
+        byte[] assetRootBytes = EncodeRequired(assetRoot, "assetRoot");
         uint nativeMajor = NativeMethods.AbiVersionMajor();
         uint nativeMinor = NativeMethods.AbiVersionMinor();
         if (nativeMajor != AbiMajor)
