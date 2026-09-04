@@ -132,6 +132,14 @@ while IFS=$'\t' read -r gem_name gem_version gem_artifact gem_sha256 gem_url; do
   GEM_URL="$gem_url" GEM_ARTIFACT_PATH="$gem_artifact_path" ruby -ropen-uri -e 'URI.open(ENV.fetch("GEM_URL"), "rb") { |source| File.open(ENV.fetch("GEM_ARTIFACT_PATH"), "wb") { |destination| IO.copy_stream(source, destination) } }'
   [[ "$(sha256sum "$gem_artifact_path" | awk '{ print $1 }')" == "$gem_sha256" ]] || fail "SHA-256 mismatch for gem artifact $gem_artifact."
   GEM_HOME="$gem_home" GEM_PATH="$gem_home" gem install --local --no-document --ignore-dependencies --install-dir "$gem_home" "$gem_artifact_path"
+  compact_gem_root="$native_asset_root/ruby-gems/$gem_name-$gem_version"
+  mkdir -p "$compact_gem_root"
+  cp -a "$gem_home/gems/$gem_name-$gem_version/lib/." "$compact_gem_root/"
+  gem_extension_dir="$(GEM_HOME="$gem_home" GEM_PATH="$gem_home" ruby -rrubygems -e "spec = Gem::Specification.find_by_name('$gem_name', '=$gem_version'); print spec.extensions.empty? ? '' : spec.extension_dir")"
+  if [[ -n "$gem_extension_dir" ]]; then
+    require_path "$gem_extension_dir" "native extension for gem $gem_name $gem_version"
+    cp -a "$gem_extension_dir/." "$compact_gem_root/"
+  fi
   copy_gem_licenses "$gem_name" "$gem_version"
 done < <(ruby -rjson -e 'JSON.parse(File.read(ARGV.fetch(0))).fetch("gems").each { |gem| puts [gem.fetch("name"), gem.fetch("version"), gem.fetch("artifact"), gem.fetch("sha256"), gem.fetch("artifactUrl")].join("\t") }' "$manifest_path")
 find "$gem_home/gems" -mindepth 2 -maxdepth 2 -type d -name ext -prune -exec rm -rf {} +

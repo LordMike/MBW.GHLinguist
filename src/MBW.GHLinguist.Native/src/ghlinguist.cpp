@@ -440,6 +440,14 @@ void configure_runtime_load_path(RubyStartupContext* context) {
             }
         }
     }
+    const std::filesystem::path compact_gems_root = path_from_utf8(context->asset_root) / "ruby-gems";
+    if (std::filesystem::is_directory(compact_gems_root)) {
+        for (const auto& gem_directory : std::filesystem::directory_iterator(compact_gems_root)) {
+            if (!gem_directory.is_directory()) continue;
+            const std::string gem_path = path_to_utf8(gem_directory.path());
+            rb_ary_unshift(load_path, rb_utf8_str_new(gem_path.data(), static_cast<long>(gem_path.size())));
+        }
+    }
     rb_ary_unshift(load_path, rb_utf8_str_new(context->linguist_root.data(), static_cast<long>(context->linguist_root.size())));
     rb_ary_unshift(load_path, rb_utf8_str_new(context->asset_root.data(), static_cast<long>(context->asset_root.size())));
 }

@@ -271,6 +271,8 @@ foreach ($gem in $manifest.gems) {
   }
   $gemSpec = (& $ruby -rrubygems -e "spec = Gem::Specification.find_by_name('$($gem.name)', '=$($gem.version)'); print spec.spec_file").Trim()
   Copy-RequiredDirectory $gemLocation (Join-Path $gemHome "gems/$($gem.name)-$($gem.version)") "gem $($gem.name) $($gem.version)"
+  $compactGemRoot = Join-Path $nativeAssetRoot "ruby-gems/$($gem.name)-$($gem.version)"
+  Copy-RequiredDirectoryContents (Join-Path $gemLocation 'lib') $compactGemRoot "gem library $($gem.name) $($gem.version)"
   Require-Path $gemSpec "gem specification for $($gem.name) $($gem.version)"
   Copy-Item -LiteralPath $gemSpec -Destination (Join-Path $gemHome "specifications/$($gem.name)-$($gem.version).gemspec") -Force
   $gemExtensionDir = & $ruby -rrubygems -e "spec = Gem::Specification.find_by_name('$($gem.name)', '=$($gem.version)'); print spec.extensions.empty? ? '' : spec.extension_dir"
@@ -279,6 +281,7 @@ foreach ($gem in $manifest.gems) {
     Require-Path $gemExtensionDir "native extension for gem $($gem.name) $($gem.version)"
     $gemExtensionRelativePath = $gemExtensionDir.Substring($sourceGemHome.Length).TrimStart('\', '/')
     Copy-RequiredDirectory $gemExtensionDir (Join-Path $gemHome $gemExtensionRelativePath) "native extension for gem $($gem.name) $($gem.version)"
+    Copy-RequiredDirectoryContents $gemExtensionDir $compactGemRoot "compact native extension for gem $($gem.name) $($gem.version)"
   }
   $gemLicenseFallbacks = if ($gem.name -eq 'charlock_holmes' -and $gem.version -eq '0.7.9') {
     @((Join-Path $scriptRoot 'licenses/charlock_holmes-0.7.9-LICENSE'))
