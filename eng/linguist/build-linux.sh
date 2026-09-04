@@ -137,6 +137,15 @@ for apt_package in "${apt_packages[@]}"; do
   [[ "$apt_package" =~ ^[a-z0-9][a-z0-9+.-]*$ ]] || fail "Invalid apt package allowlist entry: $apt_package"
   dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' "$apt_package" >> "$apt_packages_path"
 done
+ruby -rjson -e '
+  manifest = JSON.parse(File.read(ARGV.fetch(0)))
+  expected = manifest.fetch("linux").fetch("aptPackageVersions")
+  actual = File.readlines(ARGV.fetch(1), chomp: true).to_h do |line|
+    name, version, = line.split("\t", 3)
+    [name, version]
+  end
+  abort "Linux package versions do not match the dependency manifest: #{actual.inspect}; expected #{expected.inspect}" unless actual == expected
+' "$manifest_path" "$apt_packages_path"
 
 for library in icudata icui18n icuuc; do
   library_path="$(ldconfig -p | awk -v name="lib${library}.so" '$1 ~ ("^" name) { print $NF; exit }')"
@@ -337,6 +346,7 @@ NATIVE_ASSET_ROOT="$native_asset_root" MANIFEST_PATH="$manifest_path" LICENSE_IN
     "linguistVersion" => manifest.fetch("linguist").fetch("version"),
     "linguistRevision" => manifest.fetch("linguist").fetch("revision"),
     "classifierSha256" => manifest.fetch("linguist").fetch("classifierSha256"),
+    "buildConfiguration" => manifest.fetch("build"),
     "files" => files
   }
   File.write(File.join(root, "provenance.json"), JSON.pretty_generate(output) + "\n")

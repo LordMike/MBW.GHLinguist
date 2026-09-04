@@ -1,10 +1,15 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "ruby": {
     "version": "4.0.6",
     "abiVersion": "4.0.0",
     "windowsPlatform": "x64-mingw-ucrt",
     "dockerImage": "ruby:4.0.6-bookworm@sha256:b4aa7093ffca123d849e79b3e2bc582064f6dd9c22940e69c08bc47d74e355db",
+    "windowsArtifact": {
+      "name": "rubyinstaller-4.0.6-1-x64.7z",
+      "url": "https://github.com/oneclick/rubyinstaller2/releases/download/RubyInstaller-4.0.6-1/rubyinstaller-4.0.6-1-x64.7z",
+      "sha256": "328d7a86bea2f4c432783025050c9ffa1c36fcfc54ebccc466b63450ec3af223"
+    },
     "licenseFiles": [
       {
         "name": "COPYING",
@@ -105,7 +110,14 @@
       "cmake",
       "libicu-dev",
       "patchelf"
-    ]
+    ],
+    "aptPackageVersions": {
+      "binutils": "2.40-2",
+      "build-essential": "12.9",
+      "cmake": "3.25.1-1",
+      "libicu-dev": "72.1-3+deb12u1",
+      "patchelf": "0.14.3-1+b1"
+    }
   },
   "windows": {
     "pacmanPackages": [
@@ -113,7 +125,49 @@
       "mingw-w64-ucrt-x86_64-make",
       "mingw-w64-ucrt-x86_64-ninja",
       "mingw-w64-ucrt-x86_64-icu"
-    ]
+    ],
+    "pacmanPackageVersions": {
+      "mingw-w64-ucrt-x86_64-gcc": "15.2.0-9",
+      "mingw-w64-ucrt-x86_64-make": "4.4.1-4",
+      "mingw-w64-ucrt-x86_64-ninja": "1.13.2-1",
+      "mingw-w64-ucrt-x86_64-icu": "78.2-1"
+    }
+  },
+  "build": {
+    "patches": [],
+    "tokenizer": {
+      "configure": [
+        "ruby",
+        "extconf.rb"
+      ],
+      "build": [
+        "make"
+      ]
+    },
+    "bridge": {
+      "cmakeMinimumVersion": "3.20",
+      "cxxStandard": "17",
+      "windowsGenerator": "Ninja",
+      "definitions": [
+        "GHL_ENABLE_RUBY_EMBEDDING=ON",
+        "GHL_BUILD_SMOKE=ON",
+        "GHL_RUBY_ROOT=<pinned-runtime-root>",
+        "GHL_LINGUIST_REVISION=<manifest-linguist-revision>",
+        "GHL_CLASSIFIER_SHA256=<generated-classifier-sha256>"
+      ],
+      "windowsWarningFlags": [
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic"
+      ],
+      "linuxWarningFlags": [
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic"
+      ],
+      "linuxInstallRpath": "$ORIGIN/lib"
+    },
+    "linuxClosurePostProcessing": "patchelf --set-rpath <relative-$ORIGIN-to-lib> <each-ELF>"
   },
   "icu": {
     "requiredLibraries": [

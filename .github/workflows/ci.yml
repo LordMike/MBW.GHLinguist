@@ -47,10 +47,29 @@ jobs:
           persist-credentials: false
 
       - name: Set up the pinned Ruby runtime
-        uses: ruby/setup-ruby@6e5d382445ae5590b7449d8b3bc8cb1c2c27f617 # v1.317.0
-        with:
-          ruby-version: '4.0.6'
-          bundler: none
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifest = Get-Content eng/linguist/native-dependencies.json -Raw | ConvertFrom-Json
+          $rubyArtifact = $manifest.ruby.windowsArtifact
+          if ($rubyArtifact.sha256 -notmatch '^[a-f0-9]{64}$') { throw 'The RubyInstaller artifact SHA-256 is invalid.' }
+          $rubyArtifactPath = Join-Path $env:RUNNER_TEMP $rubyArtifact.name
+          Invoke-WebRequest -Uri $rubyArtifact.url -OutFile $rubyArtifactPath
+          $actualRubyArtifactSha256 = (Get-FileHash -LiteralPath $rubyArtifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualRubyArtifactSha256 -ne $rubyArtifact.sha256) { throw 'The RubyInstaller artifact SHA-256 does not match the manifest.' }
+          $extractRoot = Join-Path $env:RUNNER_TEMP 'ghlinguist-ruby'
+          New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
+          $sevenZip = (Get-Command 7z -ErrorAction SilentlyContinue).Source
+          if (-not $sevenZip) { $sevenZip = Join-Path $env:ProgramFiles '7-Zip/7z.exe' }
+          if (-not (Test-Path -LiteralPath $sevenZip -PathType Leaf)) { throw '7-Zip is unavailable on the Windows runner.' }
+          & $sevenZip x $rubyArtifactPath "-o$extractRoot" -y
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to extract the pinned RubyInstaller artifact.' }
+          $rubyRoot = Join-Path $extractRoot ([IO.Path]::GetFileNameWithoutExtension($rubyArtifact.name))
+          if (-not (Test-Path -LiteralPath (Join-Path $rubyRoot 'bin/ruby.exe') -PathType Leaf)) { throw 'The pinned RubyInstaller artifact has an unexpected layout.' }
+          "RUBY_ROOT=$rubyRoot" >> $env:GITHUB_ENV
+          Join-Path $rubyRoot 'bin' >> $env:GITHUB_PATH
+          Join-Path $rubyRoot 'msys64/ucrt64/bin' >> $env:GITHUB_PATH
+          Join-Path $rubyRoot 'msys64/usr/bin' >> $env:GITHUB_PATH
 
       - name: Install Windows native prerequisites
         shell: pwsh
@@ -59,7 +78,7 @@ jobs:
           $manifest = Get-Content eng/linguist/native-dependencies.json -Raw | ConvertFrom-Json
           $packages = @($manifest.windows.pacmanPackages)
           if ($packages.Count -eq 0) { throw 'The pacman package allowlist is empty.' }
-          ridk exec pacman --noconfirm -S --needed @packages
+          & (Join-Path $env:RUBY_ROOT 'msys64/usr/bin/pacman.exe') --noconfirm -S --needed @packages
           if ($LASTEXITCODE -ne 0) { throw 'Failed to install the allowlisted Windows native prerequisites.' }
           $gemCache = Join-Path $env:RUNNER_TEMP 'ghlinguist-gems'
           New-Item -ItemType Directory -Path $gemCache -Force | Out-Null
@@ -77,13 +96,13 @@ jobs:
               $arguments += '--'
               $arguments += $buildArguments
             }
-            & gem @arguments
+            & (Join-Path $env:RUBY_ROOT 'bin/gem.cmd') @arguments
             if ($LASTEXITCODE -ne 0) { throw "Failed to install $($gem.name) $($gem.version)." }
           }
 
       - name: Build and validate win-x64 native closure
         shell: pwsh
-        run: ./eng/linguist/build-windows.ps1
+        run: ./eng/linguist/build-windows.ps1 -RubyRoot $env:RUBY_ROOT
 
       - name: Inspect win-x64 exports and dependencies
         shell: pwsh
@@ -208,6 +227,11 @@ jobs:
               if ($provenance.lockInputs.$lockName -ne $expectedLocks[$lockName]) { throw "Provenance lock input '$lockName' does not match the checked-out source for $rid." }
             }
             if ($provenance.externalDependencies.ruby.version -ne $manifest.ruby.version) { throw "Provenance Ruby version does not match the manifest for $rid." }
+            if ($rid -eq 'win-x64') {
+              $expectedRubyArtifact = ConvertTo-Json -InputObject $manifest.ruby.windowsArtifact -Compress
+              $actualRubyArtifact = ConvertTo-Json -InputObject $provenance.externalDependencies.ruby.artifact -Compress
+              if ($actualRubyArtifact -cne $expectedRubyArtifact) { throw 'Windows Ruby artifact provenance does not match the manifest.' }
+            }
             $expectedBundledComponents = ConvertTo-Json -InputObject @($manifest.ruby.bundledComponents) -Depth 5 -Compress
             $actualBundledComponents = ConvertTo-Json -InputObject @($provenance.externalDependencies.ruby.bundledComponents) -Depth 5 -Compress
             if ($actualBundledComponents -cne $expectedBundledComponents) { throw "Provenance bundled Ruby components do not match the manifest for $rid." }
@@ -224,8 +248,16 @@ jobs:
               }
             }
             $expectedPackageNames = if ($rid -eq 'win-x64') { @($manifest.windows.pacmanPackages | Sort-Object) } else { @($manifest.linux.aptPackages | Sort-Object) }
-            $actualPackageNames = if ($rid -eq 'win-x64') { @($provenance.externalDependencies.pacmanPackages | ForEach-Object { $_.name } | Sort-Object) } else { @($provenance.externalDependencies.aptPackages | ForEach-Object { $_.name } | Sort-Object) }
+            $actualPackages = if ($rid -eq 'win-x64') { @($provenance.externalDependencies.pacmanPackages) } else { @($provenance.externalDependencies.aptPackages) }
+            $actualPackageNames = @($actualPackages | ForEach-Object { $_.name } | Sort-Object)
             if (($actualPackageNames -join '|') -ne ($expectedPackageNames -join '|')) { throw "Provenance package identities do not match the strict allowlist for $rid." }
+            foreach ($package in $actualPackages) {
+              $expectedVersion = if ($rid -eq 'win-x64') { $manifest.windows.pacmanPackageVersions.PSObject.Properties[$package.name].Value } else { $manifest.linux.aptPackageVersions.PSObject.Properties[$package.name].Value }
+              if (-not $expectedVersion -or $package.version -ne $expectedVersion) { throw "Provenance package version does not match the manifest for $($package.name) in $rid." }
+            }
+            $expectedBuildConfiguration = ConvertTo-Json -InputObject $manifest.build -Depth 8 -Compress
+            $actualBuildConfiguration = ConvertTo-Json -InputObject $provenance.buildConfiguration -Depth 8 -Compress
+            if ($actualBuildConfiguration -cne $expectedBuildConfiguration) { throw "Provenance build configuration does not match the manifest for $rid." }
             if (@($provenance.files).Count -eq 0) { throw "Provenance for $rid contains no files." }
             foreach ($file in $provenance.files) {
               $relativePath = [string]$file.path

@@ -503,8 +503,9 @@ runtimes/linux-x64/native/ghlinguist.so
 nativeassets/win-x64/*
 nativeassets/linux-x64/*
 buildTransitive/MBW.GHLinguist.targets
-LICENSES/*
-THIRD-PARTY-NOTICES.txt
+LICENSE
+THIRD-PARTY-NOTICES.md
+nativeassets/<rid>/licenses/*
 native/include/ghlinguist.h
 ```
 

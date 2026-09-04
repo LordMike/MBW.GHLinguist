@@ -1,7 +1,8 @@
 # Linguist build scripts
 
 `native-dependencies.json` is the checked-in, non-secret source of truth for
-the CRuby 4.0.6, Linguist 9.6.0, gem, ICU, and exclusion pins. It explicitly
+the CRuby 4.0.6 source artifacts, Linguist 9.6.0, gem, OS-package, ICU, build
+recipe, and exclusion pins. It records the empty patch set explicitly and
 excludes Rugged and libgit2 because this package does not expose repository
 traversal.
 
@@ -9,7 +10,8 @@ The scripts create a complete RID-local closure beneath
 `.tmp/artifacts/native/<rid>`. Each closure contains the `ghlinguist` bridge,
 CRuby runtime and standard library, pinned gems, ICU libraries, Linguist Ruby
 sources and data, the tokenizer extension, and a `provenance.json` containing
-SHA-256 hashes for every staged file. No native binaries are checked in.
+SHA-256 hashes for every staged file, the locked build configuration, and the
+resolved external package identities. No native binaries are checked in.
 
 `third-party-redistribution.json` is the checked-in redistribution inventory.
 It identifies every component included in the current closures, its license

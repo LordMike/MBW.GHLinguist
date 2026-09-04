@@ -121,6 +121,7 @@ function Write-Provenance {
       ruby = [ordered]@{
         version = $Manifest.ruby.version
         description = $RubyDescription
+        artifact = $Manifest.ruby.windowsArtifact
         bundledComponents = @($Manifest.ruby.bundledComponents)
       }
       gems = @($Manifest.gems | ForEach-Object {
@@ -139,6 +140,7 @@ function Write-Provenance {
     linguistVersion = $Manifest.linguist.version
     linguistRevision = $Manifest.linguist.revision
     classifierSha256 = $Manifest.linguist.classifierSha256
+    buildConfiguration = $Manifest.build
     files = @($files)
   } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $Root 'provenance.json') -Encoding utf8NoBOM
 }
@@ -209,6 +211,10 @@ $pacmanPackages = foreach ($package in $manifest.windows.pacmanPackages) {
   $parts = $identity -split '\s+', 2
   if ($parts.Count -ne 2) {
     throw "Unable to parse pacman package identity: $identity"
+  }
+  $expectedVersion = $manifest.windows.pacmanPackageVersions.PSObject.Properties[$package].Value
+  if (-not $expectedVersion -or $parts[1] -ne $expectedVersion) {
+    throw "Expected pacman package $package $expectedVersion, found $($parts[1])."
   }
   [ordered]@{ name = $parts[0]; version = $parts[1] }
 }
