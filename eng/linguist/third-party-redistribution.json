@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 1,
-  "purpose": "License texts redistributed with each RID-local native closure. Source paths are evaluated by the platform build script; alternatives are tried in order.",
+  "schemaVersion": 2,
+  "purpose": "Authoritative component and license-output policy for each RID-local native closure. Resolved platform package identities are recorded in provenance.json.",
   "components": [
     {
       "component": "MBW.GHLinguist",
@@ -14,8 +14,8 @@
       "output": "licenses/MBW.GHLinguist/"
     },
     {
-      "component": "CRuby 4.0.6",
-      "license": "Ruby License (Ruby 1.9.3 license text)",
+      "component": "CRuby 4.0.6 and its standard library",
+      "license": "Ruby License or 2-clause BSD; component-specific notices are in LEGAL",
       "licenseSource": {
         "linux-x64": [
           "<ruby-prefix>/COPYING",
@@ -27,7 +27,12 @@
           "<ruby-root>/LICENSE.txt"
         ]
       },
-      "output": "licenses/ruby/COPYING"
+      "output": "licenses/ruby/",
+      "requiredFiles": [
+        "COPYING",
+        "BSDL",
+        "LEGAL"
+      ]
     },
     {
       "component": "RubyInstaller",
@@ -70,7 +75,8 @@
           "/usr/share/doc/<debian-package>/copyright"
         ]
       },
-      "output": "licenses/debian/<debian-package>/copyright"
+      "output": "licenses/debian/<debian-package>/copyright",
+      "additionalOutput": "licenses/debian/common/"
     },
     {
       "component": "ICU DLLs",

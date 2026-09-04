@@ -67,6 +67,16 @@ copy_required_license() {
   fail "Required license text is missing. Expected one of: $*"
 }
 
+download_locked_file() {
+  local destination="$1"
+  local url="$2"
+  local expected_sha256="$3"
+  [[ "$expected_sha256" =~ ^[a-f0-9]{64}$ ]] || fail "Invalid SHA-256 for locked file $url."
+  mkdir -p "$(dirname "$destination")"
+  DOWNLOAD_URL="$url" DOWNLOAD_DESTINATION="$destination" ruby -ropen-uri -e 'URI.open(ENV.fetch("DOWNLOAD_URL"), "rb") { |source| File.open(ENV.fetch("DOWNLOAD_DESTINATION"), "wb") { |target| IO.copy_stream(source, target) } }'
+  [[ "$(sha256sum "$destination" | awk '{ print $1 }')" == "$expected_sha256" ]] || fail "SHA-256 mismatch for locked file $url."
+}
+
 copy_gem_licenses() {
   local gem_name="$1"
   local gem_version="$2"
@@ -96,6 +106,7 @@ cp -a "${ruby_libraries[@]}" "$native_asset_root/lib/"
 cp -a "$ruby_prefix/lib/ruby" "$native_asset_root/lib/ruby"
 
 gem_home="$native_asset_root/lib/ruby/gems/$ruby_abi_version"
+rm -rf "$native_asset_root/lib/ruby/gems"
 mkdir -p "$gem_home"
 while IFS=$'\t' read -r gem_name gem_version gem_artifact gem_sha256 gem_url; do
   [[ -n "$gem_name" ]] || continue
@@ -109,6 +120,13 @@ while IFS=$'\t' read -r gem_name gem_version gem_artifact gem_sha256 gem_url; do
   copy_gem_licenses "$gem_name" "$gem_version"
 done < <(ruby -rjson -e 'JSON.parse(File.read(ARGV.fetch(0))).fetch("gems").each { |gem| puts [gem.fetch("name"), gem.fetch("version"), gem.fetch("artifact"), gem.fetch("sha256"), gem.fetch("artifactUrl")].join("\t") }' "$manifest_path")
 find "$gem_home/gems" -mindepth 2 -maxdepth 2 -type d -name ext -prune -exec rm -rf {} +
+ruby -rjson -e '
+  manifest = JSON.parse(File.read(ARGV.fetch(0)))
+  gem_home = ARGV.fetch(1)
+  expected = manifest.fetch("gems").map { |gem| "#{gem.fetch("name")}-#{gem.fetch("version")}" }.sort
+  actual = Dir.children(File.join(gem_home, "gems")).sort
+  abort "Unexpected staged gems: #{actual.inspect}; expected #{expected.inspect}" unless actual == expected
+' "$manifest_path" "$gem_home"
 
 apt_packages_path="$build_root/apt-packages.tsv"
 mapfile -t apt_packages < <(ruby -rjson -e 'puts JSON.parse(File.read(ARGV.fetch(0))).fetch("linux").fetch("aptPackages")' "$manifest_path")
@@ -211,7 +229,9 @@ done
 
 copy_required_license "$native_asset_root/licenses/MBW.GHLinguist/LICENSE" "$repo_root/LICENSE"
 copy_required_license "$native_asset_root/licenses/MBW.GHLinguist/THIRD-PARTY-NOTICES.md" "$repo_root/THIRD-PARTY-NOTICES.md"
-copy_required_license "$native_asset_root/licenses/ruby/COPYING" "$ruby_prefix/COPYING" "$ruby_prefix/share/doc/ruby/COPYING" "$repo_root/eng/licenses/ruby-4.0.6-COPYING"
+while IFS=$'\t' read -r license_name license_url license_sha256; do
+  download_locked_file "$native_asset_root/licenses/ruby/$license_name" "$license_url" "$license_sha256"
+done < <(ruby -rjson -e 'JSON.parse(File.read(ARGV.fetch(0))).fetch("ruby").fetch("licenseFiles").each { |file| puts [file.fetch("name"), file.fetch("url"), file.fetch("sha256")].join("\t") }' "$manifest_path")
 copy_required_license "$native_asset_root/licenses/linguist/LICENSE" "$linguist_root/LICENSE"
 
 declare -A documented_debian_packages=()
@@ -229,6 +249,11 @@ for copied_source in "${copied_library_sources[@]}"; do
   copy_required_license "$native_asset_root/licenses/debian/$debian_package/copyright" "/usr/share/doc/$debian_package/copyright"
   documented_debian_packages["$debian_package"]=1
 done
+copy_required_license "$native_asset_root/licenses/debian/common/GPL-2" "/usr/share/common-licenses/GPL-2"
+copy_required_license "$native_asset_root/licenses/debian/common/GPL-3" "/usr/share/common-licenses/GPL-3"
+copy_required_license "$native_asset_root/licenses/debian/common/LGPL-2" "/usr/share/common-licenses/LGPL-2"
+copy_required_license "$native_asset_root/licenses/debian/common/LGPL-2.1" "/usr/share/common-licenses/LGPL-2.1"
+copy_required_license "$native_asset_root/licenses/debian/common/LGPL-3" "/usr/share/common-licenses/LGPL-3"
 
 find "$native_asset_root" -type f -name '.*' -delete
 while IFS= read -r -d '' link_path; do

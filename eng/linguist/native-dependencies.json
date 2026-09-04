@@ -1,10 +1,27 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "ruby": {
     "version": "4.0.6",
     "abiVersion": "4.0.0",
     "windowsPlatform": "x64-mingw-ucrt",
     "dockerImage": "ruby:4.0.6-bookworm@sha256:b4aa7093ffca123d849e79b3e2bc582064f6dd9c22940e69c08bc47d74e355db",
+    "licenseFiles": [
+      {
+        "name": "COPYING",
+        "url": "https://raw.githubusercontent.com/ruby/ruby/v4.0.6/COPYING",
+        "sha256": "4ebe48076b3ee165fbb9350aa8a9552f8043c8ed8a7edca2089133d33c1ea45f"
+      },
+      {
+        "name": "BSDL",
+        "url": "https://raw.githubusercontent.com/ruby/ruby/v4.0.6/BSDL",
+        "sha256": "36a9a6e7347214bbba599a412617204e65bff065dcbe5c46f5cb454c80de9eb0"
+      },
+      {
+        "name": "LEGAL",
+        "url": "https://raw.githubusercontent.com/ruby/ruby/v4.0.6/LEGAL",
+        "sha256": "a74812486cffbdc55141a5d9f165d782cbb202660d827622ec966237d4717b99"
+      }
+    ],
     "runtimeFiles": [
       "bin/ruby.exe",
       "bin/x64-ucrt-ruby400.dll",

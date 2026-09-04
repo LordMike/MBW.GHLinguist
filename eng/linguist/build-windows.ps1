@@ -58,6 +58,24 @@ function Copy-FirstRequiredLicense {
   Copy-Item -LiteralPath $source -Destination $Destination -Force
 }
 
+function Copy-LockedRemoteFile {
+  param(
+    [Parameter(Mandatory)] [string] $Destination,
+    [Parameter(Mandatory)] [string] $Url,
+    [Parameter(Mandatory)] [string] $Sha256
+  )
+
+  if ($Sha256 -notmatch '^[a-f0-9]{64}$') {
+    throw "Invalid SHA-256 for locked file $Url."
+  }
+  New-Item -ItemType Directory -Path (Split-Path -Parent $Destination) -Force | Out-Null
+  Invoke-WebRequest -Uri $Url -OutFile $Destination
+  $actualSha256 = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($actualSha256 -ne $Sha256) {
+    throw "SHA-256 mismatch for locked file $Url."
+  }
+}
+
 function Copy-RequiredGemLicenses {
   param([Parameter(Mandatory)] [string] $GemRoot, [Parameter(Mandatory)] [string] $Destination, [Parameter(Mandatory)] [string] $Description, [string[]] $FallbackSources = @())
 
@@ -201,6 +219,8 @@ Copy-RequiredDirectory $rubyBuiltinDlls (Join-Path $nativeAssetRoot 'ruby_builti
 Copy-RequiredDirectory (Join-Path $RubyRoot 'lib/ruby') (Join-Path $nativeAssetRoot 'lib/ruby') 'Ruby standard library'
 
 $gemHome = Join-Path $nativeAssetRoot "lib/ruby/gems/$($manifest.ruby.abiVersion)"
+$stagedGemRoot = Join-Path $nativeAssetRoot 'lib/ruby/gems'
+Remove-Item -LiteralPath $stagedGemRoot -Recurse -Force -ErrorAction SilentlyContinue
 $sourceGemHome = (& $ruby -rrubygems -e 'print Gem.dir').Trim()
 New-Item -ItemType Directory -Path (Join-Path $gemHome 'gems'), (Join-Path $gemHome 'specifications') -Force | Out-Null
 foreach ($gem in $manifest.gems) {
@@ -229,6 +249,11 @@ foreach ($gem in $manifest.gems) {
 Get-ChildItem -LiteralPath (Join-Path $gemHome 'gems') -Directory | ForEach-Object {
   Remove-Item -LiteralPath (Join-Path $_.FullName 'ext') -Recurse -Force -ErrorAction SilentlyContinue
 }
+$expectedGems = @($manifest.gems | ForEach-Object { "$($_.name)-$($_.version)" } | Sort-Object)
+$actualGems = @(Get-ChildItem -LiteralPath (Join-Path $gemHome 'gems') -Directory | ForEach-Object Name | Sort-Object)
+if (($actualGems -join '|') -ne ($expectedGems -join '|')) {
+  throw "Unexpected staged gems: $($actualGems -join ', '); expected $($expectedGems -join ', ')."
+}
 
 foreach ($pattern in $manifest.icu.windowsPatterns) {
   $matches = foreach ($searchPath in $manifest.icu.windowsSearchPaths) {
@@ -250,7 +275,9 @@ foreach ($runtimeDll in 'libgcc_s_seh-1.dll', 'libstdc++-6.dll', 'libwinpthread-
 
 Copy-FirstRequiredLicense -Sources @((Join-Path $repoRoot 'LICENSE')) -Destination (Join-Path $nativeAssetRoot 'licenses/MBW.GHLinguist/LICENSE') -Description 'MBW.GHLinguist'
 Copy-FirstRequiredLicense -Sources @((Join-Path $repoRoot 'THIRD-PARTY-NOTICES.md')) -Destination (Join-Path $nativeAssetRoot 'licenses/MBW.GHLinguist/THIRD-PARTY-NOTICES.md') -Description 'MBW.GHLinguist notices'
-Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'COPYING'), (Join-Path $RubyRoot 'LICENSE'), (Join-Path $RubyRoot 'LICENSE.txt')) -Destination (Join-Path $nativeAssetRoot 'licenses/ruby/COPYING') -Description 'CRuby'
+foreach ($licenseFile in $manifest.ruby.licenseFiles) {
+  Copy-LockedRemoteFile -Destination (Join-Path $nativeAssetRoot "licenses/ruby/$($licenseFile.name)") -Url $licenseFile.url -Sha256 $licenseFile.sha256
+}
 Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'LICENSE'), (Join-Path $RubyRoot 'LICENSE.txt'), (Join-Path $RubyRoot 'RubyInstaller-LICENSE.txt')) -Destination (Join-Path $nativeAssetRoot 'licenses/rubyinstaller/LICENSE') -Description 'RubyInstaller'
 Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/icu/LICENSE'), (Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/icu/LICENSE.txt')) -Destination (Join-Path $nativeAssetRoot 'licenses/msys2/icu/LICENSE') -Description 'ICU'
 Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/gcc-libs/COPYING3')) -Destination (Join-Path $nativeAssetRoot 'licenses/msys2/gcc/COPYING3') -Description 'GCC'
