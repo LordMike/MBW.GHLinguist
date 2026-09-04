@@ -10,6 +10,8 @@
           Condition="'$(MBWGHLinguistRuntimeIdentifier)' != '' and Exists('$(MBWGHLinguistNativeAssetRoot)')">
     <ItemGroup>
       <_MBWGHLinguistNativeAsset Include="$(MBWGHLinguistNativeAssetRoot)/**/*" />
+      <_MBWGHLinguistNativeAsset Remove="@(_MBWGHLinguistNativeAsset)"
+                                  Condition="$([System.IO.Directory]::Exists('%(_MBWGHLinguistNativeAsset.FullPath)'))" />
     </ItemGroup>
 
     <Copy SourceFiles="@(_MBWGHLinguistNativeAsset)"
@@ -22,6 +24,8 @@
           Condition="'$(MBWGHLinguistRuntimeIdentifier)' != '' and Exists('$(MBWGHLinguistNativeAssetRoot)')">
     <ItemGroup>
       <_MBWGHLinguistNativePublishAsset Include="$(MBWGHLinguistNativeAssetRoot)/**/*" />
+      <_MBWGHLinguistNativePublishAsset Remove="@(_MBWGHLinguistNativePublishAsset)"
+                                         Condition="$([System.IO.Directory]::Exists('%(_MBWGHLinguistNativePublishAsset.FullPath)'))" />
     </ItemGroup>
 
     <Copy SourceFiles="@(_MBWGHLinguistNativePublishAsset)"
