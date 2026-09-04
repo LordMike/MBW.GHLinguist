@@ -142,6 +142,11 @@ try {
     }
   }
   else {
+    if (-not $entriesByName.ContainsKey('PACKAGE-LICENSES.md')) {
+      throw 'Runtime package is missing required entry: PACKAGE-LICENSES.md'
+    }
+    [void] $allowedEntries.Add('PACKAGE-LICENSES.md')
+
     $bridgeName = if ($RuntimeIdentifier -eq 'win-x64') { 'ghlinguist.dll' } else { 'ghlinguist.so' }
     $closurePrefix = "nativeassets/$RuntimeIdentifier/"
     foreach ($entry in @(
@@ -268,8 +273,13 @@ try {
     throw "Expected package version '$ExpectedVersion', found '$(if ($versionNode) { $versionNode.InnerText } else { '<missing>' })'."
   }
   $licenseNode = $metadata.SelectSingleNode("*[local-name()='license']")
-  if (-not $licenseNode -or $licenseNode.GetAttribute('type') -cne 'expression' -or $licenseNode.InnerText -cne 'MIT') {
-    throw 'Package nuspec must declare the MIT license expression.'
+  if ($Kind -eq 'managed') {
+    if (-not $licenseNode -or $licenseNode.GetAttribute('type') -cne 'expression' -or $licenseNode.InnerText -cne 'MIT') {
+      throw 'Managed package nuspec must declare the MIT license expression.'
+    }
+  }
+  elseif (-not $licenseNode -or $licenseNode.GetAttribute('type') -cne 'file' -or $licenseNode.InnerText -cne 'PACKAGE-LICENSES.md') {
+    throw 'Runtime package nuspec must reference PACKAGE-LICENSES.md.'
   }
   $repositoryNode = $metadata.SelectSingleNode("*[local-name()='repository']")
   if (-not $repositoryNode -or

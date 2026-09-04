@@ -7,7 +7,7 @@
     <PackageId>MBW.GHLinguist.Runtime.linux-x64</PackageId>
     <Title>MBW.GHLinguist.Runtime.linux-x64</Title>
     <Description>Linux x64 native runtime closure for MBW.GHLinguist.</Description>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageLicenseFile>PACKAGE-LICENSES.md</PackageLicenseFile>
     <PackageProjectUrl>https://github.com/LordMike/MBW.GHLinguist</PackageProjectUrl>
     <RepositoryUrl>https://github.com/LordMike/MBW.GHLinguist</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -23,6 +23,7 @@
     <ProjectReference Include="..\MBW.GHLinguist\MBW.GHLinguist.csproj" />
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
     <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
+    <None Include="..\..\PACKAGE-LICENSES.md" Pack="true" PackagePath="\" />
     <None Include="..\..\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" />
     <None Include="..\..\eng\linguist\third-party-redistribution.json"
           Pack="true"
