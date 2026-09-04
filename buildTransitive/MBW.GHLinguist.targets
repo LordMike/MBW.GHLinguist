@@ -2,7 +2,7 @@
   <PropertyGroup>
     <MBWGHLinguistRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</MBWGHLinguistRuntimeIdentifier>
     <MBWGHLinguistRuntimeIdentifier Condition="'$(MBWGHLinguistRuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</MBWGHLinguistRuntimeIdentifier>
-    <MBWGHLinguistNativeAssetRoot>$(MSBuildThisFileDirectory)../nativeassets/$(MBWGHLinguistRuntimeIdentifier)</MBWGHLinguistNativeAssetRoot>
+    <MBWGHLinguistNativeAssetRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../nativeassets/$(MBWGHLinguistRuntimeIdentifier)'))</MBWGHLinguistNativeAssetRoot>
   </PropertyGroup>
 
   <Target Name="CopyMBWGHLinguistNativeClosureToOutput"
