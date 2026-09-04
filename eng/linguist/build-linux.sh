@@ -37,7 +37,11 @@ ruby_abi_version="$(manifest_value ruby.abiVersion)"
 linguist_version="$(manifest_value linguist.version)"
 linguist_revision="$(manifest_value linguist.revision)"
 [[ "$(ruby -e 'print RUBY_VERSION')" == "$ruby_version" ]] || fail "Expected Ruby $ruby_version."
-[[ "$(git -C "$linguist_root" rev-parse HEAD)" == "$linguist_revision" ]] || fail "Expected Linguist revision $linguist_revision."
+actual_linguist_revision="${LINGUIST_REVISION:-}"
+if [[ -z "$actual_linguist_revision" ]]; then
+  actual_linguist_revision="$(git -C "$linguist_root" rev-parse HEAD)"
+fi
+[[ "$actual_linguist_revision" == "$linguist_revision" ]] || fail "Expected Linguist revision $linguist_revision."
 [[ "$(tr -d '[:space:]' < "$linguist_root/lib/linguist/VERSION")" == "$linguist_version" ]] || fail "Expected Linguist $linguist_version."
 ruby_description="$(ruby -e 'print RUBY_DESCRIPTION')"
 [[ "$(manifest_value schemaVersion)" == "6" ]] || fail "The native dependency manifest uses an unsupported schema."

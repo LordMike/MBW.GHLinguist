@@ -44,6 +44,7 @@ if ($LASTEXITCODE -ne 0) {
 $dockerArguments = @(
   'run'
   '--rm'
+  '--env', "LINGUIST_REVISION=$actualRevision"
   '--mount', "type=bind,source=$repoRoot,target=/workspace"
 )
 

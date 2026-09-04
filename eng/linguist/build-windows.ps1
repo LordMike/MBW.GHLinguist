@@ -196,9 +196,11 @@ $bridgeSource = Join-Path $repoRoot 'src/MBW.GHLinguist.Native/ruby/ghlinguist/b
 Require-Path $bridgeSource 'GHLinguist Ruby bridge'
 
 $msysBin = Join-Path $RubyRoot 'msys64/ucrt64/bin'
+$msysUsrBin = Join-Path $RubyRoot 'msys64/usr/bin'
 if (-not (Get-Command make -ErrorAction SilentlyContinue) -or -not (Get-Command gcc -ErrorAction SilentlyContinue)) {
   Require-Path $msysBin 'RubyInstaller MSYS2 UCRT toolchain'
-  $env:Path = "$msysBin$([IO.Path]::PathSeparator)$env:Path"
+  Require-Path $msysUsrBin 'RubyInstaller MSYS2 tools'
+  $env:Path = "$msysBin$([IO.Path]::PathSeparator)$msysUsrBin$([IO.Path]::PathSeparator)$env:Path"
 }
 foreach ($command in 'make', 'gcc') {
   if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
