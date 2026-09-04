@@ -35,6 +35,10 @@ jobs:
         env:
           CI_PUBLISH_TARGET: none
 
+      - name: Verify dependency security baseline
+        shell: pwsh
+        run: ./eng/security/verify-security-baseline.ps1
+
   native_windows:
     name: Native win-x64
     runs-on: windows-2025

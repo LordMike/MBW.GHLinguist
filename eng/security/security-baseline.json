@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "nativeMinimumVersions": [
+    {
+      "component": "CRuby",
+      "source": "ruby",
+      "minimumVersion": "4.0.4",
+      "advisory": "https://www.ruby-lang.org/en/news/2026/04/07/dos-using-drdump-cve-2026-39949/",
+      "cve": "CVE-2026-39949"
+    },
+    {
+      "component": "zlib gem",
+      "source": "gem",
+      "name": "zlib",
+      "minimumVersion": "3.2.3",
+      "advisory": "https://www.ruby-lang.org/en/news/2026/04/07/integer-overflow-in-zlib-cve-2026-43793/",
+      "cve": "CVE-2026-43793"
+    },
+    {
+      "component": "resolv gem",
+      "source": "gem",
+      "name": "resolv",
+      "minimumVersion": "0.7.2",
+      "advisory": "https://www.ruby-lang.org/en/news/2026/04/07/dos-in-resolv-cve-2026-5269/",
+      "cve": "CVE-2026-5269"
+    }
+  ]
+}
