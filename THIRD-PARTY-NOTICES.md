@@ -14,6 +14,7 @@ gem artifacts, and resolved platform package identities in
 | Component | Version or identity | License location |
 | --- | --- | --- |
 | CRuby and standard library | 4.0.6 | `licenses/ruby/COPYING`, `BSDL`, and `LEGAL` |
+| Psych and libyaml | Psych 5.3.1, libyaml 0.2.5 | `licenses/ruby/LEGAL`; Linux also includes `licenses/debian/libyaml-0-2/copyright` |
 | GitHub Linguist | 9.6.0, revision `196b2a14418cab005065c72c9759370934c184bc` | `licenses/linguist/LICENSE` |
 | cgi | 0.4.2 | `licenses/gems/cgi-0.4.2/` |
 | mini_mime | 1.1.5 | `licenses/gems/mini_mime-1.1.5/` |

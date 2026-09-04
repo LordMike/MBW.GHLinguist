@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "ruby": {
     "version": "4.0.6",
     "abiVersion": "4.0.0",
@@ -26,6 +26,16 @@
       "bin/ruby.exe",
       "bin/x64-ucrt-ruby400.dll",
       "lib/ruby"
+    ],
+    "bundledComponents": [
+      {
+        "name": "psych",
+        "version": "5.3.1",
+        "nativeDependency": {
+          "name": "libyaml",
+          "version": "0.2.5"
+        }
+      }
     ]
   },
   "linguist": {

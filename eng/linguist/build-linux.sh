@@ -39,6 +39,7 @@ linguist_revision="$(manifest_value linguist.revision)"
 [[ "$(ruby -e 'print RUBY_VERSION')" == "$ruby_version" ]] || fail "Expected Ruby $ruby_version."
 [[ "$(git -C "$linguist_root" rev-parse HEAD)" == "$linguist_revision" ]] || fail "Expected Linguist revision $linguist_revision."
 [[ "$(tr -d '[:space:]' < "$linguist_root/lib/linguist/VERSION")" == "$linguist_version" ]] || fail "Expected Linguist $linguist_version."
+ruby_description="$(ruby -e 'print RUBY_DESCRIPTION')"
 
 ruby_prefix="$(ruby -rrbconfig -e 'print RbConfig::CONFIG.fetch("prefix")')"
 ruby_include_dir="$(ruby -rrbconfig -e 'print RbConfig::CONFIG.fetch("rubyhdrdir")')"
@@ -296,7 +297,7 @@ RUBYLIB="$native_asset_root/lib:$native_asset_root" \
   GHL_DEPENDENCY_MANIFEST="$manifest_path" \
   "$native_asset_root/bin/ruby" "$script_dir/validate.rb"
 
-NATIVE_ASSET_ROOT="$native_asset_root" MANIFEST_PATH="$manifest_path" LICENSE_INVENTORY_PATH="$license_inventory_path" BRIDGE_SOURCE_PATH="$bridge_source" LINGUIST_VERSION_PATH="$linguist_root/lib/linguist/VERSION" APT_PACKAGES_PATH="$apt_packages_path" ruby -rjson -rdigest -e '
+NATIVE_ASSET_ROOT="$native_asset_root" MANIFEST_PATH="$manifest_path" LICENSE_INVENTORY_PATH="$license_inventory_path" BRIDGE_SOURCE_PATH="$bridge_source" LINGUIST_VERSION_PATH="$linguist_root/lib/linguist/VERSION" APT_PACKAGES_PATH="$apt_packages_path" RUBY_DESCRIPTION="$ruby_description" ruby -rjson -rdigest -e '
   root = ENV.fetch("NATIVE_ASSET_ROOT")
   files = Dir.chdir(root) do
     Dir.glob("**/*", File::FNM_DOTMATCH).select { |path| File.file?(path) && path != "provenance.json" }.sort.map do |path|
@@ -321,9 +322,14 @@ NATIVE_ASSET_ROOT="$native_asset_root" MANIFEST_PATH="$manifest_path" LICENSE_IN
        "bridgeSha256" => Digest::SHA256.file(ENV.fetch("BRIDGE_SOURCE_PATH")).hexdigest,
        "linguistVersionSha256" => Digest::SHA256.file(ENV.fetch("LINGUIST_VERSION_PATH")).hexdigest
      },
-     "externalDependencies" => {
-       "rubyDockerImage" => manifest.fetch("ruby").fetch("dockerImage"),
-       "gems" => gem_artifacts,
+      "externalDependencies" => {
+        "ruby" => {
+          "version" => manifest.fetch("ruby").fetch("version"),
+          "description" => ENV.fetch("RUBY_DESCRIPTION"),
+          "dockerImage" => manifest.fetch("ruby").fetch("dockerImage"),
+          "bundledComponents" => manifest.fetch("ruby").fetch("bundledComponents")
+        },
+        "gems" => gem_artifacts,
        "aptPackages" => apt_packages
      },
      "rubyVersion" => manifest.fetch("ruby").fetch("version"),

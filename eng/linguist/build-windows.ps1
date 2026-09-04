@@ -118,7 +118,11 @@ function Write-Provenance {
       linguistVersionSha256 = (Get-FileHash -LiteralPath (Join-Path $LinguistRoot 'lib/linguist/VERSION') -Algorithm SHA256).Hash.ToLowerInvariant()
     }
     externalDependencies = [ordered]@{
-      ruby = [ordered]@{ version = $Manifest.ruby.version; description = $RubyDescription }
+      ruby = [ordered]@{
+        version = $Manifest.ruby.version
+        description = $RubyDescription
+        bundledComponents = @($Manifest.ruby.bundledComponents)
+      }
       gems = @($Manifest.gems | ForEach-Object {
         [ordered]@{
           name = $_.name

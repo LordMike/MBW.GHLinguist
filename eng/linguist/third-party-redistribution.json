@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "purpose": "Authoritative component and license-output policy for each RID-local native closure. Resolved platform package identities are recorded in provenance.json.",
   "components": [
     {
@@ -45,6 +45,20 @@
         ]
       },
       "output": "licenses/rubyinstaller/LICENSE"
+    },
+    {
+      "component": "Psych 5.3.1 and libyaml 0.2.5",
+      "license": "Expat",
+      "licenseSource": {
+        "all": [
+          "<ruby-prefix>/LEGAL"
+        ],
+        "linux-x64": [
+          "/usr/share/doc/libyaml-0-2/copyright"
+        ]
+      },
+      "output": "licenses/ruby/LEGAL",
+      "additionalOutput": "licenses/debian/libyaml-0-2/copyright on linux-x64"
     },
     {
       "component": "GitHub Linguist 9.6.0",
