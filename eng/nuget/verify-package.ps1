@@ -52,6 +52,7 @@ try {
     'README.md'
     'LICENSE'
     'THIRD-PARTY-NOTICES.md'
+    'THIRD-PARTY-REDISTRIBUTION.json'
     'icon.png'
     'lib/net10.0/MBW.GHLinguist.dll'
     'lib/net10.0/MBW.GHLinguist.xml'
@@ -83,6 +84,52 @@ try {
   foreach ($requiredEntry in $requiredEntries) {
     if ($requiredEntry -notin $entries) {
       throw "Package is missing required entry: $requiredEntry"
+    }
+  }
+
+  $inventoryPath = Join-Path $PSScriptRoot '../linguist/third-party-redistribution.json'
+  $inventoryEntries = @($fileEntries | Where-Object { $_.FullName -ceq 'THIRD-PARTY-REDISTRIBUTION.json' })
+  if ($inventoryEntries.Count -ne 1) {
+    throw 'Package must contain exactly one third-party redistribution inventory.'
+  }
+  $inventoryReader = [System.IO.StreamReader]::new($inventoryEntries[0].Open())
+  try {
+    $packagedInventoryText = $inventoryReader.ReadToEnd()
+  }
+  finally {
+    $inventoryReader.Dispose()
+  }
+  $sourceInventoryText = [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $inventoryPath).Path)
+  if ($packagedInventoryText -cne $sourceInventoryText) {
+    throw 'Package third-party redistribution inventory does not match the checked-out source.'
+  }
+  $redistributionInventory = $packagedInventoryText | ConvertFrom-Json
+  if ($redistributionInventory.schemaVersion -ne 4 -or @($redistributionInventory.components).Count -eq 0) {
+    throw 'Package third-party redistribution inventory has an unsupported or empty schema.'
+  }
+
+  foreach ($component in $redistributionInventory.components) {
+    $requiredOutputProperties = @($component.requiredOutputs.PSObject.Properties)
+    if ($requiredOutputProperties.Count -eq 0) {
+      throw "Redistribution component '$($component.component)' declares no required license outputs."
+    }
+    foreach ($ridProperty in $requiredOutputProperties) {
+      $rid = $ridProperty.Name
+      if ($rid -notin @('linux-x64', 'win-x64')) {
+        throw "Redistribution component '$($component.component)' declares unsupported RID '$rid'."
+      }
+      foreach ($relativeOutput in @($ridProperty.Value)) {
+        if ([string]::IsNullOrWhiteSpace($relativeOutput) -or
+            $relativeOutput.Contains('\') -or
+            $relativeOutput.StartsWith('/') -or
+            $relativeOutput.Split('/') -contains '..') {
+          throw "Redistribution component '$($component.component)' declares invalid output '$relativeOutput'."
+        }
+        $packageOutput = "nativeassets/$rid/$relativeOutput"
+        if ($packageOutput -cnotin $entries) {
+          throw "Package is missing declared license output for '$($component.component)': $packageOutput"
+        }
+      }
     }
   }
 

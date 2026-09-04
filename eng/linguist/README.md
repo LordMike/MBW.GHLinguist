@@ -15,11 +15,13 @@ resolved external package identities. No native binaries are checked in.
 
 `third-party-redistribution.json` is the checked-in redistribution inventory.
 It identifies every component included in the current closures, its license
-description, platform-specific license source locations, and the exact
-`licenses/` output path. Both build scripts fail when a required license text
-cannot be staged. Linux derives a Debian package copyright file for every
-copied system ELF library; Windows stages the RubyInstaller and MSYS2 license
-texts for Ruby, ICU, GCC/libstdc++, and winpthreads.
+description, platform-specific license source locations, and exact required
+`licenses/` outputs per RID. The inventory ships in the NuGet package, and
+package verification rejects missing declared texts or source divergence. Both
+build scripts fail when a required license text cannot be staged. Linux derives
+a Debian package copyright file for every copied system ELF library; Windows
+stages the RubyInstaller and MSYS2 license texts for Ruby, ICU, GCC/libstdc++,
+and winpthreads.
 
 ## Linux x64
 

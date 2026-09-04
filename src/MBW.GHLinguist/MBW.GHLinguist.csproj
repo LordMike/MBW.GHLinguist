@@ -26,6 +26,10 @@
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
     <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
     <None Include="..\..\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\eng\linguist\third-party-redistribution.json"
+          Pack="true"
+          PackagePath="THIRD-PARTY-REDISTRIBUTION.json"
+          Visible="false" />
     <None Include="..\..\eng\nuget\icon.png" Pack="true" PackagePath="\" />
     <None Include="..\MBW.GHLinguist.Native\include\ghlinguist.h"
           Pack="true"
