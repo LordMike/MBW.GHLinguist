@@ -1,6 +1,7 @@
 using MBW.GHLinguist;
 
 const string expectedRevision = "196b2a14418cab005065c72c9759370934c184bc";
+const string expectedClassifierSha256 = "24af803786a1157cb36a59feb5b4f2f3341a034ef7b5edd5b762a6d6ccb5d95d";
 string nativeLibrary = OperatingSystem.IsWindows() ? "ghlinguist.dll" : "ghlinguist.so";
 
 Require(File.Exists(Path.Combine(AppContext.BaseDirectory, nativeLibrary)), $"Missing packaged native library {nativeLibrary}.");
@@ -11,7 +12,7 @@ using LinguistRuntime runtime = LinguistRuntime.Create();
 Require(runtime.Version.RubyVersion == "4.0.6", $"Unexpected Ruby version {runtime.Version.RubyVersion}.");
 Require(runtime.Version.LinguistVersion == "9.6.0", $"Unexpected Linguist version {runtime.Version.LinguistVersion}.");
 Require(runtime.Version.LinguistRevision == expectedRevision, $"Unexpected Linguist revision {runtime.Version.LinguistRevision}.");
-Require(runtime.Version.ClassifierSha256.Length == 64, "The classifier digest was not embedded.");
+Require(runtime.Version.ClassifierSha256 == expectedClassifierSha256, $"Unexpected classifier digest {runtime.Version.ClassifierSha256}.");
 
 LinguistLanguage ruby = runtime.FindByName("Ruby") ?? throw new InvalidOperationException("Ruby is missing from the packaged language registry.");
 BlobAnalysis analysis = runtime.Analyze("puts 'package smoke'\n"u8, new BlobInput { Name = "smoke.rb" });

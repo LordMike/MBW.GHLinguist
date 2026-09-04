@@ -41,6 +41,7 @@
   "linguist": {
     "version": "9.6.0",
     "revision": "196b2a14418cab005065c72c9759370934c184bc",
+    "classifierSha256": "24af803786a1157cb36a59feb5b4f2f3341a034ef7b5edd5b762a6d6ccb5d95d",
     "paths": [
       "lib"
     ],

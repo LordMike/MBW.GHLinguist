@@ -171,6 +171,7 @@ RUBYLIB="$native_asset_root/lib" GEM_HOME="$gem_home" GEM_PATH="$gem_home" \
   "$native_asset_root/bin/ruby" "$script_dir/generate-samples.rb" "$native_asset_root/lib/linguist/samples_data.rb"
 rm -rf "$native_asset_root/samples"
 classifier_sha256="$(ruby -rdigest -e 'print Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$native_asset_root/lib/linguist/samples_data.rb")"
+[[ "$classifier_sha256" == "$(manifest_value linguist.classifierSha256)" ]] || fail "Expected classifier SHA-256 $(manifest_value linguist.classifierSha256), found $classifier_sha256."
 
 bridge_build="$build_root/bridge"
 cmake -S "$repo_root/src/MBW.GHLinguist.Native" -B "$bridge_build" \
@@ -332,9 +333,10 @@ NATIVE_ASSET_ROOT="$native_asset_root" MANIFEST_PATH="$manifest_path" LICENSE_IN
         "gems" => gem_artifacts,
        "aptPackages" => apt_packages
      },
-     "rubyVersion" => manifest.fetch("ruby").fetch("version"),
+    "rubyVersion" => manifest.fetch("ruby").fetch("version"),
     "linguistVersion" => manifest.fetch("linguist").fetch("version"),
     "linguistRevision" => manifest.fetch("linguist").fetch("revision"),
+    "classifierSha256" => manifest.fetch("linguist").fetch("classifierSha256"),
     "files" => files
   }
   File.write(File.join(root, "provenance.json"), JSON.pretty_generate(output) + "\n")

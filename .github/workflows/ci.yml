@@ -203,6 +203,7 @@ jobs:
             if ($provenance.schemaVersion -ne 2) { throw "Unexpected provenance schema version for $rid." }
             if ($provenance.platform -ne $rid) { throw "Provenance platform '$($provenance.platform)' does not match $rid." }
             if ($provenance.manifestSha256 -ne $expectedLocks.nativeDependenciesSha256) { throw "Provenance manifest hash does not match the checked-out source for $rid." }
+            if ($provenance.classifierSha256 -ne $manifest.linguist.classifierSha256) { throw "Provenance classifier hash does not match the manifest for $rid." }
             foreach ($lockName in $expectedLocks.Keys) {
               if ($provenance.lockInputs.$lockName -ne $expectedLocks[$lockName]) { throw "Provenance lock input '$lockName' does not match the checked-out source for $rid." }
             }
@@ -238,6 +239,8 @@ jobs:
             if (-not ($normalizedFiles -match '/psych\.so$')) { throw "The $rid closure does not contain the pinned Psych native extension." }
             $libyamlPattern = if ($rid -eq 'win-x64') { '/libyaml-0-2\.dll$' } else { '^lib/libyaml-0\.so\.2$' }
             if (-not ($normalizedFiles -match $libyamlPattern)) { throw "The $rid closure does not contain the pinned libyaml runtime." }
+            $classifier = @($provenance.files | Where-Object { ([string]$_.path).Replace('\', '/') -ceq 'lib/linguist/samples_data.rb' })
+            if ($classifier.Count -ne 1 -or $classifier[0].sha256 -cne $manifest.linguist.classifierSha256) { throw "The $rid classifier asset does not match the pinned digest." }
           }
 
       - name: Set up .NET

@@ -3,6 +3,7 @@ namespace MBW.GHLinguist.Tests;
 public sealed class NativeRuntimeIntegrationTests
 {
     private const string LinguistRevision = "196b2a14418cab005065c72c9759370934c184bc";
+    private const string ClassifierSha256 = "24af803786a1157cb36a59feb5b4f2f3341a034ef7b5edd5b762a6d6ccb5d95d";
 
     [Fact]
     public void PackagedRuntimeExecutesThePublicManagedSurface()
@@ -23,7 +24,7 @@ public sealed class NativeRuntimeIntegrationTests
         Assert.Equal("4.0.6", runtime.Version.RubyVersion);
         Assert.Equal("9.6.0", runtime.Version.LinguistVersion);
         Assert.Equal(LinguistRevision, runtime.Version.LinguistRevision);
-        Assert.Matches("^[0-9a-f]{64}$", runtime.Version.ClassifierSha256);
+        Assert.Equal(ClassifierSha256, runtime.Version.ClassifierSha256);
 
         const LinguistCapabilities expectedCapabilities =
             LinguistCapabilities.LanguageRegistry |

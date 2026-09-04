@@ -138,6 +138,7 @@ function Write-Provenance {
     rubyVersion = $Manifest.ruby.version
     linguistVersion = $Manifest.linguist.version
     linguistRevision = $Manifest.linguist.revision
+    classifierSha256 = $Manifest.linguist.classifierSha256
     files = @($files)
   } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $Root 'provenance.json') -Encoding utf8NoBOM
 }
@@ -346,6 +347,9 @@ finally {
   Remove-Item -LiteralPath (Join-Path $nativeAssetRoot 'samples') -Recurse -Force
 }
 $classifierSha256 = (Get-FileHash -LiteralPath (Join-Path $nativeAssetRoot 'lib/linguist/samples_data.rb') -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($classifierSha256 -ne $manifest.linguist.classifierSha256) {
+  throw "Expected classifier SHA-256 $($manifest.linguist.classifierSha256), found $classifierSha256."
+}
 
 $bridgeBuild = Join-Path $buildRoot 'bridge'
 Invoke-Checked cmake '-S' (Join-Path $repoRoot 'src/MBW.GHLinguist.Native') '-B' $bridgeBuild '-G' 'Ninja' `
