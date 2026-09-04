@@ -96,6 +96,11 @@ struct ghl_error {
 namespace {
 
 constexpr uint32_t kRuntimeMagic = 0x47484C31u;
+constexpr uint32_t kDefaultClassifyMaximumBytes = 50 * 1024;
+constexpr size_t kMaxClassifyCandidateCount = 4096;
+constexpr size_t kMaxQueuedClassifications = 16;
+constexpr size_t kMaxQueuedClassificationBytes = kMaxQueuedClassifications *
+    (kDefaultClassifyMaximumBytes + kMaxClassifyCandidateCount * sizeof(uint64_t));
 constexpr char kWrapperVersion[] = "MBW.GHLinguist.Native CRuby bootstrap";
 constexpr char kUnavailable[] = "unavailable";
 constexpr char kUnsupported[] = "GitHub Linguist Ruby embedding is not enabled in this native build.";
@@ -240,7 +245,8 @@ bool valid_analysis_options(const ghl_analysis_options* options) {
 
 bool valid_classify_options(const ghl_classify_options* options) {
     if (options == nullptr || options->struct_size < sizeof(*options) || options->flags != 0 ||
-        (options->allowed_types & ~GHL_LANGUAGE_MASK_ALL) != 0 || options->maximum_bytes > 51200 ||
+        (options->allowed_types & ~GHL_LANGUAGE_MASK_ALL) != 0 || options->maximum_bytes > kDefaultClassifyMaximumBytes ||
+        options->candidate_language_count > kMaxClassifyCandidateCount ||
         (options->candidate_language_ids == nullptr && options->candidate_language_count != 0) || !reserved_zero(options->reserved)) return false;
     for (size_t i = 0; i < options->candidate_language_count; ++i) {
         if (options->candidate_language_ids[i] == GHL_LANGUAGE_ID_NONE) return false;
@@ -560,18 +566,29 @@ public:
     }
 
     WorkerResult classify(ClassifyRequest request) {
-        return invoke([this, request = std::move(request)] { return classify_on_worker(request); });
+        const size_t request_bytes = request.data.size() + request.candidate_ids.size() * sizeof(uint64_t);
+        return invoke([this, request = std::move(request)] { return classify_on_worker(request); }, request_bytes, true);
     }
 
 private:
+    struct QueuedJob {
+        std::function<void()> operation;
+        size_t classification_bytes = 0;
+        bool is_classification = false;
+    };
+
     template <typename F>
-    WorkerResult invoke(F&& operation) {
+    WorkerResult invoke(F&& operation, size_t classification_bytes = 0, bool is_classification = false) {
         auto completion = std::make_shared<std::promise<WorkerResult>>();
         std::future<WorkerResult> result = completion->get_future();
         try {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                jobs_.push([operation = std::forward<F>(operation), completion]() mutable {
+                if (is_classification && (queued_classifications_ >= kMaxQueuedClassifications ||
+                    classification_bytes > kMaxQueuedClassificationBytes - queued_classification_bytes_)) {
+                    return {GHL_STATUS_OUT_OF_MEMORY, "Classification queue is at capacity.", {}, {}, {}, {}};
+                }
+                jobs_.push({[operation = std::forward<F>(operation), completion]() mutable {
                     try {
                         completion->set_value(operation());
                     } catch (const std::exception& exception) {
@@ -579,7 +596,11 @@ private:
                     } catch (...) {
                         completion->set_value({GHL_STATUS_NATIVE_FAILURE, "Ruby worker failed unexpectedly.", {}, {}, {}, {}});
                     }
-                });
+                }, classification_bytes, is_classification});
+                if (is_classification) {
+                    ++queued_classifications_;
+                    queued_classification_bytes_ += classification_bytes;
+                }
             }
             wake_.notify_one();
             return result.get();
@@ -680,20 +701,26 @@ private:
 
     void run() {
         for (;;) {
-            std::function<void()> job;
+            QueuedJob job;
             {
                 std::unique_lock<std::mutex> lock(mutex_);
                 wake_.wait(lock, [this] { return !jobs_.empty(); });
                 job = std::move(jobs_.front());
                 jobs_.pop();
+                if (job.is_classification) {
+                    --queued_classifications_;
+                    queued_classification_bytes_ -= job.classification_bytes;
+                }
             }
-            job();
+            job.operation();
         }
     }
 
     std::mutex mutex_;
     std::condition_variable wake_;
-    std::queue<std::function<void()>> jobs_;
+    std::queue<QueuedJob> jobs_;
+    size_t queued_classifications_ = 0;
+    size_t queued_classification_bytes_ = 0;
     std::thread thread_;
     bool initialization_attempted_ = false;
     std::string asset_root_;
@@ -927,7 +954,9 @@ ghl_status GHL_CALL ghl_runtime_classify(const ghl_runtime* runtime, ghl_bytes_v
         request.maximum_bytes = options->maximum_bytes;
         request.allowed_types = options->allowed_types;
         request.has_candidates = options->candidate_language_ids != nullptr;
-        if (data.length != 0) request.data.assign(reinterpret_cast<const char*>(data.data), data.length);
+        const size_t maximum_input_bytes = options->maximum_bytes == 0 ? kDefaultClassifyMaximumBytes : options->maximum_bytes;
+        const size_t copied_input_bytes = std::min(data.length, maximum_input_bytes);
+        if (copied_input_bytes != 0) request.data.assign(reinterpret_cast<const char*>(data.data), copied_input_bytes);
         if (options->candidate_language_count != 0) {
             request.candidate_ids.assign(options->candidate_language_ids, options->candidate_language_ids + options->candidate_language_count);
         }

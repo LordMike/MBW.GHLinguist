@@ -2,6 +2,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <string>
+#include <vector>
 
 int main(int argc, char** argv) {
     if (argc != 2) {
@@ -116,6 +118,34 @@ int main(int argc, char** argv) {
         return 1;
     }
     ghl_classification_release(classification);
+
+    std::string oversized_source;
+    while (oversized_source.size() <= 60 * 1024) oversized_source += "puts 'Hello'\n";
+    classification = nullptr;
+    if (ghl_runtime_classify(runtime, {reinterpret_cast<const uint8_t*>(oversized_source.data()), oversized_source.size()}, &classify_options,
+            &classification, &error) != GHL_STATUS_OK ||
+        ghl_classification_considered_bytes(classification) != 50 * 1024) {
+        std::fprintf(stderr, "Classification input cap failed.\n");
+        ghl_error_release(error);
+        ghl_classification_release(classification);
+        ghl_runtime_release(runtime);
+        return 1;
+    }
+    ghl_classification_release(classification);
+    classification = nullptr;
+
+    std::vector<uint64_t> too_many_candidates(4097, ruby_id);
+    ghl_classify_options invalid_candidate_options = classify_options;
+    invalid_candidate_options.candidate_language_ids = too_many_candidates.data();
+    invalid_candidate_options.candidate_language_count = too_many_candidates.size();
+    if (ghl_runtime_classify(runtime, {reinterpret_cast<const uint8_t*>(source), sizeof(source) - 1}, &invalid_candidate_options,
+            &classification, &error) != GHL_STATUS_INVALID_ARGUMENT) {
+        std::fprintf(stderr, "Classification candidate cap failed.\n");
+        ghl_error_release(error);
+        ghl_classification_release(classification);
+        ghl_runtime_release(runtime);
+        return 1;
+    }
 
     std::printf("Ruby %.*s initialized; languages=%zu; capabilities=%llu\n", static_cast<int>(version.ruby_version.length),
         version.ruby_version.data, ghl_runtime_language_count(runtime), static_cast<unsigned long long>(ghl_runtime_capabilities(runtime)));
