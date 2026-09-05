@@ -409,17 +409,18 @@ Publish for the target RID and run the produced directory on that platform:
 dotnet publish --configuration Release --runtime win-x64 --self-contained false
 ```
 
-In CI, verify that the publish directory contains `ghlinguist.dll` on Windows or
-`ghlinguist.so` on Linux, plus the complete adjacent Ruby/Linguist closure.
+In CI, verify that the publish directory contains `MBW.GHLinguist/ghlinguist.dll`
+on Windows or `MBW.GHLinguist/ghlinguist.so` on Linux, plus the complete Ruby/
+Linguist closure in that directory.
 
 ### Preserve the complete output layout
 
-The selected runtime package exposes its closure as normal transitive content
-beside the managed assembly while preserving subdirectories. Do not copy only
+The selected runtime package exposes its closure as normal transitive content in
+the `MBW.GHLinguist` directory beside the managed assembly. Do not copy only
 `ghlinguist.dll` or `ghlinguist.so`, and do not flatten, rename, trim, or
-selectively clean the copied files. The bridge also needs the adjacent CRuby
-runtime, Ruby standard library, gems, ICU libraries, Linguist sources and data,
-and tokenizer extension.
+selectively clean that directory. The bridge also needs its adjacent CRuby runtime,
+Ruby standard library, gems, ICU libraries, Linguist sources and data, and tokenizer
+extension.
 
 Some resources, including classifier data, can be loaded on first use rather
 than at `LinguistRuntime.Create()`. Do not replace or delete the native closure
@@ -551,5 +552,6 @@ RID-specific native builds stage package-ready files beneath
 `.tmp/artifacts/native/<rid>`. The corresponding runtime package exposes the
 ABI bridge under `runtimes/<rid>/native` and stores its complete relocatable
 closure under `nativeassets/<rid>`. Its `buildTransitive` target contributes the
-closure as normal content with its relative layout intact for build and publish.
-The managed package requires an explicit supported `RuntimeIdentifier`.
+closure as normal content under `MBW.GHLinguist` with its relative layout intact
+for build and publish. The managed package requires an explicit supported
+`RuntimeIdentifier`.

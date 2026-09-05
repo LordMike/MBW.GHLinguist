@@ -16,8 +16,9 @@ public sealed class NativeRuntimeIntegrationTests
         }
 
         string nativeLibrary = OperatingSystem.IsWindows() ? "ghlinguist.dll" : "ghlinguist.so";
-        Assert.True(File.Exists(Path.Combine(AppContext.BaseDirectory, nativeLibrary)));
-        Assert.True(File.Exists(Path.Combine(AppContext.BaseDirectory, "provenance.json")));
+        string assetRoot = Path.Combine(AppContext.BaseDirectory, "MBW.GHLinguist");
+        Assert.True(File.Exists(Path.Combine(assetRoot, nativeLibrary)));
+        Assert.True(File.Exists(Path.Combine(assetRoot, "provenance.json")));
 
         using LinguistRuntime runtime = LinguistRuntime.Create();
 

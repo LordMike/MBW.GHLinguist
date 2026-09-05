@@ -517,7 +517,8 @@ LICENSE
 THIRD-PARTY-NOTICES.md
 ```
 
-Use `buildTransitive` to copy the complete selected closure while preserving
+Use `buildTransitive` to copy the complete selected closure into an
+`MBW.GHLinguist` directory beside the managed assembly while preserving
 subdirectories. Prefer an explicit supported `RuntimeIdentifier`; when it is
 absent, select the .NET SDK host RID. Referencing a runtime package must provide
 the managed assembly and native closure automatically. Referencing only the

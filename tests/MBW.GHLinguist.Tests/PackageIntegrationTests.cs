@@ -8,11 +8,11 @@ namespace MBW.GHLinguist.Tests;
 public sealed class PackageIntegrationTests
 {
     [Fact]
-    public void NativeAssetRootIsTheManagedAssemblyDirectory()
+    public void NativeAssetRootIsInTheManagedAssemblyDirectory()
     {
         string assemblyLocation = typeof(LinguistRuntime).Assembly.Location;
 
-        Assert.Equal(Path.GetDirectoryName(assemblyLocation), NativeLinguistRuntimeBackend.GetNativeAssetRoot());
+        Assert.Equal(Path.Combine(Path.GetDirectoryName(assemblyLocation)!, "MBW.GHLinguist"), NativeLinguistRuntimeBackend.GetNativeAssetRoot());
     }
 
     [Fact]
@@ -85,12 +85,11 @@ public sealed class PackageIntegrationTests
     }
 
     [Theory]
-    [InlineData("MBW.GHLinguist.Runtime.win-x64.targets", "win-x64", "ghlinguist.dll")]
-    [InlineData("MBW.GHLinguist.Runtime.linux-x64.targets", "linux-x64", "ghlinguist.so")]
+    [InlineData("MBW.GHLinguist.Runtime.win-x64.targets", "win-x64")]
+    [InlineData("MBW.GHLinguist.Runtime.linux-x64.targets", "linux-x64")]
     public void RuntimePackageBuildTransitiveTargetPublishesTheNativeClosureAsContent(
         string targetFile,
-        string runtimeIdentifier,
-        string bridgeName)
+        string runtimeIdentifier)
     {
         XDocument target = XDocument.Load(Path.Combine(AppContext.BaseDirectory, targetFile));
         XElement itemGroup = target.Descendants("ItemGroup").Single();
@@ -100,8 +99,8 @@ public sealed class PackageIntegrationTests
         Assert.Contains(runtimeIdentifier, (string?)itemGroup.Attribute("Condition"), StringComparison.Ordinal);
         Assert.Contains("nativeassets", assetRoot.Value, StringComparison.Ordinal);
         Assert.Contains("/**/*", (string?)content.Attribute("Include"), StringComparison.Ordinal);
-        Assert.EndsWith(bridgeName, (string?)content.Attribute("Exclude"), StringComparison.Ordinal);
-        Assert.Equal("%(RecursiveDir)%(Filename)%(Extension)", (string?)content.Attribute("Link"));
+        Assert.Null(content.Attribute("Exclude"));
+        Assert.Equal("MBW.GHLinguist/%(RecursiveDir)%(Filename)%(Extension)", (string?)content.Attribute("Link"));
         Assert.Equal("PreserveNewest", (string?)content.Attribute("CopyToOutputDirectory"));
         Assert.Equal("PreserveNewest", (string?)content.Attribute("CopyToPublishDirectory"));
         Assert.DoesNotContain(target.Descendants("Copy"), _ => true);

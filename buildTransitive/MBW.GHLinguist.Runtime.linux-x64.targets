@@ -5,8 +5,7 @@
 
   <ItemGroup Condition="'$(RuntimeIdentifier)' == 'linux-x64' and Exists('$(MBWGHLinguistLinuxX64AssetRoot)')">
     <Content Include="$(MBWGHLinguistLinuxX64AssetRoot)/**/*"
-             Exclude="$(MBWGHLinguistLinuxX64AssetRoot)/ghlinguist.so"
-             Link="%(RecursiveDir)%(Filename)%(Extension)"
+             Link="MBW.GHLinguist/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest"
              Visible="false" />

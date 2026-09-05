@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Reflection;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 
@@ -9,12 +10,19 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
 {
     private const uint AbiMajor = 1;
     private const ulong NoLanguageId = ulong.MaxValue;
+    private const string NativeAssetDirectoryName = "MBW.GHLinguist";
+    private const string NativeLibraryName = "ghlinguist";
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly NativeRuntimeHandle _runtime;
     private LinguistCapabilities? _capabilities;
     private IReadOnlyList<LinguistLanguage>? _languages;
     private Dictionary<ulong, LinguistLanguage>? _languagesById;
     private LinguistVersionInfo? _version;
+
+    static NativeLinguistRuntimeBackend()
+    {
+        NativeLibrary.SetDllImportResolver(typeof(NativeLinguistRuntimeBackend).Assembly, ResolveNativeLibrary);
+    }
 
     private NativeLinguistRuntimeBackend(NativeRuntimeHandle runtime)
     {
@@ -530,8 +538,20 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
             throw new PlatformNotSupportedException("Single-file deployment is not supported because the deployed native asset directory cannot be determined.");
         }
 
-        return Path.GetDirectoryName(assemblyLocation)
+        string assemblyDirectory = Path.GetDirectoryName(assemblyLocation)
             ?? throw new LinguistException("The managed assembly location does not identify a deployed native asset directory.");
+        return Path.Combine(assemblyDirectory, NativeAssetDirectoryName);
+    }
+
+    private static nint ResolveNativeLibrary(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+    {
+        if (!string.Equals(libraryName, NativeLibraryName, StringComparison.Ordinal))
+        {
+            return 0;
+        }
+
+        string bridgeName = OperatingSystem.IsWindows() ? "ghlinguist.dll" : "ghlinguist.so";
+        return NativeLibrary.Load(Path.Combine(GetNativeAssetRoot(assembly.Location), bridgeName));
     }
 
     private static NativeStringView CreateStringView(byte* pointer, byte[]? bytes, byte* emptyStorage) =>

@@ -443,6 +443,11 @@ jobs:
           $publish = Join-Path '.tmp/package-smoke-publish' $env:TEST_RID
           dotnet restore $project --runtime $env:TEST_RID "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" --source https://api.nuget.org/v3/index.json --source $source
           dotnet publish $project --configuration FrameworkDependent --runtime $env:TEST_RID --self-contained false --no-restore --output $publish "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION"
+          $assetRoot = Join-Path $publish 'MBW.GHLinguist'
+          $bridge = if ($env:TEST_RID -eq 'win-x64') { 'ghlinguist.dll' } else { 'ghlinguist.so' }
+          if (-not (Test-Path -LiteralPath (Join-Path $assetRoot $bridge) -PathType Leaf)) { throw "Missing isolated native bridge in $assetRoot." }
+          if (-not (Test-Path -LiteralPath (Join-Path $assetRoot 'provenance.json') -PathType Leaf)) { throw "Missing isolated native provenance in $assetRoot." }
+          if (-not (Test-Path -LiteralPath (Join-Path $assetRoot 'lib/ruby') -PathType Container)) { throw "Missing isolated Ruby standard library in $assetRoot." }
           dotnet (Join-Path $publish 'MBW.GHLinguist.PackageSmoke.dll')
 
   publish_github_packages:
