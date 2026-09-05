@@ -133,8 +133,9 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
         fixed (byte* pathPointer = pathBytes)
         fixed (byte* namePointer = nameBytes)
         {
-            blob.Path = CreateStringView(pathPointer, pathBytes);
-            blob.Name = CreateStringView(namePointer, nameBytes);
+            byte emptyStringStorage = 0;
+            blob.Path = CreateStringView(pathPointer, pathBytes, &emptyStringStorage);
+            blob.Name = CreateStringView(namePointer, nameBytes, &emptyStringStorage);
             blob.Data = new NativeBytesView(dataPointer, (nuint)data.Length);
 
             nint analysis = 0;
@@ -533,7 +534,8 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
             ?? throw new LinguistException("The managed assembly location does not identify a deployed native asset directory.");
     }
 
-    private static NativeStringView CreateStringView(byte* pointer, byte[]? bytes) => new(pointer, (nuint)(bytes?.Length ?? 0));
+    private static NativeStringView CreateStringView(byte* pointer, byte[]? bytes, byte* emptyStorage) =>
+        new(bytes is null ? null : bytes.Length == 0 ? emptyStorage : pointer, (nuint)(bytes?.Length ?? 0));
 
     private static byte[] EncodeRequired(string value, string parameterName)
     {

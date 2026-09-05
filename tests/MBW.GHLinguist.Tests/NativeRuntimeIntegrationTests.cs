@@ -43,6 +43,7 @@ public sealed class NativeRuntimeIntegrationTests
         Assert.Null(empty.Language);
         Assert.Equal(DetectionStrategy.None, empty.Strategy);
         Assert.True(empty.IsEmpty);
+        Assert.Null(empty.TextMateScope);
 
         LinguistLanguage firstEnterprise = Assert.IsType<LinguistLanguage>(runtime.FindByName("1C Enterprise"));
         Assert.Equal(0UL, firstEnterprise.Id);
@@ -55,6 +56,7 @@ public sealed class NativeRuntimeIntegrationTests
         Assert.Contains(ruby, runtime.FindByFilename("Gemfile"));
         Assert.Contains(ruby, runtime.FindByExtension("example.rb"));
         Assert.Contains(ruby, runtime.FindByInterpreter("ruby"));
+        Assert.Contains(runtime.Languages, language => language.Color is null);
 
         byte[] source = "class Greeter\n  def hello\n    puts 'hello'\n  end\nend\n"u8.ToArray();
         BlobAnalysis analysis = runtime.Analyze(
@@ -73,6 +75,18 @@ public sealed class NativeRuntimeIntegrationTests
         Assert.Equal(5UL, analysis.LineCount);
         Assert.NotEmpty(analysis.StrategyTrace);
         Assert.Contains(analysis.StrategyTrace, entry => entry.Strategy == DetectionStrategy.Extension && entry.Candidates.Contains(ruby));
+
+        BlobAnalysis pathOnly = runtime.Analyze(
+            source,
+            new BlobInput { Path = "src/path-only.rb" },
+            new BlobAnalysisOptions { Strategies = DetectionStrategyMask.Extension });
+        Assert.Equal(ruby, pathOnly.Language);
+
+        BlobAnalysis emptyName = runtime.Analyze(
+            source,
+            new BlobInput { Path = "src/empty-name.rb", Name = "" },
+            new BlobAnalysisOptions { Strategies = DetectionStrategyMask.Extension });
+        Assert.Null(emptyName.Language);
 
         BlobAnalysis filename = runtime.Analyze(
             "source :rubygems\n"u8,

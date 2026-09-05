@@ -10,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <queue>
 #include <string>
 #include <thread>
@@ -34,12 +35,12 @@ struct NativeLanguage {
     ghl_language_type type = GHL_LANGUAGE_TYPE_UNKNOWN;
     uint32_t flags = 0;
     std::string name;
-    std::string fs_name;
-    std::string color;
-    std::string tm_scope;
-    std::string ace_mode;
-    std::string codemirror_mode;
-    std::string codemirror_mime_type;
+    std::optional<std::string> fs_name;
+    std::optional<std::string> color;
+    std::optional<std::string> tm_scope;
+    std::optional<std::string> ace_mode;
+    std::optional<std::string> codemirror_mode;
+    std::optional<std::string> codemirror_mime_type;
     std::vector<std::string> aliases;
     std::vector<std::string> extensions;
     std::vector<std::string> interpreters;
@@ -74,9 +75,9 @@ struct ghl_analysis {
     std::string mime_type;
     std::string content_type;
     std::string disposition;
-    std::string encoding;
-    std::string ruby_encoding;
-    std::string tm_scope;
+    std::optional<std::string> encoding;
+    std::optional<std::string> ruby_encoding;
+    std::optional<std::string> tm_scope;
     uint64_t loc = 0;
     uint64_t sloc = 0;
     std::vector<NativeStrategyTrace> traces;
@@ -132,6 +133,7 @@ static_assert(sizeof(ghl_strategy_trace_entry) == 48);
 ghl_string_view view(const char* text) { return {text, std::char_traits<char>::length(text)}; }
 ghl_string_view view(const std::string& text) { return {text.data(), text.size()}; }
 ghl_string_view empty_view() { return {nullptr, 0}; }
+ghl_string_view view(const std::optional<std::string>& text) { return text ? view(*text) : empty_view(); }
 
 std::filesystem::path path_from_utf8(const std::string& value) {
 #if defined(__cpp_char8_t)
@@ -281,8 +283,8 @@ struct AnalysisRequest {
     uint32_t input_flags = 0;
     uint32_t option_flags = 0;
     uint32_t strategy_mask = 0;
-    std::string path;
-    std::string name;
+    std::optional<std::string> path;
+    std::optional<std::string> name;
     std::string data;
 };
 
@@ -305,18 +307,20 @@ std::string ruby_string(VALUE value) {
     return std::string(RSTRING_PTR(value), static_cast<size_t>(RSTRING_LEN(value)));
 }
 
-std::string ruby_optional_string(VALUE value) {
-    return NIL_P(value) ? std::string() : ruby_string(value);
+std::optional<std::string> ruby_optional_string(VALUE value) {
+    if (NIL_P(value)) return std::nullopt;
+    if (!RB_TYPE_P(value, T_STRING)) rb_raise(rb_eTypeError, "GHLinguist returned a non-string optional text value.");
+    return ruby_string(value);
 }
 
 uint64_t ruby_integer(VALUE value) { return NUM2ULL(value); }
 
 ghl_language_type ruby_language_type(VALUE value) {
-    const std::string type = ruby_optional_string(SYMBOL_P(value) ? rb_sym2str(value) : value);
-    if (type == "data") return GHL_LANGUAGE_TYPE_DATA;
-    if (type == "markup") return GHL_LANGUAGE_TYPE_MARKUP;
-    if (type == "programming") return GHL_LANGUAGE_TYPE_PROGRAMMING;
-    if (type == "prose") return GHL_LANGUAGE_TYPE_PROSE;
+    const std::optional<std::string> type = ruby_optional_string(SYMBOL_P(value) ? rb_sym2str(value) : value);
+    if (type && *type == "data") return GHL_LANGUAGE_TYPE_DATA;
+    if (type && *type == "markup") return GHL_LANGUAGE_TYPE_MARKUP;
+    if (type && *type == "programming") return GHL_LANGUAGE_TYPE_PROGRAMMING;
+    if (type && *type == "prose") return GHL_LANGUAGE_TYPE_PROSE;
     return GHL_LANGUAGE_TYPE_UNKNOWN;
 }
 
@@ -396,7 +400,7 @@ std::shared_ptr<LanguageRegistry> project_languages() {
         const size_t native_index = registry->languages.size();
         registry->by_id.emplace(native.id, native_index);
         registry->names.emplace(lowercase(native.name), native.id);
-        if (!native.fs_name.empty()) registry->names.emplace(lowercase(native.fs_name), native.id);
+        if (native.fs_name && !native.fs_name->empty()) registry->names.emplace(lowercase(*native.fs_name), native.id);
         for (const std::string& value : native.aliases) registry->aliases.emplace(lowercase(value), native.id);
         for (const std::string& value : native.extensions) add_lookup(&registry->extensions, value, native.id, true);
         for (const std::string& value : native.interpreters) add_lookup(&registry->interpreters, value, native.id, false);
@@ -491,9 +495,12 @@ VALUE required_array_entry(VALUE values, long index) {
 }
 
 std::string required_ruby_string(VALUE value) {
-    if (NIL_P(value)) return {};
     if (!RB_TYPE_P(value, T_STRING)) rb_raise(rb_eTypeError, "GHLinguist::Bridge returned a non-string text value.");
     return ruby_string(value);
+}
+
+VALUE ruby_optional_utf8_string(const std::optional<std::string>& value) {
+    return value ? rb_utf8_str_new(value->data(), static_cast<long>(value->size())) : Qnil;
 }
 
 struct RubyAnalysisContext { const AnalysisRequest* request; std::shared_ptr<ghl_analysis>* result; };
@@ -502,8 +509,8 @@ VALUE marshal_analysis(VALUE opaque) {
     const auto* context = reinterpret_cast<RubyAnalysisContext*>(opaque);
     const AnalysisRequest& request = *context->request;
     const VALUE result = rb_funcall(ruby_bridge(), rb_intern("analyze"), 6,
-        rb_utf8_str_new(request.path.data(), static_cast<long>(request.path.size())),
-        rb_utf8_str_new(request.name.data(), static_cast<long>(request.name.size())),
+        ruby_optional_utf8_string(request.path),
+        ruby_optional_utf8_string(request.name),
         rb_str_new(request.data.data(), static_cast<long>(request.data.size())),
         UINT2NUM(request.input_flags), UINT2NUM(request.option_flags), UINT2NUM(request.strategy_mask));
 
@@ -514,9 +521,9 @@ VALUE marshal_analysis(VALUE opaque) {
     analysis->mime_type = required_ruby_string(required_array_entry(result, 3));
     analysis->content_type = required_ruby_string(required_array_entry(result, 4));
     analysis->disposition = required_ruby_string(required_array_entry(result, 5));
-    analysis->encoding = required_ruby_string(required_array_entry(result, 6));
-    analysis->ruby_encoding = required_ruby_string(required_array_entry(result, 7));
-    analysis->tm_scope = required_ruby_string(required_array_entry(result, 8));
+    analysis->encoding = ruby_optional_string(required_array_entry(result, 6));
+    analysis->ruby_encoding = ruby_optional_string(required_array_entry(result, 7));
+    analysis->tm_scope = ruby_optional_string(required_array_entry(result, 8));
     analysis->loc = NUM2ULL(required_array_entry(result, 9));
     analysis->sloc = NUM2ULL(required_array_entry(result, 10));
     const VALUE ruby_traces = required_array_entry(result, 11);
@@ -938,8 +945,8 @@ ghl_status GHL_CALL ghl_runtime_analyze(const ghl_runtime* runtime, const ghl_bl
         request.input_flags = blob->flags;
         request.option_flags = options->flags;
         request.strategy_mask = options->strategies;
-        if (blob->path.length != 0) request.path.assign(blob->path.data, blob->path.length);
-        if (blob->name.length != 0) request.name.assign(blob->name.data, blob->name.length);
+        if (blob->path.data != nullptr) request.path.emplace(blob->path.data, blob->path.length);
+        if (blob->name.data != nullptr) request.name.emplace(blob->name.data, blob->name.length);
         if (blob->data.length != 0) request.data.assign(reinterpret_cast<const char*>(blob->data.data), blob->data.length);
         WorkerResult worker = ruby_worker().analyze(std::move(request));
         if (worker.status != GHL_STATUS_OK || !worker.analysis) {
