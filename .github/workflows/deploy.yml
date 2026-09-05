@@ -12,9 +12,6 @@ on:
       is-prerelease:
         required: true
         type: string
-      is-plain-version:
-        required: true
-        type: string
 
 jobs:
   github_release:
@@ -36,57 +33,67 @@ jobs:
           path: .artifacts
 
       - name: Validate release context and stage attachments
-        shell: bash
+        shell: pwsh
         env:
           RELEASE_TAG: ${{ inputs.release-tag }}
           RELEASE_VERSION: ${{ inputs.version }}
           IS_PRERELEASE: ${{ inputs.is-prerelease }}
-          IS_PLAIN_VERSION: ${{ inputs.is-plain-version }}
         run: |
-          set -euo pipefail
+          $ErrorActionPreference = 'Stop'
 
-          expected_version="${RELEASE_TAG#v}"
-          [ "$RELEASE_VERSION" = "$expected_version" ] || {
-            echo "::error::Release tag $RELEASE_TAG does not match package version $RELEASE_VERSION."
-            exit 1
+          $expectedVersion = $env:RELEASE_TAG -replace '^v'
+          if ($env:RELEASE_VERSION -cne $expectedVersion) {
+            throw "Release tag $env:RELEASE_TAG does not match package version $env:RELEASE_VERSION."
           }
-          [[ "$IS_PRERELEASE" =~ ^(true|false)$ ]] || {
-            echo "::error::Invalid prerelease flag: $IS_PRERELEASE"
-            exit 1
+          if ($env:IS_PRERELEASE -notin 'true', 'false') {
+            throw "Invalid prerelease flag: $env:IS_PRERELEASE"
           }
-          [[ "$IS_PLAIN_VERSION" =~ ^(true|false)$ ]] || {
-            echo "::error::Invalid plain-version flag: $IS_PLAIN_VERSION"
-            exit 1
+          if (($env:RELEASE_VERSION.Contains('-')) -ne ($env:IS_PRERELEASE -eq 'true')) {
+            throw 'The prerelease flag does not match the package version.'
           }
-          if [[ "$RELEASE_VERSION" == *-* ]]; then
-            [ "$IS_PRERELEASE" = true ] || {
-              echo '::error::A prerelease package must create a prerelease GitHub Release.'
-              exit 1
+
+          $packages = @(Get-ChildItem .artifacts/nuget -Filter '*.nupkg' -File | Where-Object Name -NotLike '*.snupkg')
+          $symbols = @(Get-ChildItem .artifacts/nuget -Filter '*.snupkg' -File)
+          if ($packages.Count -ne 3) { throw "Expected exactly three primary packages, found $($packages.Count)." }
+          if ($symbols.Count -ne 1) { throw "Expected exactly one symbol package, found $($symbols.Count)." }
+
+          $expectedPackages = @{
+            'MBW.GHLinguist' = @{ Kind = 'managed'; RuntimeIdentifier = $null }
+            'MBW.GHLinguist.Runtime.win-x64' = @{ Kind = 'runtime'; RuntimeIdentifier = 'win-x64' }
+            'MBW.GHLinguist.Runtime.linux-x64' = @{ Kind = 'runtime'; RuntimeIdentifier = 'linux-x64' }
+          }
+          foreach ($package in $packages) {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $archive = [IO.Compression.ZipFile]::OpenRead($package.FullName)
+            try {
+              $nuspec = @($archive.Entries | Where-Object FullName -Like '*.nuspec')
+              if ($nuspec.Count -ne 1) { throw "Expected exactly one nuspec in $($package.Name)." }
+              $reader = [IO.StreamReader]::new($nuspec[0].Open())
+              try { [xml] $document = $reader.ReadToEnd() } finally { $reader.Dispose() }
+              $id = $document.SelectSingleNode("/*[local-name()='package']/*[local-name()='metadata']/*[local-name()='id']").InnerText
+              if (-not $expectedPackages.ContainsKey($id)) { throw "Unexpected package identity '$id'." }
+              $kind = $expectedPackages[$id]
+              if ($null -eq $kind.RuntimeIdentifier) {
+                ./eng/nuget/verify-package.ps1 -Package $package.FullName -ExpectedVersion $env:RELEASE_VERSION -ExpectedCommit $env:GITHUB_SHA -Kind $kind.Kind
+              }
+              else {
+                ./eng/nuget/verify-package.ps1 -Package $package.FullName -ExpectedVersion $env:RELEASE_VERSION -ExpectedCommit $env:GITHUB_SHA -Kind $kind.Kind -RuntimeIdentifier $kind.RuntimeIdentifier
+              }
+              $expectedPackages.Remove($id)
             }
-          else
-            [ "$IS_PRERELEASE" = false ] || {
-              echo '::error::A stable package must create a stable GitHub Release.'
-              exit 1
-            }
-          fi
-
-          mapfile -t packages < <(find .artifacts/nuget -maxdepth 1 -type f -name '*.nupkg' ! -name '*.snupkg' -print | sort)
-          mapfile -t symbols < <(find .artifacts/nuget -maxdepth 1 -type f -name '*.snupkg' -print | sort)
-          [ "${#packages[@]}" -eq 3 ] || {
-            echo "::error::Expected exactly three primary packages, found ${#packages[@]}."
-            exit 1
+            finally { $archive.Dispose() }
           }
-          [ "${#symbols[@]}" -eq 1 ] || {
-            echo "::error::Expected exactly one symbol package, found ${#symbols[@]}."
-            exit 1
-          }
+          if ($expectedPackages.Count -ne 0) { throw "Missing expected package identities: $($expectedPackages.Keys -join ', ')." }
 
-          mkdir -p .artifacts/release
-          cp "${packages[@]}" "${symbols[@]}" .artifacts/ci-metadata.json .artifacts/release/
-          (
-            cd .artifacts/release
-            sha256sum ./*.nupkg ./*.snupkg ci-metadata.json > SHA256SUMS
-          )
+          $metadata = Get-Content .artifacts/ci-metadata.json -Raw | ConvertFrom-Json
+          if ($metadata.sha -cne $env:GITHUB_SHA -or $metadata.version -cne $env:RELEASE_VERSION) {
+            throw 'CI metadata does not identify the checked-out release source and version.'
+          }
+          New-Item -ItemType Directory -Path .artifacts/release -Force | Out-Null
+          Copy-Item $packages.FullName, $symbols.FullName, .artifacts/ci-metadata.json -Destination .artifacts/release
+          Get-ChildItem .artifacts/release -File | Sort-Object Name | Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLowerInvariant())  $($_.Path | Split-Path -Leaf)" } |
+            Set-Content .artifacts/release/SHA256SUMS -Encoding utf8NoBOM
 
       - name: Create GitHub Release
         uses: ./.github/actions/publish_github_release

@@ -188,7 +188,6 @@ jobs:
       release-tag: ${{ steps.context.outputs.release-tag }}
       is-release: ${{ steps.context.outputs.is-release }}
       is-prerelease: ${{ steps.context.outputs.is-prerelease }}
-      is-plain-version: ${{ steps.context.outputs.is-plain-version }}
     steps:
       - name: Checkout exact source and Linguist
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
@@ -527,4 +526,3 @@ jobs:
       release-tag: ${{ needs.package.outputs.release-tag }}
       version: ${{ needs.package.outputs.version }}
       is-prerelease: ${{ needs.package.outputs.is-prerelease }}
-      is-plain-version: ${{ needs.package.outputs.is-plain-version }}
