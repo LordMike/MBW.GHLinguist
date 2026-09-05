@@ -90,7 +90,7 @@ jobs:
             throw 'CI metadata does not identify the checked-out release source and version.'
           }
           New-Item -ItemType Directory -Path .artifacts/release -Force | Out-Null
-          Copy-Item $packages.FullName, $symbols.FullName, .artifacts/ci-metadata.json -Destination .artifacts/release
+          Copy-Item -LiteralPath @($packages.FullName; $symbols.FullName; '.artifacts/ci-metadata.json') -Destination .artifacts/release
           Get-ChildItem .artifacts/release -File | Sort-Object Name | Get-FileHash -Algorithm SHA256 |
             ForEach-Object { "$($_.Hash.ToLowerInvariant())  $($_.Path | Split-Path -Leaf)" } |
             Set-Content .artifacts/release/SHA256SUMS -Encoding utf8NoBOM
