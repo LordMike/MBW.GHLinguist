@@ -22,6 +22,14 @@ module GHLinguist
     def size = @data.bytesize
     def symlink? = @symlink
     def lfs_tracked? = @lfs_tracked
+
+    # BlobHelper's ||= cache retries negative generated results. Preserve them too,
+    # because analysis asks for generated status both as a result flag and for stats.
+    def generated?
+      return @_ghlinguist_generated if defined?(@_ghlinguist_generated)
+
+      @_ghlinguist_generated = super
+    end
   end
 
   module Bridge
