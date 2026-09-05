@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Xml.Linq;
 
@@ -107,17 +108,41 @@ public sealed class PackageIntegrationTests
     }
 
     [Fact]
-    public void ManagedPackageBuildTransitiveTargetRequiresASupportedRuntimeIdentifier()
+    public void ManagedPackageBuildTransitiveTargetRequiresASupportedRuntimeIdentifierForExecutables()
     {
         XDocument target = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "MBW.GHLinguist.targets"));
         XElement validation = target.Descendants("Target").Single(element => (string?)element.Attribute("Name") == "ValidateMBWGHLinguistRuntimeIdentifier");
         XElement[] errors = validation.Elements("Error").ToArray();
 
         Assert.Equal("PrepareForBuild", (string?)validation.Attribute("BeforeTargets"));
+        Assert.Equal("'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'", (string?)validation.Attribute("Condition"));
         Assert.Equal(2, errors.Length);
         Assert.Contains("RuntimeIdentifier)' == ''", (string?)errors[0].Attribute("Condition"), StringComparison.Ordinal);
         Assert.Contains("win-x64", validation.ToString(), StringComparison.Ordinal);
         Assert.Contains("linux-x64", validation.ToString(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Library", null, true, null)]
+    [InlineData("Exe", null, false, "requires RuntimeIdentifier win-x64 or linux-x64")]
+    [InlineData("Exe", "osx-x64", false, "supports only RuntimeIdentifier win-x64 or linux-x64; found osx-x64")]
+    [InlineData("Exe", "win-x64", true, null)]
+    [InlineData("WinExe", "win-x64", true, null)]
+    public void ManagedPackageBuildTransitiveTargetValidatesOnlyExecutableProjects(
+        string outputType,
+        string? runtimeIdentifier,
+        bool succeeds,
+        string? expectedOutput)
+    {
+        using TemporaryProject project = TemporaryProject.Create(outputType, runtimeIdentifier);
+
+        (int exitCode, string output) = project.Build();
+
+        Assert.True(succeeds == (exitCode == 0), output);
+        if (expectedOutput is not null)
+        {
+            Assert.Contains(expectedOutput, output, StringComparison.Ordinal);
+        }
     }
 
     private sealed class TestNativeClosure : IDisposable
@@ -150,5 +175,61 @@ public sealed class PackageIntegrationTests
         }
 
         public void Dispose() => Directory.Delete(Root, recursive: true);
+    }
+
+    private sealed class TemporaryProject : IDisposable
+    {
+        private TemporaryProject(string directory, string projectPath)
+        {
+            Directory = directory;
+            ProjectPath = projectPath;
+        }
+
+        private string Directory { get; }
+
+        private string ProjectPath { get; }
+
+        internal static TemporaryProject Create(string outputType, string? runtimeIdentifier)
+        {
+            string directory = Path.Combine(Path.GetTempPath(), $"MBW.GHLinguist.TargetTests-{Guid.NewGuid():N}");
+            System.IO.Directory.CreateDirectory(directory);
+            string targetPath = Path.Combine(AppContext.BaseDirectory, "MBW.GHLinguist.targets").Replace("&", "&amp;", StringComparison.Ordinal);
+            string runtimeIdentifierElement = runtimeIdentifier is null ? string.Empty : $"<RuntimeIdentifier>{runtimeIdentifier}</RuntimeIdentifier>";
+            string projectPath = Path.Combine(directory, "Consumer.csproj");
+            if (outputType is "Exe" or "WinExe")
+            {
+                File.WriteAllText(Path.Combine(directory, "Program.cs"), "System.Console.WriteLine(\"target test\");");
+            }
+            File.WriteAllText(projectPath, $$"""
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>{{outputType}}</OutputType>
+                    {{runtimeIdentifierElement}}
+                  </PropertyGroup>
+                  <Import Project="{{targetPath}}" />
+                </Project>
+                """);
+            return new TemporaryProject(directory, projectPath);
+        }
+
+        internal (int ExitCode, string Output) Build()
+        {
+            ProcessStartInfo startInfo = new("dotnet")
+            {
+                WorkingDirectory = Directory,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            startInfo.ArgumentList.Add("build");
+            startInfo.ArgumentList.Add(ProjectPath);
+            startInfo.ArgumentList.Add("--nologo");
+            using Process process = Process.Start(startInfo)!;
+            string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            return (process.ExitCode, output);
+        }
+
+        public void Dispose() => System.IO.Directory.Delete(Directory, recursive: true);
     }
 }

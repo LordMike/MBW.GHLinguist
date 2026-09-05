@@ -64,7 +64,8 @@ Install the stable package from NuGet.org:
 dotnet package add MBW.GHLinguist
 ```
 
-Set the deployment runtime identifier on the executable project:
+Set the deployment runtime identifier on the executable project (a RID-neutral
+class library can reference this package):
 
 ```xml
 <PropertyGroup>

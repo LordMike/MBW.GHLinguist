@@ -391,7 +391,19 @@ jobs:
         with:
           dotnet-version: 10.0.400
 
-      - name: Restore and run clean package consumer
+      - name: Build RID-neutral package library
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:PACKAGE_VERSION) { throw 'The package job did not report a package version.' }
+          $project = 'tests/MBW.GHLinguist.PackageTopology/MBW.GHLinguist.PackageTopology.Library/MBW.GHLinguist.PackageTopology.Library.csproj'
+          $source = (Resolve-Path '.artifacts/nuget').Path
+          dotnet restore $project "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" --source https://api.nuget.org/v3/index.json --source $source
+          dotnet build $project --configuration Release --no-restore "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION"
+
+      - name: Restore and run direct package consumer
         shell: pwsh
         env:
           PACKAGE_VERSION: ${{ needs.package.outputs.version }}
@@ -404,6 +416,19 @@ jobs:
           $source = (Resolve-Path '.artifacts/nuget').Path
           dotnet restore $project --runtime $env:TEST_RID "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID" --source https://api.nuget.org/v3/index.json --source $source
           dotnet run --project $project --configuration Release --runtime $env:TEST_RID --no-restore "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID"
+
+      - name: Restore and run transitive package consumer
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ needs.package.outputs.version }}
+          TEST_RID: ${{ matrix.rid }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:PACKAGE_VERSION) { throw 'The package job did not report a package version.' }
+          $project = 'tests/MBW.GHLinguist.PackageTopology/MBW.GHLinguist.PackageTopology.App/MBW.GHLinguist.PackageTopology.App.csproj'
+          $source = (Resolve-Path '.artifacts/nuget').Path
+          dotnet restore $project --runtime $env:TEST_RID "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" --source https://api.nuget.org/v3/index.json --source $source
+          dotnet run --project $project --configuration Release --runtime $env:TEST_RID --no-restore "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION"
 
       - name: Restore, publish, and run framework-dependent package consumer
         shell: pwsh

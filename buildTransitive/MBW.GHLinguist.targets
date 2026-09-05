@@ -1,6 +1,7 @@
 <Project>
   <Target Name="ValidateMBWGHLinguistRuntimeIdentifier"
-          BeforeTargets="PrepareForBuild">
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">
     <Error Condition="'$(RuntimeIdentifier)' == ''"
            Text="MBW.GHLinguist requires RuntimeIdentifier win-x64 or linux-x64. Restore and build with the same supported runtime identifier." />
     <Error Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'win-x64' and '$(RuntimeIdentifier)' != 'linux-x64'"
