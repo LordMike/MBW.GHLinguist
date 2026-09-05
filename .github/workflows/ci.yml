@@ -20,8 +20,16 @@ env:
 
 jobs:
   managed:
-    name: Managed build and test
-    runs-on: ubuntu-latest
+    name: Managed build and test (${{ matrix.rid }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: windows-2025
+            rid: win-x64
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout exact source and Linguist
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
@@ -128,7 +136,7 @@ jobs:
         shell: pwsh
         env:
           GHL_RUN_NATIVE_INTEGRATION: true
-        run: dotnet test tests/MBW.GHLinguist.Tests/MBW.GHLinguist.Tests.csproj --configuration Release --runtime win-x64 -p:RunNativeIntegrationTests=true
+        run: dotnet test --project tests/MBW.GHLinguist.Tests/MBW.GHLinguist.Tests.csproj --configuration Release --runtime win-x64 -p:RunNativeIntegrationTests=true --minimum-expected-tests 1
 
       - name: Upload win-x64 native closure
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
@@ -166,7 +174,7 @@ jobs:
         shell: pwsh
         env:
           GHL_RUN_NATIVE_INTEGRATION: true
-        run: dotnet test tests/MBW.GHLinguist.Tests/MBW.GHLinguist.Tests.csproj --configuration Release --runtime linux-x64 -p:RunNativeIntegrationTests=true
+        run: dotnet test --project tests/MBW.GHLinguist.Tests/MBW.GHLinguist.Tests.csproj --configuration Release --runtime linux-x64 -p:RunNativeIntegrationTests=true --minimum-expected-tests 1
 
       - name: Upload linux-x64 native closure
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
@@ -396,11 +404,16 @@ jobs:
           PACKAGE_VERSION: ${{ needs.package.outputs.version }}
         run: |
           $ErrorActionPreference = 'Stop'
+          function Invoke-DotNet {
+            param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+            & dotnet @Arguments
+            if ($LASTEXITCODE -ne 0) { throw "dotnet $($Arguments -join ' ') failed with exit code $LASTEXITCODE." }
+          }
           if (-not $env:PACKAGE_VERSION) { throw 'The package job did not report a package version.' }
           $project = 'tests/MBW.GHLinguist.PackageTopology/MBW.GHLinguist.PackageTopology.Library/MBW.GHLinguist.PackageTopology.Library.csproj'
           $source = (Resolve-Path '.artifacts/nuget').Path
-          dotnet restore $project "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" --source https://api.nuget.org/v3/index.json --source $source
-          dotnet build $project --configuration Release --no-restore "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION"
+          Invoke-DotNet restore $project "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" --source https://api.nuget.org/v3/index.json --source $source
+          Invoke-DotNet build $project --configuration Release --no-restore "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION"
 
       - name: Restore and run direct package consumer
         shell: pwsh
@@ -410,11 +423,16 @@ jobs:
           RUNTIME_PACKAGE_ID: MBW.GHLinguist.Runtime.${{ matrix.rid }}
         run: |
           $ErrorActionPreference = 'Stop'
+          function Invoke-DotNet {
+            param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+            & dotnet @Arguments
+            if ($LASTEXITCODE -ne 0) { throw "dotnet $($Arguments -join ' ') failed with exit code $LASTEXITCODE." }
+          }
           if (-not $env:PACKAGE_VERSION) { throw 'The package job did not report a package version.' }
           $project = 'tests/MBW.GHLinguist.PackageSmoke/MBW.GHLinguist.PackageSmoke.csproj'
           $source = (Resolve-Path '.artifacts/nuget').Path
-          dotnet restore $project --runtime $env:TEST_RID "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID" --source https://api.nuget.org/v3/index.json --source $source
-          dotnet run --project $project --configuration Release --runtime $env:TEST_RID --no-restore "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID"
+          Invoke-DotNet restore $project --runtime $env:TEST_RID "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID" --source https://api.nuget.org/v3/index.json --source $source
+          Invoke-DotNet run --project $project --configuration Release --runtime $env:TEST_RID --no-restore "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID"
 
       - name: Restore and run transitive package consumer
         shell: pwsh
@@ -423,11 +441,16 @@ jobs:
           TEST_RID: ${{ matrix.rid }}
         run: |
           $ErrorActionPreference = 'Stop'
+          function Invoke-DotNet {
+            param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+            & dotnet @Arguments
+            if ($LASTEXITCODE -ne 0) { throw "dotnet $($Arguments -join ' ') failed with exit code $LASTEXITCODE." }
+          }
           if (-not $env:PACKAGE_VERSION) { throw 'The package job did not report a package version.' }
           $project = 'tests/MBW.GHLinguist.PackageTopology/MBW.GHLinguist.PackageTopology.App/MBW.GHLinguist.PackageTopology.App.csproj'
           $source = (Resolve-Path '.artifacts/nuget').Path
-          dotnet restore $project --runtime $env:TEST_RID "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" --source https://api.nuget.org/v3/index.json --source $source
-          dotnet run --project $project --configuration Release --runtime $env:TEST_RID --no-restore "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION"
+          Invoke-DotNet restore $project --runtime $env:TEST_RID "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" --source https://api.nuget.org/v3/index.json --source $source
+          Invoke-DotNet run --project $project --configuration Release --runtime $env:TEST_RID --no-restore "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION"
 
       - name: Restore, publish, and run framework-dependent package consumer
         shell: pwsh
@@ -437,18 +460,34 @@ jobs:
           RUNTIME_PACKAGE_ID: MBW.GHLinguist.Runtime.${{ matrix.rid }}
         run: |
           $ErrorActionPreference = 'Stop'
+          function Invoke-DotNet {
+            param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+            & dotnet @Arguments
+            if ($LASTEXITCODE -ne 0) { throw "dotnet $($Arguments -join ' ') failed with exit code $LASTEXITCODE." }
+          }
           if (-not $env:PACKAGE_VERSION) { throw 'The package job did not report a package version.' }
           $project = 'tests/MBW.GHLinguist.PackageSmoke/MBW.GHLinguist.PackageSmoke.csproj'
           $source = (Resolve-Path '.artifacts/nuget').Path
           $publish = Join-Path '.tmp/package-smoke-publish' $env:TEST_RID
-          dotnet restore $project --runtime $env:TEST_RID "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" --source https://api.nuget.org/v3/index.json --source $source
-          dotnet publish $project --configuration FrameworkDependent --runtime $env:TEST_RID --self-contained false --no-restore --output $publish "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION"
+          Invoke-DotNet restore $project --runtime $env:TEST_RID "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID" --source https://api.nuget.org/v3/index.json --source $source
+          Invoke-DotNet publish $project --configuration FrameworkDependent --runtime $env:TEST_RID --self-contained false --no-restore --output $publish "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID"
           $assetRoot = Join-Path $publish 'MBW.GHLinguist'
           $bridge = if ($env:TEST_RID -eq 'win-x64') { 'ghlinguist.dll' } else { 'ghlinguist.so' }
           if (-not (Test-Path -LiteralPath (Join-Path $assetRoot $bridge) -PathType Leaf)) { throw "Missing isolated native bridge in $assetRoot." }
           if (-not (Test-Path -LiteralPath (Join-Path $assetRoot 'provenance.json') -PathType Leaf)) { throw "Missing isolated native provenance in $assetRoot." }
           if (-not (Test-Path -LiteralPath (Join-Path $assetRoot 'lib/ruby') -PathType Container)) { throw "Missing isolated Ruby standard library in $assetRoot." }
-          dotnet (Join-Path $publish 'MBW.GHLinguist.PackageSmoke.dll')
+          if (Test-Path -LiteralPath (Join-Path $publish $bridge) -PathType Leaf) { throw 'The native bridge leaked into the publish root.' }
+          Invoke-DotNet (Join-Path $publish 'MBW.GHLinguist.PackageSmoke.dll')
+          $selfContainedPublish = Join-Path '.tmp/package-smoke-self-contained-publish' $env:TEST_RID
+          Invoke-DotNet restore $project --runtime $env:TEST_RID --self-contained true "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID" --source https://api.nuget.org/v3/index.json --source $source
+          Invoke-DotNet publish $project --configuration Release --runtime $env:TEST_RID --self-contained true --no-restore --output $selfContainedPublish "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID"
+          $selfContainedAssetRoot = Join-Path $selfContainedPublish 'MBW.GHLinguist'
+          if (-not (Test-Path -LiteralPath (Join-Path $selfContainedAssetRoot $bridge) -PathType Leaf)) { throw "Missing isolated native bridge in self-contained publish $selfContainedAssetRoot." }
+          if (Test-Path -LiteralPath (Join-Path $selfContainedPublish $bridge) -PathType Leaf) { throw 'The native bridge leaked into the self-contained publish root.' }
+          $appHost = Join-Path $selfContainedPublish ('MBW.GHLinguist.PackageSmoke' + $(if ($env:TEST_RID -eq 'win-x64') { '.exe' } else { '' }))
+          if (-not (Test-Path -LiteralPath $appHost -PathType Leaf)) { throw "Missing self-contained app host $appHost." }
+          & $appHost
+          if ($LASTEXITCODE -ne 0) { throw "The self-contained package consumer failed with exit code $LASTEXITCODE." }
 
   publish_github_packages:
     name: Publish GitHub Packages

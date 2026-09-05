@@ -32,6 +32,6 @@
     <ItemGroup>
       <_NativeIntegrationAsset Include="$(NativeIntegrationAssetRoot)/**/*" />
     </ItemGroup>
-    <Copy SourceFiles="@(_NativeIntegrationAsset)" DestinationFiles="@(_NativeIntegrationAsset->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_NativeIntegrationAsset)" DestinationFiles="@(_NativeIntegrationAsset->'$(OutDir)MBW.GHLinguist\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
 </Project>

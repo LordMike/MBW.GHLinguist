@@ -7,14 +7,12 @@ public sealed class NativeRuntimeIntegrationTests
     private const string LinguistRevision = "196b2a14418cab005065c72c9759370934c184bc";
     private const string ClassifierSha256 = "24af803786a1157cb36a59feb5b4f2f3341a034ef7b5edd5b762a6d6ccb5d95d";
 
-    [Fact]
+    public static bool NativeIntegrationEnabled =>
+        string.Equals(Environment.GetEnvironmentVariable("GHL_RUN_NATIVE_INTEGRATION"), "true", StringComparison.OrdinalIgnoreCase);
+
+    [Fact(Skip = "Set GHL_RUN_NATIVE_INTEGRATION=true with staged native assets.", SkipUnless = nameof(NativeIntegrationEnabled))]
     public async Task PackagedRuntimeExecutesThePublicManagedSurface()
     {
-        if (!string.Equals(Environment.GetEnvironmentVariable("GHL_RUN_NATIVE_INTEGRATION"), "true", StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
         string nativeLibrary = OperatingSystem.IsWindows() ? "ghlinguist.dll" : "ghlinguist.so";
         string assetRoot = Path.Combine(AppContext.BaseDirectory, "MBW.GHLinguist");
         Assert.True(File.Exists(Path.Combine(assetRoot, nativeLibrary)));
@@ -49,6 +47,7 @@ public sealed class NativeRuntimeIntegrationTests
         LinguistLanguage firstEnterprise = Assert.IsType<LinguistLanguage>(runtime.FindByName("1C Enterprise"));
         Assert.Equal(0UL, firstEnterprise.Id);
         Assert.Null(firstEnterprise.GroupLanguageId);
+        Assert.Null(firstEnterprise.FileSystemName);
 
         LinguistLanguage ruby = Assert.IsType<LinguistLanguage>(runtime.FindByName("Ruby"));
         Assert.Equal(LanguageType.Programming, ruby.Type);
@@ -58,6 +57,8 @@ public sealed class NativeRuntimeIntegrationTests
         Assert.Contains(ruby, runtime.FindByExtension("example.rb"));
         Assert.Contains(ruby, runtime.FindByInterpreter("ruby"));
         Assert.Contains(runtime.Languages, language => language.Color is null);
+        Assert.Contains(runtime.Languages, language => language.CodeMirrorMode is null);
+        Assert.Contains(runtime.Languages, language => language.CodeMirrorMimeType is null);
 
         byte[] source = "class Greeter\n  def hello\n    puts 'hello'\n  end\nend\n"u8.ToArray();
         BlobAnalysis analysis = runtime.Analyze(
@@ -83,11 +84,35 @@ public sealed class NativeRuntimeIntegrationTests
             new BlobAnalysisOptions { Strategies = DetectionStrategyMask.Extension });
         Assert.Equal(ruby, pathOnly.Language);
 
+        BlobAnalysis nameOverridesPath = runtime.Analyze(
+            source,
+            new BlobInput { Path = "src/not-ruby.txt", Name = "override.rb" },
+            new BlobAnalysisOptions { Strategies = DetectionStrategyMask.Extension });
+        Assert.Equal(ruby, nameOverridesPath.Language);
+
         BlobAnalysis emptyName = runtime.Analyze(
             source,
             new BlobInput { Path = "src/empty-name.rb", Name = "" },
             new BlobAnalysisOptions { Strategies = DetectionStrategyMask.Extension });
         Assert.Null(emptyName.Language);
+
+        BlobAnalysis emptyPathAndName = runtime.Analyze(
+            source,
+            new BlobInput { Path = "", Name = "" },
+            new BlobAnalysisOptions { Strategies = DetectionStrategyMask.Extension });
+        Assert.Null(emptyPathAndName.Language);
+
+        BlobAnalysis unknown = runtime.Analyze(
+            "plain text without a recognizable language\n"u8,
+            new BlobInput { Path = "unknown", Name = "unknown" },
+            new BlobAnalysisOptions { Strategies = DetectionStrategyMask.Extension });
+        Assert.Null(unknown.Language);
+        Assert.Null(unknown.TextMateScope);
+
+        Assert.Throws<ArgumentException>(() => runtime.Analyze(
+            source,
+            new BlobInput { Path = "src/valid.rb", Name = "\ud800" }));
+        Assert.Equal(ruby, runtime.Analyze(source, new BlobInput { Name = "valid-after-invalid-utf16.rb" }).Language);
 
         BlobAnalysis filename = runtime.Analyze(
             "source :rubygems\n"u8,

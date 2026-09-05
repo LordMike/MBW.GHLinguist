@@ -37,7 +37,7 @@ runs:
     - name: Test
       if: hashFiles('.ci-skip-tests') == ''
       shell: bash
-      run: dotnet test --configuration Release --no-build --verbosity normal
+      run: dotnet test --project tests/MBW.GHLinguist.Tests/MBW.GHLinguist.Tests.csproj --configuration Release --no-build --verbosity normal --minimum-expected-tests 1
 
     - name: Prepare package inputs
       if: env.CI_PUBLISH_TARGET != 'none' && hashFiles('.ci/prepare-pack.sh') != ''

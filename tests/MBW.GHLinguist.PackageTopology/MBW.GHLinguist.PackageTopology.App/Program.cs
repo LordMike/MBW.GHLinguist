@@ -10,4 +10,16 @@ if (analysis.Language != ruby)
     throw new InvalidOperationException($"Expected Ruby analysis, found {analysis.Language?.Name ?? "none"}.");
 }
 
+BlobAnalysis pathOnly = runtime.Analyze("puts 'package topology'\n"u8, new BlobInput { Path = "src/topology.rb" });
+if (pathOnly.Language != ruby)
+{
+    throw new InvalidOperationException("A null Name did not fall back to Path through the RID-neutral library.");
+}
+
+BlobAnalysis nameOverride = runtime.Analyze("puts 'package topology'\n"u8, new BlobInput { Path = "src/not-ruby.txt", Name = "topology-override.rb" });
+if (nameOverride.Language != ruby)
+{
+    throw new InvalidOperationException("Name did not override Path through the RID-neutral library.");
+}
+
 Console.WriteLine("Validated package consumption through a RID-neutral class library.");
