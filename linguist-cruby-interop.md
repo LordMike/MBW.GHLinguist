@@ -519,11 +519,12 @@ THIRD-PARTY-NOTICES.md
 
 Use `buildTransitive` to copy the complete selected closure into an
 `MBW.GHLinguist` directory beside the managed assembly while preserving
-subdirectories. Prefer an explicit supported `RuntimeIdentifier`; when it is
-absent, select the .NET SDK host RID. Referencing a runtime package must provide
-the managed assembly and native closure automatically. Referencing only the
-managed package must fail with guidance to select exactly one supported runtime
-package.
+subdirectories. Set an explicit supported `RuntimeIdentifier` on the executable
+that builds or publishes the deployment; a RID-neutral class library can reference
+the managed package. Do not select a closure from the .NET SDK host RID.
+Referencing a runtime package must provide the managed assembly and native closure
+automatically. Referencing only the managed package must fail with guidance to
+select exactly one supported runtime package.
 
 ## Work
 

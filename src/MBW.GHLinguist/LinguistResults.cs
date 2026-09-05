@@ -30,7 +30,11 @@ public sealed class LinguistVersionInfo
     /// <summary>Gets the native ABI minor version.</summary>
     public uint AbiMinor { get; }
 
-    /// <summary>Gets the Git revision of the wrapper source used to build the native bridge.</summary>
+    /// <summary>Gets the native bridge source revision recorded by the build, not the package version.</summary>
+    /// <remarks>
+    /// This value is unavailable when native build provenance does not supply it. A dirty build does not identify an
+    /// exact source revision.
+    /// </remarks>
     public string WrapperVersion { get; }
 
     /// <summary>Gets the embedded CRuby version.</summary>
@@ -328,7 +332,11 @@ public sealed class BlobAnalysis
     /// <summary>Gets whether the blob is eligible for normal language detection.</summary>
     public bool IsDetectable => HasFlag(BlobResultFlags.Detectable);
 
-    /// <summary>Gets whether the blob should contribute to repository language statistics.</summary>
+    /// <summary>Gets whether this supplied blob is eligible for language statistics.</summary>
+    /// <remarks>
+    /// This is a per-blob Linguist decision. It does not parse <c>.gitattributes</c>, apply repository overrides, or
+    /// aggregate repository language totals.
+    /// </remarks>
     public bool IsIncludedInLanguageStatistics => HasFlag(BlobResultFlags.IncludeInStatistics);
 
     /// <summary>Gets the detected MIME type, for example <c>text/plain</c>.</summary>

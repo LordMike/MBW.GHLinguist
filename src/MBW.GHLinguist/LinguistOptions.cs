@@ -24,6 +24,10 @@ public sealed class BlobInput
     public string? Path { get; init; }
 
     /// <summary>Gets the optional filename used by filename and extension detection.</summary>
+    /// <remarks>
+    /// When <see langword="null" />, the bridge derives a filename from <see cref="Path" /> when possible. An empty
+    /// string is passed to Linguist unchanged and does not use that fallback.
+    /// </remarks>
     public string? Name { get; init; }
 
     /// <summary>Gets whether Linguist should treat the input as a symbolic link.</summary>

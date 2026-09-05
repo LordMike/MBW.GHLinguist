@@ -2,9 +2,9 @@ namespace MBW.GHLinguist;
 
 /// <summary>Owns a native GitHub Linguist runtime and exposes blob analysis and language-registry APIs.</summary>
 /// <remarks>
-/// Calls are synchronous, thread-safe, and mutually exclusive for each runtime instance. Disposal waits for an
-/// active call to finish. Dispose the runtime when it is no longer needed. Results returned before disposal are
-/// immutable managed copies and remain usable afterward.
+/// Calls are synchronous and thread-safe. Ruby work is serialized process-wide, and runtime instances reuse the
+/// same initialized native runtime. Disposal waits for an active call to finish. Dispose the runtime when it is no
+/// longer needed. Results returned before disposal are immutable managed copies and remain usable afterward.
 /// </remarks>
 /// <example>
 /// <code>
@@ -34,10 +34,17 @@ public sealed class LinguistRuntime : IDisposable
         _backend = backend;
     }
 
-    /// <summary>Creates a runtime using the native Linguist assets for the current platform.</summary>
+    /// <summary>Creates a runtime using deployment-local native Linguist assets for the current platform.</summary>
+    /// <remarks>
+    /// The complete closure must remain in the <c>MBW.GHLinguist</c> directory beside the managed assembly; use an
+    /// isolated, complete output layout when validating native integration. Only x64 Windows and Linux processes are
+    /// supported. The first creation that reaches CRuby startup fixes process-wide native state. If startup fails
+    /// after CRuby initialization begins, repair the deployment and restart the process; retrying cannot recover it.
+    /// </remarks>
     /// <returns>A live runtime. For example, its <see cref="Version" /> property reports the loaded Linguist revision.</returns>
     /// <exception cref="DllNotFoundException">The native runtime or one of its dependencies cannot be found.</exception>
     /// <exception cref="BadImageFormatException">A native asset targets the wrong architecture or platform.</exception>
+    /// <exception cref="PlatformNotSupportedException">The process is not x64 Windows or Linux, or single-file deployment prevents locating the native asset directory.</exception>
     /// <exception cref="LinguistException">The deployed native closure fails integrity validation or cannot initialize Linguist.</exception>
     /// <example>
     /// <code>using LinguistRuntime runtime = LinguistRuntime.Create();</code>
@@ -205,9 +212,10 @@ public sealed class LinguistRuntime : IDisposable
     /// <remarks>
     /// Calling this method without <paramref name="input" /> omits path and filename metadata, but still performs
     /// blob checks and runs the enabled analysis strategies. It is not equivalent to <see cref="Classify" />, which
-    /// performs classifier-only ranking.
+    /// performs classifier-only ranking. Analysis copies the complete input and has no built-in size cap, streaming,
+    /// or cancellation; callers processing untrusted input must apply their own limits before calling.
     /// </remarks>
-    /// <param name="data">The complete blob bytes. The span is borrowed only for this synchronous call.</param>
+    /// <param name="data">The complete blob bytes. They are copied for the native request during this synchronous call.</param>
     /// <param name="input">
     /// Optional filename and repository metadata. <see langword="null" /> analyzes the bytes without path or filename
     /// metadata while retaining the configured blob-analysis pipeline.
@@ -305,7 +313,8 @@ public sealed class LinguistRuntime : IDisposable
     /// <summary>Releases this runtime's native handle.</summary>
     /// <remarks>
     /// Calling this method more than once is safe. Concurrent disposal calls wait for the same native release to
-    /// finish. Previously returned managed results remain usable.
+    /// finish. Previously returned managed results remain usable. It does not unload CRuby, stop the process-wide
+    /// worker, or release the process-wide Ruby runtime.
     /// </remarks>
     /// <example><code>runtime.Dispose();</code></example>
     public void Dispose()

@@ -20,6 +20,7 @@ Ruby or native handles to callers.
 - [GitHub Packages development feed](https://nuget.pkg.github.com/LordMike/index.json)
 - [GitHub Linguist](https://github.com/github-linguist/linguist)
 - [How Linguist works](https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/docs/how-linguist-works.md)
+- [Benchmark methodology and limitations](benchmarks/README.md)
 
 ## Status
 
@@ -35,22 +36,29 @@ Its explicit Ruby gem closure includes `zlib` 3.2.3 and `resolv` 0.7.2.
 CI enforces the patched minimum versions for the Ruby advisories that motivated
 those pins and performs a live NuGet vulnerability audit for managed packages.
 
+The checked-in benchmark results are preliminary synthetic Ruby-only measurements,
+not end-to-end managed performance results. They do not support a trustworthy
+timing speedup claim. They currently show generated-check allocation reductions of
+about 23%, 30%, and 33% for the sampled cases; direct `Classify` allocation is
+unaffected. See the [benchmark methodology and limitations](benchmarks/README.md).
+
 Stable releases are published to NuGet.org. Development packages are published
 to GitHub Packages as incrementing authenticated prereleases.
 
 ## Prerequisites
 
-- The .NET 10 SDK, not only the .NET runtime
+- The .NET 10 SDK to restore, build, test, or publish from source
+- The .NET 10 runtime to run a framework-dependent deployed application
 - An x64 Windows or Linux development and deployment environment
 - A consuming executable that targets `net10.0`
 - A `RuntimeIdentifier` of `win-x64` or `linux-x64`
 
 Run `dotnet --info` if the SDK or host architecture is uncertain. Linux packages
-are built and exercised on Debian Bookworm and require glibc 2.35 or later; they
-do not support musl-based distributions such as Alpine. The closure supplies its
-private Ruby, ICU, C++ runtime, and gem dependencies, but uses the host Linux
-loader and glibc family. Test the published output directory on the production
-distribution before deployment.
+are built and exercised on Debian Bookworm and use the host ELF loader and glibc
+family; they do not support musl-based distributions such as Alpine. A glibc 2.35
+observation covered only the bridge and libruby, not every staged ELF dependency,
+so a minimum glibc version is not declared pending a full closure audit. Test the
+published output directory on the production distribution before deployment.
 
 macOS, ARM64,
 .NET 9 and earlier, NativeAOT, trimming, and single-file deployment are not
@@ -472,8 +480,9 @@ Because all Ruby work is serialized, adding concurrent callers increases queue
 depth rather than Linguist throughput. If this becomes a bottleneck, scale with
 separate processes, not additional `LinguistRuntime` instances in one process.
 Thread-safe means serialized, not parallel, bounded, fair, or guaranteed to
-finish within a particular time. No benchmark results are currently published;
-measure startup, latency, working set, and queueing with representative data.
+finish within a particular time. Preliminary synthetic Ruby-only benchmark results
+are documented in [benchmarks/README.md](benchmarks/README.md); measure startup,
+latency, working set, and queueing with representative data.
 
 ## Runtime capabilities
 
@@ -535,7 +544,8 @@ dotnet test --solution MBW.GHLinguist.slnx --configuration Release --no-build --
 ```
 
 Those commands exercise managed contracts but do not stage or run the embedded
-CRuby closure. For a Windows native integration run:
+CRuby closure. For a Windows native integration run, rebuild and stage a complete
+closure, copy it to an isolated asset layout, then set the native-integration gate:
 
 ```powershell
 ./eng/linguist/build-windows.ps1
@@ -543,8 +553,12 @@ $env:GHL_RUN_NATIVE_INTEGRATION = "true"
 dotnet test --project tests/MBW.GHLinguist.Tests/MBW.GHLinguist.Tests.csproj --configuration Release --runtime win-x64 -p:RunNativeIntegrationTests=true --minimum-expected-tests 1
 ```
 
-For Linux, run `./eng/linguist/build-docker.ps1` and use `linux-x64` in the test
-command. See `eng/linguist/README.md` for the native build prerequisites.
+For Linux, rebuild and stage the Linux closure with
+`./eng/linguist/build-docker.ps1`, use an isolated Linux asset layout, set
+`GHL_RUN_NATIVE_INTEGRATION=true`, and run the same command with `--runtime
+linux-x64`. A raw checkout also needs generated samples and gem setup; use the
+complete native-build closure rather than treating this as a standalone command.
+See `eng/linguist/README.md` for the native build prerequisites.
 
 ## Building native assets
 
