@@ -58,6 +58,19 @@ def fixtures(root)
   result
 end
 
+def stable_value(value)
+  case value
+  when Array
+    value.map { |entry| stable_value(entry) }
+  when Hash
+    value.keys.sort_by(&:to_s).map { |key| [stable_value(key), stable_value(value.fetch(key))] }
+  when String, Numeric, Symbol, TrueClass, FalseClass, NilClass
+    value
+  else
+    value.respond_to?(:language_id) ? ["language", value.language_id] : value.to_s
+  end
+end
+
 def measure(name, warmup, rounds, iterations)
   warmup.times { iterations.times { yield } }
   samples = rounds.times.map do
@@ -65,9 +78,10 @@ def measure(name, warmup, rounds, iterations)
     before_allocations = GC.stat(:total_allocated_objects)
     before_gc = GC.stat(:count)
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    digest = iterations.times.map { yield }.hash
+    result = nil
+    iterations.times { result = yield }
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
-    { "ns_per_call" => (elapsed * 1_000_000_000 / iterations).round(1), "allocated_objects_per_call" => ((GC.stat(:total_allocated_objects) - before_allocations).to_f / iterations).round(2), "gc_runs" => GC.stat(:count) - before_gc, "digest" => digest }
+    { "ns_per_call" => (elapsed * 1_000_000_000 / iterations).round(1), "allocated_objects_per_call" => ((GC.stat(:total_allocated_objects) - before_allocations).to_f / iterations).round(2), "gc_runs" => GC.stat(:count) - before_gc, "digest" => Digest::SHA256.hexdigest(JSON.generate(stable_value(result))) }
   end
   ordered = samples.map { |s| s["ns_per_call"] }.sort
   { "name" => name, "median_ns_per_call" => ordered[ordered.length / 2], "min_ns_per_call" => ordered.first, "max_ns_per_call" => ordered.last, "spread_percent" => ((ordered.last - ordered.first) * 100 / ordered[ordered.length / 2]).round(2), "median_allocated_objects_per_call" => samples.map { |s| s["allocated_objects_per_call"] }.sort[samples.length / 2], "gc_runs" => samples.sum { |s| s["gc_runs"] }, "equivalence_digest" => Digest::SHA256.hexdigest(samples.map { |s| s["digest"] }.join(",")) }
