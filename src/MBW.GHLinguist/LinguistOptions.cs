@@ -57,7 +57,12 @@ public sealed class BlobAnalysisOptions
     /// <summary>Gets whether the result includes each executed strategy and its candidates.</summary>
     public bool IncludeStrategyTrace { get; init; }
 
-    /// <summary>Gets whether the result includes physical and source line counts.</summary>
+    /// <summary>Gets whether the result includes Linguist's physical and nonblank line counts.</summary>
+    /// <remarks>
+    /// Linguist returns zero for non-viewable blobs, including binary input and files larger than 1 MiB.
+    /// Nonblank counts include comment-only lines. Disabling this option omits the counts from the result;
+    /// other analysis flags can still require line processing.
+    /// </remarks>
     public bool IncludeLineCounts { get; init; }
 
     /// <summary>Gets the detection strategies that may execute.</summary>

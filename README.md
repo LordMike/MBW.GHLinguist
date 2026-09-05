@@ -258,6 +258,18 @@ Console.WriteLine($"Vendored: {result.IsVendored}");
 Console.WriteLine($"Include in statistics: {result.IsIncludedInLanguageStatistics}");
 ```
 
+### Line-count semantics
+
+`IncludeLineCounts` returns Linguist's rendering-oriented counts, not independent
+whole-file metrics. `LineCount` counts physical lines only for viewable text;
+binary blobs and files larger than 1 MiB return zero even when nonempty.
+`SourceLineCount` counts nonblank lines, including comment-only lines. Neither
+property is a count of executable statements. Use `IsEmpty` to test emptiness.
+
+Both properties are `null` when counts are not requested. Disabling this option
+does not eliminate all line processing: complete analysis still computes flags
+such as the long-line ratio that depend on Linguist's line representation.
+
 ## Language lookup
 
 The lookup names and return shapes intentionally follow Linguist's Ruby API:

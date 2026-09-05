@@ -349,10 +349,18 @@ public sealed class BlobAnalysis
     /// <summary>Gets the detected language's TextMate scope, or <see langword="null" /> when no language was detected.</summary>
     public string? TextMateScope { get; }
 
-    /// <summary>Gets the physical line count when requested, or <see langword="null" /> otherwise.</summary>
+    /// <summary>Gets Linguist's physical line count when requested, or <see langword="null" /> otherwise.</summary>
+    /// <remarks>
+    /// This rendering-oriented count is zero for non-viewable blobs, including binary input and files larger
+    /// than 1 MiB. Zero does not necessarily mean the supplied blob was empty; use <see cref="IsEmpty" />.
+    /// </remarks>
     public ulong? LineCount { get; }
 
-    /// <summary>Gets the source-line count when requested, or <see langword="null" /> otherwise.</summary>
+    /// <summary>Gets Linguist's nonblank line count when requested, or <see langword="null" /> otherwise.</summary>
+    /// <remarks>
+    /// Comment-only lines are counted. Like <see cref="LineCount" />, this is zero for non-viewable blobs,
+    /// including binary input and files larger than 1 MiB; it is not a count of executable source lines.
+    /// </remarks>
     public ulong? SourceLineCount { get; }
 
     /// <summary>Gets the ordered detection trace when requested, or an empty list otherwise.</summary>
