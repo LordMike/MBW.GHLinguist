@@ -101,7 +101,11 @@ constexpr size_t kMaxClassifyCandidateCount = 4096;
 constexpr size_t kMaxQueuedClassifications = 16;
 constexpr size_t kMaxQueuedClassificationBytes = kMaxQueuedClassifications *
     (kDefaultClassifyMaximumBytes + kMaxClassifyCandidateCount * sizeof(uint64_t));
-constexpr char kWrapperVersion[] = "MBW.GHLinguist.Native CRuby bootstrap";
+#if defined(GHL_WRAPPER_REVISION)
+constexpr char kWrapperVersion[] = GHL_WRAPPER_REVISION;
+#else
+constexpr char kWrapperVersion[] = "unavailable";
+#endif
 constexpr char kUnavailable[] = "unavailable";
 constexpr char kUnsupported[] = "GitHub Linguist Ruby embedding is not enabled in this native build.";
 #if defined(GHL_LINGUIST_REVISION)

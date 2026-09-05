@@ -30,7 +30,7 @@ public sealed class LinguistVersionInfo
     /// <summary>Gets the native ABI minor version.</summary>
     public uint AbiMinor { get; }
 
-    /// <summary>Gets the managed/native wrapper version.</summary>
+    /// <summary>Gets the Git revision of the wrapper source used to build the native bridge.</summary>
     public string WrapperVersion { get; }
 
     /// <summary>Gets the embedded CRuby version.</summary>

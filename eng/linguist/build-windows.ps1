@@ -187,6 +187,7 @@ $actualLinguistRevision = (& git -C $LinguistRoot rev-parse HEAD).Trim()
 if ($actualLinguistRevision -ne $manifest.linguist.revision) {
   throw "Expected Linguist revision $($manifest.linguist.revision), found $actualLinguistRevision."
 }
+$wrapperRevision = (& git -C $repoRoot rev-parse HEAD).Trim()
 $actualLinguistVersion = (Get-Content -LiteralPath (Join-Path $LinguistRoot 'lib/linguist/VERSION') -Raw).Trim()
 if ($actualLinguistVersion -ne $manifest.linguist.version) {
   throw "Expected Linguist $($manifest.linguist.version), found $actualLinguistVersion."
@@ -376,7 +377,7 @@ if ($classifierSha256 -ne $manifest.linguist.classifierSha256) {
 $bridgeBuild = Join-Path $buildRoot 'bridge'
 Invoke-Checked cmake '-S' (Join-Path $repoRoot 'src/MBW.GHLinguist.Native') '-B' $bridgeBuild '-G' 'Ninja' `
   "-DGHL_RUBY_ROOT=$RubyRoot" '-DGHL_BUILD_SMOKE=ON' "-DGHL_SMOKE_ASSET_ROOT=$nativeAssetRoot" `
-  "-DGHL_LINGUIST_REVISION=$actualLinguistRevision" "-DGHL_CLASSIFIER_SHA256=$classifierSha256"
+  "-DGHL_WRAPPER_REVISION=$wrapperRevision" "-DGHL_LINGUIST_REVISION=$actualLinguistRevision" "-DGHL_CLASSIFIER_SHA256=$classifierSha256"
 Invoke-Checked cmake '--build' $bridgeBuild '--parallel' '2'
 $bridge = Get-ChildItem -LiteralPath $bridgeBuild -Filter 'ghlinguist.dll' -File -Recurse | Select-Object -First 1
 if (-not $bridge) {

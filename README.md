@@ -475,7 +475,8 @@ measure startup, latency, working set, and queueing with representative data.
 
 ## Runtime capabilities
 
-`LinguistRuntime.Capabilities` describes features exposed by the loaded native
+`LinguistRuntime.Version.WrapperVersion` identifies the exact Git revision used
+to build the native bridge. `LinguistRuntime.Capabilities` describes features exposed by the loaded native
 runtime. The managed facade checks required capabilities before starting an
 operation and throws `NotSupportedException` rather than returning a partial or
 misleading result.

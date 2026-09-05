@@ -42,6 +42,7 @@ if [[ -z "$actual_linguist_revision" ]]; then
   actual_linguist_revision="$(git -C "$linguist_root" rev-parse HEAD)"
 fi
 [[ "$actual_linguist_revision" == "$linguist_revision" ]] || fail "Expected Linguist revision $linguist_revision."
+wrapper_revision="$(git -C "$repo_root" rev-parse HEAD)"
 [[ "$(tr -d '[:space:]' < "$linguist_root/lib/linguist/VERSION")" == "$linguist_version" ]] || fail "Expected Linguist $linguist_version."
 ruby_description="$(ruby -e 'print RUBY_DESCRIPTION')"
 [[ "$(manifest_value schemaVersion)" == "6" ]] || fail "The native dependency manifest uses an unsupported schema."
@@ -210,6 +211,7 @@ cmake -S "$repo_root/src/MBW.GHLinguist.Native" -B "$bridge_build" \
   -DGHL_RUBY_INCLUDE_DIR="$ruby_include_dir" \
   -DGHL_RUBY_ARCH_INCLUDE_DIR="$ruby_arch_include_dir" \
   -DGHL_RUBY_LIBRARY="$ruby_shared_library" \
+  -DGHL_WRAPPER_REVISION="$wrapper_revision" \
   -DGHL_LINGUIST_REVISION="$linguist_revision" \
   -DGHL_CLASSIFIER_SHA256="$classifier_sha256"
 cmake --build "$bridge_build" --parallel "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
