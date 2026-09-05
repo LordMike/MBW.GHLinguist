@@ -33,10 +33,6 @@
           Pack="true"
           PackagePath="buildTransitive\MBW.GHLinguist.Runtime.linux-x64.targets"
           Visible="false" />
-    <None Include="$(RidNativeAssetRoot)\linux-x64\ghlinguist.so"
-          Pack="true"
-          PackagePath="runtimes/linux-x64/native/ghlinguist.so"
-          Visible="false" />
     <None Include="$(RidNativeAssetRoot)\linux-x64\**\*"
           Pack="true"
           PackagePath="nativeassets/linux-x64/"

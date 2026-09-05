@@ -479,7 +479,7 @@ jobs:
           if (Test-Path -LiteralPath (Join-Path $publish $bridge) -PathType Leaf) { throw 'The native bridge leaked into the publish root.' }
           Invoke-DotNet (Join-Path $publish 'MBW.GHLinguist.PackageSmoke.dll')
           $selfContainedPublish = Join-Path '.tmp/package-smoke-self-contained-publish' $env:TEST_RID
-          Invoke-DotNet restore $project --runtime $env:TEST_RID --self-contained true "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID" --source https://api.nuget.org/v3/index.json --source $source
+          Invoke-DotNet restore $project --runtime $env:TEST_RID -p:SelfContained=true "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID" --source https://api.nuget.org/v3/index.json --source $source
           Invoke-DotNet publish $project --configuration Release --runtime $env:TEST_RID --self-contained true --no-restore --output $selfContainedPublish "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID"
           $selfContainedAssetRoot = Join-Path $selfContainedPublish 'MBW.GHLinguist'
           if (-not (Test-Path -LiteralPath (Join-Path $selfContainedAssetRoot $bridge) -PathType Leaf)) { throw "Missing isolated native bridge in self-contained publish $selfContainedAssetRoot." }

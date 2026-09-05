@@ -33,10 +33,6 @@
           Pack="true"
           PackagePath="buildTransitive\MBW.GHLinguist.Runtime.win-x64.targets"
           Visible="false" />
-    <None Include="$(RidNativeAssetRoot)\win-x64\ghlinguist.dll"
-          Pack="true"
-          PackagePath="runtimes/win-x64/native/ghlinguist.dll"
-          Visible="false" />
     <None Include="$(RidNativeAssetRoot)\win-x64\**\*"
           Pack="true"
           PackagePath="nativeassets/win-x64/"
