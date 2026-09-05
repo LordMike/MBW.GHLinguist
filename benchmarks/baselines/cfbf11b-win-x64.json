@@ -1,7 +1,6 @@
 {
-  "commit": "cfbf11b18c7a95efcf8e34e18f26bdacd035fba9",
   "schema": 1,
-  "timestamp_utc": "2026-09-05T11:17:57Z",
+  "timestamp_utc": "2026-09-05T11:27:16Z",
   "environment": {
     "ruby": "ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [x64-mingw-ucrt]",
     "ruby_platform": "x64-mingw-ucrt",
@@ -10,20 +9,110 @@
     "classifier_sha256": "e38a1d021fac9cc4085850efaaf5387553c2d5abdae3d9595315a0c9ac3800c1"
   },
   "fixture_sha256": "84523c31954639529b07a49e8a59f98ea65732c5533b2707d3267743b7c9f635",
-  "startup_ms": 531.9,
+  "startup_ms": 939.0,
   "rounds": 9,
   "warmup": 3,
   "iterations": 100,
   "operations": [
-    { "name": "classify.unrestricted", "median_ns_per_call": 1934772.0, "min_ns_per_call": 1553926.0, "max_ns_per_call": 2148734.0, "spread_percent": 30.74, "median_allocated_objects_per_call": 3054.03, "gc_runs": 21, "equivalence_digest": "3b443f3c972ec9cc9558d5d44c99db490aded4ef8f647d96f214ea1a898986b9" },
-    { "name": "classify.filtered", "median_ns_per_call": 39114.0, "min_ns_per_call": 36749.0, "max_ns_per_call": 58027.0, "spread_percent": 54.4, "median_allocated_objects_per_call": 179.03, "gc_runs": 0, "equivalence_digest": "ba38a771f0a99950778b61accf98dc605f7b813d15fd38776d42afff73cfa358" },
-    { "name": "analyze.normal", "median_ns_per_call": 271355.0, "min_ns_per_call": 234629.0, "max_ns_per_call": 425695.0, "spread_percent": 70.41, "median_allocated_objects_per_call": 528.04, "gc_runs": 0, "equivalence_digest": "918e0177378a0aa8e4b7a105c1c67bdad91cc316304f979db142663938e5282d" },
-    { "name": "analyze.generated_js", "median_ns_per_call": 900339.0, "min_ns_per_call": 847416.0, "max_ns_per_call": 1027333.0, "spread_percent": 19.98, "median_allocated_objects_per_call": 718.03, "gc_runs": 9, "equivalence_digest": "7a5ec34eac1c1f8ac314d86844160042340061b51832d9e642806cc4651f71a0" },
-    { "name": "analyze.generated_css", "median_ns_per_call": 919234.0, "min_ns_per_call": 777091.0, "max_ns_per_call": 1090538.0, "spread_percent": 34.1, "median_allocated_objects_per_call": 697.03, "gc_runs": 9, "equivalence_digest": "6e765b362e4fdb375d2bc733945e095f6e637001e8903e9aaf4701fcc640f7c0" },
-    { "name": "analyze.line_counts", "median_ns_per_call": 250009.0, "min_ns_per_call": 236561.0, "max_ns_per_call": 273014.0, "spread_percent": 14.58, "median_allocated_objects_per_call": 531.04, "gc_runs": 0, "equivalence_digest": "6451189016396873e8e5a88117bb9179c63e0cebe3ce46c6336c4fed0d86ad0b" },
-    { "name": "analyze.trace", "median_ns_per_call": 233395.0, "min_ns_per_call": 230136.0, "max_ns_per_call": 341247.0, "spread_percent": 47.61, "median_allocated_objects_per_call": 542.04, "gc_runs": 0, "equivalence_digest": "946ab7bac855c9096498815873ef09b8af943088ae284f15cf7f4fc7792c97e2" },
-    { "name": "analyze.tiny", "median_ns_per_call": 98321.0, "min_ns_per_call": 96170.0, "max_ns_per_call": 144983.0, "spread_percent": 49.65, "median_allocated_objects_per_call": 369.03, "gc_runs": 0, "equivalence_digest": "98a5288711a0c02979bf7c8db2271b35300a5de7f28cc63124e4650eda34a169" },
-    { "name": "analyze.large", "median_ns_per_call": 6280468.0, "min_ns_per_call": 5848008.0, "max_ns_per_call": 7361138.0, "spread_percent": 24.09, "median_allocated_objects_per_call": 36418.04, "gc_runs": 441, "equivalence_digest": "6d09184cef1aacbdc59bb69a050e5b982b0d2e252b040cee9913fafffba6a8af" },
-    { "name": "registry.lookup", "median_ns_per_call": 436.0, "min_ns_per_call": 378.0, "max_ns_per_call": 523.0, "spread_percent": 33.26, "median_allocated_objects_per_call": 1.03, "gc_runs": 0, "equivalence_digest": "2df10efff71c6a22c31662ef5e5c071e47904faf44dd0b8b4e513a0599e5fa98" }
+    {
+      "name": "classify.unrestricted",
+      "median_ns_per_call": 3709658.0,
+      "min_ns_per_call": 2612963.0,
+      "max_ns_per_call": 4334713.0,
+      "spread_percent": 46.41,
+      "median_allocated_objects_per_call": 3054.0,
+      "gc_runs": 18,
+      "equivalence_digest": "09db475e9856ba004e1cef47d22910bee64940eb62a77adcb6a6b3aa6536928f"
+    },
+    {
+      "name": "classify.filtered",
+      "median_ns_per_call": 134227.0,
+      "min_ns_per_call": 77913.0,
+      "max_ns_per_call": 178397.0,
+      "spread_percent": 74.86,
+      "median_allocated_objects_per_call": 179.0,
+      "gc_runs": 0,
+      "equivalence_digest": "ddcb0818d67a55d10306673fc93769f709a8cde24f111af6e005eda038cca5cc"
+    },
+    {
+      "name": "analyze.normal",
+      "median_ns_per_call": 314791.0,
+      "min_ns_per_call": 269127.0,
+      "max_ns_per_call": 600396.0,
+      "spread_percent": 105.23,
+      "median_allocated_objects_per_call": 528.01,
+      "gc_runs": 0,
+      "equivalence_digest": "52eea83743339a9ae59e060f6399b7bab4c5c16c0ea5ff87c80614bba13a007e"
+    },
+    {
+      "name": "analyze.generated_js",
+      "median_ns_per_call": 949887.0,
+      "min_ns_per_call": 878062.0,
+      "max_ns_per_call": 1090001.0,
+      "spread_percent": 22.31,
+      "median_allocated_objects_per_call": 718.0,
+      "gc_runs": 9,
+      "equivalence_digest": "9bc35b1be358df7329932524ea493d529442c605ba18eef80333792e7997e510"
+    },
+    {
+      "name": "analyze.generated_css",
+      "median_ns_per_call": 884321.0,
+      "min_ns_per_call": 845806.0,
+      "max_ns_per_call": 1089665.0,
+      "spread_percent": 27.58,
+      "median_allocated_objects_per_call": 697.0,
+      "gc_runs": 9,
+      "equivalence_digest": "880a0eb448a0aa46f2f73550ce42fdcc6f65ec8fae9d9b5fcf9d74ca6b24e0d4"
+    },
+    {
+      "name": "analyze.line_counts",
+      "median_ns_per_call": 302072.0,
+      "min_ns_per_call": 265181.0,
+      "max_ns_per_call": 347285.0,
+      "spread_percent": 27.18,
+      "median_allocated_objects_per_call": 531.01,
+      "gc_runs": 0,
+      "equivalence_digest": "1311eb98c98e78b7c85eaba004a0b65c766a49846f478ba5952a53e7a5f94e03"
+    },
+    {
+      "name": "analyze.trace",
+      "median_ns_per_call": 301186.0,
+      "min_ns_per_call": 255641.0,
+      "max_ns_per_call": 392092.0,
+      "spread_percent": 45.3,
+      "median_allocated_objects_per_call": 542.01,
+      "gc_runs": 0,
+      "equivalence_digest": "813698102442b0bafe14cec3346f7b14b385b57a6127facbb1c719cd37307bd3"
+    },
+    {
+      "name": "analyze.tiny",
+      "median_ns_per_call": 137712.0,
+      "min_ns_per_call": 109042.0,
+      "max_ns_per_call": 156984.0,
+      "spread_percent": 34.81,
+      "median_allocated_objects_per_call": 369.0,
+      "gc_runs": 0,
+      "equivalence_digest": "afcf6a18b5f03bcba37e58efbd418449d074c1f15ff79ba77ce415a0bf71ba60"
+    },
+    {
+      "name": "analyze.large",
+      "median_ns_per_call": 5896107.0,
+      "min_ns_per_call": 5613666.0,
+      "max_ns_per_call": 7055114.0,
+      "spread_percent": 24.45,
+      "median_allocated_objects_per_call": 36418.01,
+      "gc_runs": 441,
+      "equivalence_digest": "b071086c56246e8327998cfe92a0bd6079171c34fbe1934ce34268f4dba83ecf"
+    },
+    {
+      "name": "registry.lookup",
+      "median_ns_per_call": 395.0,
+      "min_ns_per_call": 253.0,
+      "max_ns_per_call": 507.0,
+      "spread_percent": 64.3,
+      "median_allocated_objects_per_call": 1.0,
+      "gc_runs": 0,
+      "equivalence_digest": "2a85a32675d7d5ec7538f35798db9688b6795e346fb5d58adf96f9340bc973c6"
+    }
   ]
 }
