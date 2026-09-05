@@ -10,6 +10,9 @@ Run against a packaged Windows closure (use a private copy if another build may 
 & <runtime-root>\bin\ruby.exe benchmarks\linguist_benchmark.rb --runtime-root <runtime-root> --rounds 9 --output benchmarks\results\baseline.json
 ```
 
+To benchmark an un-staged bridge change against the closure's Ruby and Linguist
+assets, add `--bridge src\MBW.GHLinguist.Native\ruby\ghlinguist\bridge.rb`.
+
 Run against a Linguist checkout instead:
 
 ```powershell

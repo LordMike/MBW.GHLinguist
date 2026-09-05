@@ -13,6 +13,7 @@ options = { warmup: 3, rounds: 9, iterations: 100, output: nil }
 OptionParser.new do |parser|
   parser.banner = "Usage: ruby benchmarks/linguist_benchmark.rb [options]"
   parser.on("--runtime-root PATH", "Packaged runtime root containing ghlinguist/bridge.rb") { |v| options[:runtime_root] = v }
+  parser.on("--bridge PATH", "Bridge source to measure; runtime-root still supplies its Ruby and Linguist assets") { |v| options[:bridge] = v }
   parser.on("--linguist-root PATH", "Linguist checkout or lib directory") { |v| options[:linguist_root] = v }
   parser.on("--fixture-root PATH", "Locally extracted corpus fixtures (opt-in)") { |v| options[:fixture_root] = v }
   parser.on("--candidate-ids IDS", "Comma-separated cached language IDs") { |v| options[:candidate_ids] = v.split(",").map(&:to_i) }
@@ -24,7 +25,7 @@ end.parse!
 
 abort "--rounds and --iterations must be positive" unless options[:rounds].positive? && options[:iterations].positive?
 root = options[:runtime_root] && File.expand_path(options[:runtime_root])
-bridge = root ? File.join(root, "ghlinguist", "bridge.rb") : File.expand_path("../src/MBW.GHLinguist.Native/ruby/ghlinguist/bridge.rb", __dir__)
+bridge = options[:bridge] ? File.expand_path(options[:bridge]) : root ? File.join(root, "ghlinguist", "bridge.rb") : File.expand_path("../src/MBW.GHLinguist.Native/ruby/ghlinguist/bridge.rb", __dir__)
 abort "bridge not found: #{bridge}" unless File.file?(bridge)
 $LOAD_PATH.unshift(File.join(root, "lib")) if root && File.directory?(File.join(root, "lib"))
 if options[:linguist_root]
