@@ -150,7 +150,7 @@ try {
     $bridgeName = if ($RuntimeIdentifier -eq 'win-x64') { 'ghlinguist.dll' } else { 'ghlinguist.so' }
     $closurePrefix = "nativeassets/$RuntimeIdentifier/"
     foreach ($entry in @(
-      "runtimes/$RuntimeIdentifier/native/$bridgeName"
+      ($closurePrefix + $bridgeName)
       "buildTransitive/MBW.GHLinguist.Runtime.$RuntimeIdentifier.targets"
       ($closurePrefix + 'provenance.json')
     )) {
