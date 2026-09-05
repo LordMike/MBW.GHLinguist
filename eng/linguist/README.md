@@ -34,6 +34,13 @@ Requires Docker with Linux containers:
 The image is pinned by digest in the manifest and installs only the compiler,
 CMake, and ICU development files needed to build this closure.
 
+The resulting package is exercised on Debian Bookworm. Its currently staged ELF
+artifacts require glibc 2.35 or later. The closure contains CRuby, ICU, and its
+other non-system native dependencies, but deliberately relies on the target
+system's ELF loader and glibc family. It is not compatible with musl-based
+distributions such as Alpine. Re-check the required glibc symbol version after
+changing the base image, compiler, or native dependency set.
+
 ## Windows x64
 
 Requires an existing RubyInstaller 4.0.6 x64-ucrt root with the MSYS2 Devkit,

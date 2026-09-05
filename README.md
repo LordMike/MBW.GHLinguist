@@ -45,7 +45,14 @@ to GitHub Packages as incrementing authenticated prereleases.
 - A consuming executable that targets `net10.0`
 - A `RuntimeIdentifier` of `win-x64` or `linux-x64`
 
-Run `dotnet --info` if the SDK or host architecture is uncertain. macOS, ARM64,
+Run `dotnet --info` if the SDK or host architecture is uncertain. Linux packages
+are built and exercised on Debian Bookworm and require glibc 2.35 or later; they
+do not support musl-based distributions such as Alpine. The closure supplies its
+private Ruby, ICU, C++ runtime, and gem dependencies, but uses the host Linux
+loader and glibc family. Test the published output directory on the production
+distribution before deployment.
+
+macOS, ARM64,
 .NET 9 and earlier, NativeAOT, trimming, and single-file deployment are not
 supported.
 
