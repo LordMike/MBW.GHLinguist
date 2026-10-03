@@ -6,6 +6,15 @@ require "linguist/strategy/manpage"
 require "linguist/strategy/xml"
 
 module GHLinguist
+  # Linguist's classifier reads LINGUIST_DEBUG from the environment to print score tables to stdout, and fails at
+  # higher levels. The host process owns stdout and its environment, so the embedded classifier stays quiet.
+  module QuietClassifier
+    private
+
+    def verbosity = 0
+  end
+  Linguist::Classifier.prepend(QuietClassifier)
+
   class InteropBlob
     include Linguist::BlobHelper
 

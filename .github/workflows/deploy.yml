@@ -96,7 +96,7 @@ jobs:
             Set-Content .artifacts/release/SHA256SUMS -Encoding utf8NoBOM
 
       - name: Create GitHub Release
-        uses: ./.github/actions/publish_github_release
+        uses: ./.github/actions/ghlinguist_publish_github_release
         with:
           release-tag: ${{ inputs.release-tag }}
           is-prerelease: ${{ inputs.is-prerelease }}
