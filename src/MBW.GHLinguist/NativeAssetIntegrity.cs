@@ -8,6 +8,12 @@ internal static class NativeAssetIntegrity
 {
     private const int ProvenanceSchemaVersion = 2;
 
+    // Hashing the whole native closure costs hundreds of milliseconds, so a successful validation is remembered
+    // for the process lifetime. The deployed closure is immutable once a runtime has loaded from it: the native
+    // bridge and CRuby are never unloaded, so re-validating later calls could not change which code is running.
+    private static readonly object CacheGate = new();
+    private static readonly HashSet<(string Root, string RuntimeIdentifier)> ValidatedRoots = new();
+
     internal static string GetCurrentRuntimeIdentifier()
     {
         if (RuntimeInformation.ProcessArchitecture != Architecture.X64)
@@ -30,6 +36,21 @@ internal static class NativeAssetIntegrity
     }
 
     internal static void Validate(string assetRoot, string expectedRuntimeIdentifier)
+    {
+        (string Root, string RuntimeIdentifier) key = (Path.GetFullPath(assetRoot), expectedRuntimeIdentifier);
+        lock (CacheGate)
+        {
+            if (ValidatedRoots.Contains(key))
+            {
+                return;
+            }
+
+            ValidateUncached(assetRoot, expectedRuntimeIdentifier);
+            ValidatedRoots.Add(key);
+        }
+    }
+
+    internal static void ValidateUncached(string assetRoot, string expectedRuntimeIdentifier)
     {
         try
         {

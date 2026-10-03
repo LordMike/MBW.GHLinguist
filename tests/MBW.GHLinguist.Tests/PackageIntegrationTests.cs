@@ -75,6 +75,21 @@ public sealed class PackageIntegrationTests
     }
 
     [Fact]
+    public void NativeAssetIntegrityRemembersASuccessfulValidationForTheProcess()
+    {
+        using TestNativeClosure closure = TestNativeClosure.Create("win-x64");
+        NativeAssetIntegrity.Validate(closure.Root, "win-x64");
+
+        File.WriteAllText(closure.AssetPath, "tampered after the first runtime loaded from this closure");
+
+        // The closure cannot change what is already loaded, so later Create() calls skip the full-closure hashing.
+        NativeAssetIntegrity.Validate(closure.Root, "win-x64");
+        LinguistException exception = Assert.Throws<LinguistException>(() => NativeAssetIntegrity.ValidateUncached(closure.Root, "win-x64"));
+        Assert.Contains("does not match its recorded SHA-256", exception.Message, StringComparison.Ordinal);
+        Assert.Throws<LinguistException>(() => NativeAssetIntegrity.Validate(closure.Root, "linux-x64"));
+    }
+
+    [Fact]
     public void NativeAssetIntegrityRejectsTraversalPaths()
     {
         using TestNativeClosure closure = TestNativeClosure.Create("win-x64", "../outside.dll");
@@ -103,6 +118,8 @@ public sealed class PackageIntegrationTests
         Assert.Equal("MBW.GHLinguist/%(RecursiveDir)%(Filename)%(Extension)", (string?)content.Attribute("Link"));
         Assert.Equal("PreserveNewest", (string?)content.Attribute("CopyToOutputDirectory"));
         Assert.Equal("PreserveNewest", (string?)content.Attribute("CopyToPublishDirectory"));
+        // A consuming library must not pack Ruby and ICU into its own nupkg.
+        Assert.Equal("false", (string?)content.Attribute("Pack"));
         Assert.DoesNotContain(target.Descendants("Copy"), _ => true);
     }
 
@@ -114,7 +131,7 @@ public sealed class PackageIntegrationTests
         XElement[] errors = validation.Elements("Error").ToArray();
 
         Assert.Equal("PrepareForBuild", (string?)validation.Attribute("BeforeTargets"));
-        Assert.Equal("'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'", (string?)validation.Attribute("Condition"));
+        Assert.Equal("'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe' or '$(IsTestProject)' == 'true'", (string?)validation.Attribute("Condition"));
         Assert.Equal(2, errors.Length);
         Assert.Contains("RuntimeIdentifier)' == ''", (string?)errors[0].Attribute("Condition"), StringComparison.Ordinal);
         Assert.Contains("win-x64", validation.ToString(), StringComparison.Ordinal);
@@ -122,18 +139,21 @@ public sealed class PackageIntegrationTests
     }
 
     [Theory]
-    [InlineData("Library", null, true, null)]
-    [InlineData("Exe", null, false, "requires RuntimeIdentifier win-x64 or linux-x64")]
-    [InlineData("Exe", "osx-x64", false, "supports only RuntimeIdentifier win-x64 or linux-x64; found osx-x64")]
-    [InlineData("Exe", "win-x64", true, null)]
-    [InlineData("WinExe", "win-x64", true, null)]
-    public void ManagedPackageBuildTransitiveTargetValidatesOnlyExecutableProjects(
+    [InlineData("Library", null, false, true, null)]
+    [InlineData("Library", null, true, false, "requires RuntimeIdentifier win-x64 or linux-x64")]
+    [InlineData("Library", "win-x64", true, true, null)]
+    [InlineData("Exe", null, false, false, "requires RuntimeIdentifier win-x64 or linux-x64")]
+    [InlineData("Exe", "osx-x64", false, false, "supports only RuntimeIdentifier win-x64 or linux-x64; found osx-x64")]
+    [InlineData("Exe", "win-x64", false, true, null)]
+    [InlineData("WinExe", "win-x64", false, true, null)]
+    public void ManagedPackageBuildTransitiveTargetValidatesExecutableAndTestProjects(
         string outputType,
         string? runtimeIdentifier,
+        bool isTestProject,
         bool succeeds,
         string? expectedOutput)
     {
-        using TemporaryProject project = TemporaryProject.Create(outputType, runtimeIdentifier);
+        using TemporaryProject project = TemporaryProject.Create(outputType, runtimeIdentifier, isTestProject);
 
         (int exitCode, string output) = project.Build();
 
@@ -188,12 +208,13 @@ public sealed class PackageIntegrationTests
 
         private string ProjectPath { get; }
 
-        internal static TemporaryProject Create(string outputType, string? runtimeIdentifier)
+        internal static TemporaryProject Create(string outputType, string? runtimeIdentifier, bool isTestProject = false)
         {
             string directory = Path.Combine(Path.GetTempPath(), $"MBW.GHLinguist.TargetTests-{Guid.NewGuid():N}");
             System.IO.Directory.CreateDirectory(directory);
             string targetPath = Path.Combine(AppContext.BaseDirectory, "MBW.GHLinguist.targets").Replace("&", "&amp;", StringComparison.Ordinal);
             string runtimeIdentifierElement = runtimeIdentifier is null ? string.Empty : $"<RuntimeIdentifier>{runtimeIdentifier}</RuntimeIdentifier>";
+            string testProjectElement = isTestProject ? "<IsTestProject>true</IsTestProject>" : string.Empty;
             string projectPath = Path.Combine(directory, "Consumer.csproj");
             if (outputType is "Exe" or "WinExe")
             {
@@ -205,6 +226,7 @@ public sealed class PackageIntegrationTests
                     <TargetFramework>net10.0</TargetFramework>
                     <OutputType>{{outputType}}</OutputType>
                     {{runtimeIdentifierElement}}
+                    {{testProjectElement}}
                   </PropertyGroup>
                   <Import Project="{{targetPath}}" />
                 </Project>
