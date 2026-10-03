@@ -8,6 +8,7 @@
              Link="MBW.GHLinguist/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest"
+             Pack="false"
              Visible="false" />
   </ItemGroup>
 </Project>
