@@ -77,7 +77,7 @@ public sealed class BlobAnalysisOptions
         get => _strategies;
         init
         {
-            if ((value & ~DetectionStrategyMask.Default) != 0)
+            if ((value & ~DetectionStrategyMask.All) != 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(value), value, "The strategy mask contains unsupported values.");
             }
@@ -101,8 +101,11 @@ public sealed class BlobAnalysisOptions
 /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/lib/linguist/classifier.rb#L91-L149" />
 public sealed class ClassificationOptions
 {
-    /// <summary>The maximum prefix accepted by Linguist's classifier, in bytes.</summary>
-    public const int DefaultMaximumBytes = 50 * 1024;
+    /// <summary>The largest value accepted by <see cref="MaximumBytes" />: Linguist's classifier limit of 50 KiB.</summary>
+    public const int MaximumAllowedBytes = 50 * 1024;
+
+    /// <summary>The default value of <see cref="MaximumBytes" />, equal to <see cref="MaximumAllowedBytes" />.</summary>
+    public const int DefaultMaximumBytes = MaximumAllowedBytes;
 
     private LanguageTypeMask _allowedTypes = LanguageTypeMask.All;
     private int _maximumBytes = DefaultMaximumBytes;
@@ -127,14 +130,14 @@ public sealed class ClassificationOptions
 
     /// <summary>Gets the maximum number of input bytes considered by the classifier.</summary>
     /// <value><c>51200</c> bytes by default.</value>
-    /// <exception cref="ArgumentOutOfRangeException">The value is less than one or greater than 51200.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The value is less than one or greater than <see cref="MaximumAllowedBytes" />.</exception>
     public int MaximumBytes
     {
         get => _maximumBytes;
         init
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(value, 1);
-            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, DefaultMaximumBytes);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, MaximumAllowedBytes);
             _maximumBytes = value;
         }
     }

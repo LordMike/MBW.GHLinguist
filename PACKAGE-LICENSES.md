@@ -14,8 +14,11 @@ runtime package contains the complete collected license texts under
 `nativeassets/<rid>/provenance.json`.
 
 The runtime closure includes software distributed under licenses including the
-Ruby License, BSD-2-Clause, MIT, Expat, Unicode-3.0, Zlib,
-GPL-3.0-with-GCC-exception-3.1, and package-specific Debian terms. Review the
+Ruby License, BSD-2-Clause, BSD-3-Clause, MIT, Expat, Unicode-3.0, Zlib,
+Apache-2.0, LGPL-2.1-or-later, LGPL-3.0-or-later OR GPL-2.0-or-later,
+GPL-3.0-with-GCC-exception-3.1, and package-specific Debian terms. The
+LGPL-licensed libraries and where to obtain their corresponding source are
+listed in `THIRD-PARTY-NOTICES.md`. Review the
 included component license texts before redistributing a runtime package or an
 application containing its native closure.
 

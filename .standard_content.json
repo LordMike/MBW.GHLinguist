@@ -11,17 +11,17 @@
     "files": [
       ".editorconfig",
       ".gitattributes",
+      ".github/CI.md",
       ".github/actions/build/action.yml",
       ".github/actions/collect_publishables/action.yml",
       ".github/actions/initialize_ci/action.yml",
       ".github/actions/publish_docker/action.yml",
       ".github/actions/publish_github_release/action.yml",
       ".github/actions/publish_nuget/action.yml",
-      ".github/readme.md",
       ".github/workflows/ci.yml",
       ".gitignore",
       "Directory.Build.props"
     ],
-    "last_updated": "2026-09-02T20:07:35.6314084\u002B00:00"
+    "last_updated": "2026-10-03T14:57:41.5712171\u002B00:00"
   }
 }

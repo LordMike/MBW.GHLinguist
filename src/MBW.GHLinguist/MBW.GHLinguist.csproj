@@ -16,10 +16,15 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <NoWarn>$(NoWarn);NU5100</NoWarn>
+    <!-- Directory.Build.props suppresses CS1591 repo-wide; every public member of the published library needs XML docs. -->
+    <NoWarn>$(NoWarn.Replace('CS1591', ''))</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="MBW.GHLinguist.Tests" />
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="4.14.0" PrivateAssets="all" />
+    <AdditionalFiles Include="PublicAPI.Shipped.txt" />
+    <AdditionalFiles Include="PublicAPI.Unshipped.txt" />
     <ProjectReference Include="..\MBW.GHLinguist.Runtime.win-x64\MBW.GHLinguist.Runtime.win-x64.csproj" />
     <ProjectReference Include="..\MBW.GHLinguist.Runtime.linux-x64\MBW.GHLinguist.Runtime.linux-x64.csproj" />
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />

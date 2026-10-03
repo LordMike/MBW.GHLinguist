@@ -10,11 +10,15 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
 {
     private const uint AbiMajor = 1;
     private const ulong NoLanguageId = ulong.MaxValue;
+
+    // Native ghl_capability bits: registry, standard detection, classifier, strategy trace, encoding/binary
+    // detection, generated detection, and path classification.
+    private const ulong RequiredCapabilities = 0x7f;
+    private const string UnavailableNativeValue = "unavailable";
     private const string NativeAssetDirectoryName = "MBW.GHLinguist";
     private const string NativeLibraryName = "ghlinguist";
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly NativeRuntimeHandle _runtime;
-    private LinguistCapabilities? _capabilities;
     private IReadOnlyList<LinguistLanguage>? _languages;
     private Dictionary<ulong, LinguistLanguage>? _languagesById;
     private LinguistVersionInfo? _version;
@@ -73,7 +77,18 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
             throw new LinguistException("The native runtime succeeded without returning a runtime handle.");
         }
 
-        return new NativeLinguistRuntimeBackend(new NativeRuntimeHandle(runtime));
+        var backend = new NativeLinguistRuntimeBackend(new NativeRuntimeHandle(runtime));
+        try
+        {
+            backend.ValidateCapabilities();
+        }
+        catch
+        {
+            backend.Dispose();
+            throw;
+        }
+
+        return backend;
     }
 
     public LinguistVersionInfo Version
@@ -85,14 +100,6 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
         }
     }
 
-    public LinguistCapabilities Capabilities
-    {
-        get
-        {
-            ThrowIfDisposed();
-            return _capabilities ??= (LinguistCapabilities)NativeMethods.RuntimeCapabilities(_runtime);
-        }
-    }
 
     public IReadOnlyList<LinguistLanguage> Languages
     {
@@ -102,6 +109,13 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
             EnsureLanguages();
             return _languages!;
         }
+    }
+
+    public LinguistLanguage? FindById(ulong id)
+    {
+        ThrowIfDisposed();
+        EnsureLanguages();
+        return _languagesById!.GetValueOrDefault(id);
     }
 
     public LinguistLanguage? FindByName(string name) => FindOne(LanguageLookupKind.Name, name);
@@ -180,7 +194,7 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
 
         if (options.CandidateLanguageIds is { Count: 0 })
         {
-            return new ClassificationResults(0, []);
+            return new ClassificationResults();
         }
 
         if (options.CandidateLanguageIds is not null)
@@ -250,14 +264,29 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
                     throw new LinguistException($"The native runtime returned invalid classifier score {score}.");
                 }
 
-                results[index] = new ClassificationResult(GetLanguage(languageId), score);
+                results[index] = new ClassificationResult { Language = GetLanguage(languageId), Score = score };
             }
 
-            return new ClassificationResults(checked((int)NativeMethods.ClassificationConsideredBytes(handle)), results);
+            return new ClassificationResults
+            {
+                ConsideredBytes = checked((int)NativeMethods.ClassificationConsideredBytes(handle)),
+                Results = results,
+            };
         }
     }
 
     public void Dispose() => _runtime.Dispose();
+
+    private void ValidateCapabilities()
+    {
+        // The managed assembly and native bridge ship as one matched unit, so a bridge that lacks a feature the
+        // managed API exposes indicates a broken deployment rather than a supported configuration.
+        ulong missing = RequiredCapabilities & ~NativeMethods.RuntimeCapabilities(_runtime);
+        if (missing != 0)
+        {
+            throw new LinguistException($"The native runtime lacks required capabilities 0x{missing:x}.");
+        }
+    }
 
     private LinguistVersionInfo ReadVersion()
     {
@@ -271,14 +300,26 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
             throw new LinguistException($"Runtime reported incompatible ABI version {version.AbiMajor}.{version.AbiMinor}.");
         }
 
-        return new LinguistVersionInfo(
-            version.AbiMajor,
-            version.AbiMinor,
-            ReadRequiredString(version.WrapperVersion),
-            ReadRequiredString(version.RubyVersion),
-            ReadRequiredString(version.LinguistVersion),
-            ReadRequiredString(version.LinguistRevision),
-            ReadRequiredString(version.ClassifierSha256));
+        string nativeBridgeRevision = ReadRequiredString(version.WrapperVersion);
+        return new LinguistVersionInfo
+        {
+            AbiMajor = version.AbiMajor,
+            AbiMinor = version.AbiMinor,
+            PackageVersion = GetPackageVersion(),
+            NativeBridgeRevision = nativeBridgeRevision is "" or UnavailableNativeValue ? null : nativeBridgeRevision,
+            RubyVersion = ReadRequiredString(version.RubyVersion),
+            LinguistVersion = ReadRequiredString(version.LinguistVersion),
+            LinguistRevision = ReadRequiredString(version.LinguistRevision),
+            ClassifierSha256 = ReadRequiredString(version.ClassifierSha256),
+        };
+    }
+
+    internal static string GetPackageVersion()
+    {
+        Assembly assembly = typeof(NativeLinguistRuntimeBackend).Assembly;
+        string? version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            ?? assembly.GetName().Version?.ToString();
+        return version ?? string.Empty;
     }
 
     private void EnsureLanguages()
@@ -327,23 +368,25 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
             throw new LinguistException($"The native runtime returned language ID {info.LanguageId} for requested ID {languageId}.");
         }
 
-        return new LinguistLanguage(
-            info.LanguageId,
-            info.GroupLanguageId == NoLanguageId ? null : info.GroupLanguageId,
-            ReadRequiredString(info.Name),
-            ReadOptionalString(info.FileSystemName),
-            ReadLanguageType(info.Type),
-            (info.Flags & 1) != 0,
-            (info.Flags & 2) != 0,
-            ReadOptionalString(info.Color),
-            ReadRequiredString(info.TextMateScope),
-            ReadOptionalString(info.AceMode),
-            ReadOptionalString(info.CodeMirrorMode),
-            ReadOptionalString(info.CodeMirrorMimeType),
-            ReadLanguageCollection(languageId, NativeLanguageCollection.Aliases, info.AliasCount),
-            ReadLanguageCollection(languageId, NativeLanguageCollection.Extensions, info.ExtensionCount),
-            ReadLanguageCollection(languageId, NativeLanguageCollection.Interpreters, info.InterpreterCount),
-            ReadLanguageCollection(languageId, NativeLanguageCollection.Filenames, info.FilenameCount));
+        return new LinguistLanguage
+        {
+            Id = info.LanguageId,
+            GroupLanguageId = info.GroupLanguageId == NoLanguageId ? null : info.GroupLanguageId,
+            Name = ReadRequiredString(info.Name),
+            FileSystemName = ReadOptionalString(info.FileSystemName),
+            Type = ReadLanguageType(info.Type),
+            IsPopular = (info.Flags & 1) != 0,
+            WrapLines = (info.Flags & 2) != 0,
+            Color = ReadOptionalString(info.Color),
+            TextMateScope = ReadRequiredString(info.TextMateScope),
+            AceMode = ReadOptionalString(info.AceMode),
+            CodeMirrorMode = ReadOptionalString(info.CodeMirrorMode),
+            CodeMirrorMimeType = ReadOptionalString(info.CodeMirrorMimeType),
+            Aliases = ReadLanguageCollection(languageId, NativeLanguageCollection.Aliases, info.AliasCount),
+            Extensions = ReadLanguageCollection(languageId, NativeLanguageCollection.Extensions, info.ExtensionCount),
+            Interpreters = ReadLanguageCollection(languageId, NativeLanguageCollection.Interpreters, info.InterpreterCount),
+            Filenames = ReadLanguageCollection(languageId, NativeLanguageCollection.Filenames, info.FilenameCount),
+        };
     }
 
     private string[] ReadLanguageCollection(ulong languageId, NativeLanguageCollection collection, uint count)
@@ -452,7 +495,11 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
                 candidates[candidateIndex] = GetLanguage(candidateId);
             }
 
-            trace[traceIndex] = new StrategyTraceEntry(ReadDetectionStrategy(entry.Strategy), candidates);
+            trace[traceIndex] = new StrategyTraceEntry
+            {
+                Strategy = ReadDetectionStrategy(entry.Strategy),
+                Candidates = candidates,
+            };
         }
 
         BlobResultFlags flags = (BlobResultFlags)NativeMethods.AnalysisFlags(analysis);
@@ -478,7 +525,7 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
             throw new LinguistException($"The native runtime returned unsupported blob result flags 0x{(ulong)flags:x}.");
         }
 
-        return new BlobAnalysis(
+        return CreateAnalysis(
             language,
             strategy,
             isEmpty,
@@ -492,6 +539,55 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
             options.IncludeLineCounts ? NativeMethods.AnalysisLoc(analysis) : null,
             options.IncludeLineCounts ? NativeMethods.AnalysisSloc(analysis) : null,
             trace);
+    }
+
+    internal static BlobAnalysis CreateAnalysis(
+        LinguistLanguage? language,
+        DetectionStrategy strategy,
+        bool isEmpty,
+        BlobResultFlags flags,
+        string mimeType,
+        string contentType,
+        string disposition,
+        string? encoding,
+        string? rubyEncoding,
+        string? textMateScope,
+        ulong? lineCount,
+        ulong? sourceLineCount,
+        IReadOnlyList<StrategyTraceEntry> strategyTrace)
+    {
+        return new BlobAnalysis
+        {
+            Language = language,
+            Strategy = strategy,
+            IsEmpty = isEmpty,
+            IsLikelyBinary = (flags & BlobResultFlags.LikelyBinary) != 0,
+            IsBinary = (flags & BlobResultFlags.Binary) != 0,
+            IsText = (flags & BlobResultFlags.Text) != 0,
+            IsImage = (flags & BlobResultFlags.Image) != 0,
+            IsSolidModel = (flags & BlobResultFlags.Solid) != 0,
+            IsCsv = (flags & BlobResultFlags.Csv) != 0,
+            IsPdf = (flags & BlobResultFlags.Pdf) != 0,
+            IsLarge = (flags & BlobResultFlags.Large) != 0,
+            IsViewable = (flags & BlobResultFlags.Viewable) != 0,
+            IsSafeToColorize = (flags & BlobResultFlags.SafeToColorize) != 0,
+            HasHighRatioOfLongLines = (flags & BlobResultFlags.HighLongLineRatio) != 0,
+            IsLfsPointer = (flags & BlobResultFlags.LfsPointer) != 0,
+            IsVendored = (flags & BlobResultFlags.Vendored) != 0,
+            IsDocumentation = (flags & BlobResultFlags.Documentation) != 0,
+            IsGenerated = (flags & BlobResultFlags.Generated) != 0,
+            IsDetectable = (flags & BlobResultFlags.Detectable) != 0,
+            IsIncludedInLanguageStatistics = (flags & BlobResultFlags.IncludeInStatistics) != 0,
+            MimeType = mimeType,
+            ContentType = contentType,
+            Disposition = disposition,
+            Encoding = encoding,
+            RubyEncoding = rubyEncoding,
+            TextMateScope = textMateScope,
+            LineCount = lineCount,
+            SourceLineCount = sourceLineCount,
+            StrategyTrace = strategyTrace,
+        }.EnsureConsistent();
     }
 
     private string ReadAnalysisText(NativeAnalysisHandle analysis, NativeAnalysisTextField field)

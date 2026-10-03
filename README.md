@@ -12,6 +12,11 @@ Ruby or native handles to callers.
 > independently audited or benchmarked. Consumers should evaluate the documented
 > limitations and native-runtime constraints for their own workloads.
 
+This is an independent community project. It is not affiliated with, sponsored
+by, or endorsed by GitHub, Inc. "GitHub" and "Linguist" are used only to identify
+the upstream [GitHub Linguist](https://github.com/github-linguist/linguist)
+library that this package embeds.
+
 ## Links
 
 - [Source repository](https://github.com/LordMike/MBW.GHLinguist)
@@ -290,12 +295,13 @@ such as the long-line ratio that depend on Linguist's line representation.
 
 ## Language lookup
 
-The lookup names and return shapes intentionally follow Linguist's Ruby API:
+The lookup names and inputs intentionally follow Linguist's Ruby API:
 
 | Method | Input behavior | Result |
 |---|---|---|
-| `FindByName("ruby")` | Canonical/filesystem name, case-insensitive | One language or `null` |
-| `FindByAlias("cpp")` | Alias, case-insensitive | One language or `null` |
+| `FindById(326)` | Stable numeric language ID | One language; throws `KeyNotFoundException` when absent |
+| `FindByName("ruby")` | Canonical/filesystem name, case-insensitive | One language; throws `KeyNotFoundException` when absent |
+| `FindByAlias("cpp")` | Alias, case-insensitive | One language; throws `KeyNotFoundException` when absent |
 | `FindByFilename("src/Cakefile")` | Exact basename, case-sensitive | Read-only list |
 | `FindByExtension("src/example.rb")` | A complete filename/path, lowercased by Linguist | Read-only list |
 | `FindByInterpreter("bash")` | Exact interpreter, case-sensitive | Read-only list |
@@ -304,9 +310,21 @@ The lookup names and return shapes intentionally follow Linguist's Ruby API:
 `"src/example.rb"`, not the bare string `"rb"`. Linguist considers recognized
 compound extensions in its own precedence order.
 
-Name and alias lookups return `null` for an empty string. Inputs are not trimmed,
-so whitespace remains significant. Passing `null` to a required lookup argument
-throws `ArgumentNullException`.
+`FindById`, `FindByName`, and `FindByAlias` each have a `TryFind...` partner
+that returns `false` instead of throwing. Use `FindBy...` when the language is
+expected to exist, and `TryFindBy...` when the input may be unknown, such as a
+language name typed by a user:
+
+```csharp
+if (runtime.TryFindByName(userInput, out LinguistLanguage? language))
+{
+    Console.WriteLine(language.Id);
+}
+```
+
+An empty name or alias finds nothing. Inputs are not trimmed, so whitespace
+remains significant. Passing `null` to a required lookup argument throws
+`ArgumentNullException`.
 
 `LinguistLanguage.Id` is the stable language identity used by equality and
 hashing. Names and aliases are metadata and can change between Linguist
@@ -326,8 +344,7 @@ Console.WriteLine(best?.Language.Name);
 Restrict classification using language IDs from the same runtime:
 
 ```csharp
-LinguistLanguage ruby = runtime.FindByName("Ruby")
-    ?? throw new InvalidOperationException("Ruby is missing from the registry.");
+LinguistLanguage ruby = runtime.FindByName("Ruby");
 
 ClassificationResults rubyOnly = runtime.Classify(
     source,
@@ -344,7 +361,7 @@ Candidate-list semantics are deliberate:
 | `CandidateLanguageIds` | Meaning |
 |---|---|
 | `null` | All eligible registry languages may be classified |
-| Empty list | Return an empty result without invoking the classifier |
+| Empty list | An explicit empty candidate list returns an empty result without invoking the classifier |
 | Non-empty list | Restrict classification to exactly those IDs |
 
 The no-language sentinel (`ulong.MaxValue`), duplicate IDs, and IDs absent from
@@ -486,27 +503,34 @@ finish within a particular time. Preliminary synthetic Ruby-only benchmark resul
 are documented in [benchmarks/README.md](benchmarks/README.md); measure startup,
 latency, working set, and queueing with representative data.
 
-## Runtime capabilities
+## Version information
 
-`LinguistRuntime.Version.WrapperVersion` identifies the exact Git revision used
-to build the native bridge. `LinguistRuntime.Capabilities` describes features exposed by the loaded native
-runtime. The managed facade checks required capabilities before starting an
-operation and throws `NotSupportedException` rather than returning a partial or
-misleading result.
+`LinguistRuntime.Version` reports what is loaded: `PackageVersion` is the
+managed package version, `NativeBridgeRevision` is the Git revision the native
+bridge was built from (or `null` when the build did not record one), and
+`RubyVersion`, `LinguistVersion`, `LinguistRevision`, and `ClassifierSha256`
+identify the embedded Ruby and Linguist data.
 
-| Operation | Required capabilities |
-|---|---|
-| `Languages` and every `FindBy...` method | `LanguageRegistry` |
-| `Analyze` | `LanguageRegistry`, `StandardDetection`, `EncodingAndBinaryDetection`, `GeneratedDetection`, and `PathClassification` |
-| `Analyze` with `IncludeStrategyTrace` | The normal analysis capabilities plus `StrategyTrace` |
-| `Analyze` with the `Classifier` strategy enabled | The normal analysis capabilities plus `ContentClassifier` |
-| `Classify` | `LanguageRegistry` and `ContentClassifier` |
-| `Classify` with an explicit empty candidate list | No classifier call is made; an empty result is returned |
+## Testing code that uses the runtime
 
-The default analysis strategy mask includes `Classifier`, so normal
-`Analyze(...)` calls require `ContentClassifier`. A caller can explicitly remove
-that strategy when working with a runtime that supports the rest of the analysis
-pipeline.
+`LinguistRuntime` implements `ILinguistRuntime`. Depend on the interface to
+substitute the runtime in unit tests without loading CRuby:
+
+```csharp
+services.AddSingleton<ILinguistRuntime>(_ => LinguistRuntime.Create());
+```
+
+Every result type has public init-only properties, so a test double can return
+hand-built results:
+
+```csharp
+var ruby = new LinguistLanguage { Id = 326, Name = "Ruby", Type = LanguageType.Programming };
+var analysis = new BlobAnalysis { Language = ruby, Strategy = DetectionStrategy.Extension, IsText = true };
+```
+
+The interface does not include `IDisposable`; whoever owns the
+`LinguistRuntime` instance, such as the dependency-injection container,
+disposes it.
 
 ## Exceptions
 
@@ -517,12 +541,11 @@ pipeline.
 | `ArgumentNullException` | A required managed argument is `null` |
 | `ArgumentException` | Metadata, candidate IDs, or UTF-16 input is invalid |
 | `ArgumentOutOfRangeException` | An option value is outside its documented range, such as an unsupported mask bit or `MaximumBytes` |
-| `KeyNotFoundException` | The native runtime reported a missing registry entry; the public lookups return `null` instead, so this is not expected in normal use |
+| `KeyNotFoundException` | `FindById`, `FindByName`, or `FindByAlias` found no language; the `TryFind` variants return `false` instead |
 | `PlatformNotSupportedException` | The process is not x64 Windows or Linux, or the deployment is single-file so the native asset directory cannot be located |
-| `NotSupportedException` | The loaded runtime lacks a capability required by the operation |
 | `OutOfMemoryException` | Managed or native allocation failed, commonly because an input or workload was not bounded |
 | `ObjectDisposedException` | A state-dependent member was used after disposal |
-| `LinguistException` | The native runtime returned malformed data or another native failure |
+| `LinguistException` | The native runtime returned malformed data, lacks a required feature, or reported another native failure |
 | `LinguistRubyException` | The native bridge captured and copied a Ruby exception |
 
 ## Discovering the API
@@ -530,6 +553,7 @@ pipeline.
 Begin with these types in IntelliSense:
 
 - `LinguistRuntime` for lifecycle and operations
+- `ILinguistRuntime` for depending on the runtime and substituting it in tests
 - `BlobInput` for path and filename metadata
 - `BlobAnalysisOptions` for optional trace and line-count work
 - `ClassificationOptions` for classifier bounds and filters
@@ -574,3 +598,12 @@ closure under `nativeassets/<rid>`. Its `buildTransitive` target contributes the
 closure as normal content under `MBW.GHLinguist` with its relative layout intact
 for build and publish. The managed package requires an explicit supported
 `RuntimeIdentifier`.
+
+## License
+
+The MBW.GHLinguist source code is licensed under the [MIT License](LICENSE).
+The runtime packages also redistribute CRuby, GitHub Linguist, Ruby gems, and
+native libraries under their own licenses, including LGPL-licensed libraries.
+See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and
+[PACKAGE-LICENSES.md](PACKAGE-LICENSES.md) before redistributing an application
+that contains a runtime closure.

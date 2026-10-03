@@ -18,8 +18,7 @@ internal static class DocumentationExamples
     internal static ClassificationResults ClassifyForOneLanguage(byte[] source)
     {
         using LinguistRuntime runtime = LinguistRuntime.Create();
-        LinguistLanguage ruby = runtime.FindByName("Ruby")
-            ?? throw new InvalidOperationException("Ruby is missing from the registry.");
+        LinguistLanguage ruby = runtime.FindByName("Ruby");
 
         return runtime.Classify(
             source,

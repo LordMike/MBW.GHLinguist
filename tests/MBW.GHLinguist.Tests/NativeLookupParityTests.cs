@@ -40,7 +40,7 @@ public sealed class NativeLookupParityTests
             string defaultAlias = language.Name.ToLowerInvariant().Replace(' ', '-');
             if (!expected.ContainsKey(defaultAlias))
             {
-                Assert.Null(runtime.FindByName(defaultAlias));
+                Assert.False(runtime.TryFindByName(defaultAlias, out _));
             }
         }
     }

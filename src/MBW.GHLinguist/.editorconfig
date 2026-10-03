@@ -1,0 +1,7 @@
+# The shared root .editorconfig silences CS1591. The published library must document its whole public API.
+[*.cs]
+dotnet_diagnostic.CS1591.severity = error
+
+# Public API changes must be recorded in PublicAPI.Unshipped.txt (RS0016 added, RS0017 removed).
+dotnet_diagnostic.RS0016.severity = error
+dotnet_diagnostic.RS0017.severity = error
