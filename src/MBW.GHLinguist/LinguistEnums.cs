@@ -1,34 +1,5 @@
 namespace MBW.GHLinguist;
 
-/// <summary>Describes the features supported by the loaded native Linguist runtime.</summary>
-[Flags]
-public enum LinguistCapabilities : ulong
-{
-    /// <summary>No optional capabilities are available.</summary>
-    None = 0,
-
-    /// <summary>The complete Linguist language registry can be enumerated and searched.</summary>
-    LanguageRegistry = 1UL << 0,
-
-    /// <summary>Standard blob detection using Linguist's ordered strategies is available.</summary>
-    StandardDetection = 1UL << 1,
-
-    /// <summary>Content classification using Linguist's classifier is available.</summary>
-    ContentClassifier = 1UL << 2,
-
-    /// <summary>Detection strategy traces can be included in analysis results.</summary>
-    StrategyTrace = 1UL << 3,
-
-    /// <summary>Encoding and binary-content detection is available.</summary>
-    EncodingAndBinaryDetection = 1UL << 4,
-
-    /// <summary>Generated-file detection is available.</summary>
-    GeneratedDetection = 1UL << 5,
-
-    /// <summary>Vendored and documentation path classification is available.</summary>
-    PathClassification = 1UL << 6,
-}
-
 /// <summary>Identifies a GitHub Linguist language category.</summary>
 /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/docs/how-linguist-works.md#language-type" />
 public enum LanguageType : uint
@@ -145,8 +116,11 @@ public enum DetectionStrategyMask : uint
     /// <summary>Enable content classification.</summary>
     Classifier = 1U << 7,
 
-    /// <summary>Enable every strategy in Linguist's standard detection pipeline.</summary>
-    Default = Modeline | Filename | Shebang | Extension | Xml | Manpage | Heuristics | Classifier,
+    /// <summary>Enable every supported detection strategy.</summary>
+    All = Modeline | Filename | Shebang | Extension | Xml | Manpage | Heuristics | Classifier,
+
+    /// <summary>Enable the strategies in Linguist's standard detection pipeline, which is currently every strategy.</summary>
+    Default = All,
 }
 
 [Flags]
