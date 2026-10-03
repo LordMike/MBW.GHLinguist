@@ -229,6 +229,17 @@ jobs:
           name: native-${{ matrix.rid }}
           path: .tmp/artifacts/native/${{ matrix.rid }}
 
+      # Only third-party packages are cached; the GHLinguist packages built by
+      # this run are always restored from its own artifacts.
+      - name: Cache NuGet packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.nuget/packages
+            !~/.nuget/packages/mbw.ghlinguist*
+          key: nuget-${{ github.job }}-${{ runner.os }}-${{ hashFiles('global.json', '**/Directory.Build.props', '**/Directory.Build.targets', '**/*.csproj', '!extern/**') }}
+          restore-keys: nuget-${{ github.job }}-${{ runner.os }}-
+
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
         with:
@@ -349,6 +360,17 @@ jobs:
             if ($classifier.Count -ne 1 -or $classifier[0].sha256 -cne $manifest.linguist.classifierSha256) { throw "The $rid classifier asset does not match the pinned digest." }
           }
 
+      # Only third-party packages are cached; the GHLinguist packages built by
+      # this run are always restored from its own artifacts.
+      - name: Cache NuGet packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.nuget/packages
+            !~/.nuget/packages/mbw.ghlinguist*
+          key: nuget-${{ github.job }}-${{ runner.os }}-${{ hashFiles('global.json', '**/Directory.Build.props', '**/Directory.Build.targets', '**/*.csproj', '!extern/**') }}
+          restore-keys: nuget-${{ github.job }}-${{ runner.os }}-
+
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
         with:
@@ -448,6 +470,17 @@ jobs:
         with:
           name: package-artifacts
           path: .artifacts
+
+      # Only third-party packages are cached; the GHLinguist packages built by
+      # this run are always restored from its own artifacts.
+      - name: Cache NuGet packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.nuget/packages
+            !~/.nuget/packages/mbw.ghlinguist*
+          key: nuget-${{ github.job }}-${{ runner.os }}-${{ hashFiles('global.json', '**/Directory.Build.props', '**/Directory.Build.targets', '**/*.csproj', '!extern/**') }}
+          restore-keys: nuget-${{ github.job }}-${{ runner.os }}-
 
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
