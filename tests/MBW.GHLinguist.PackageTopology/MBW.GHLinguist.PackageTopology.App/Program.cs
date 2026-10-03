@@ -2,7 +2,7 @@ using MBW.GHLinguist;
 using MBW.GHLinguist.PackageTopology.Library;
 
 using LinguistRuntime runtime = LinguistConsumer.CreateRuntime();
-LinguistLanguage ruby = runtime.FindByName("Ruby") ?? throw new InvalidOperationException("Ruby is missing from the packaged language registry.");
+LinguistLanguage ruby = runtime.FindByName("Ruby");
 BlobAnalysis analysis = runtime.Analyze("puts 'package topology'\n"u8, new BlobInput { Name = "topology.rb" });
 
 if (analysis.Language != ruby)
