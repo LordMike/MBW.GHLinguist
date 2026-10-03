@@ -170,6 +170,27 @@
       }
     },
     {
+      "component": "GNU MP (GMP) DLL",
+      "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
+      "licenseSource": {
+        "win-x64": [
+          "<repository>/eng/linguist/licenses/gmp/README",
+          "<repository>/eng/linguist/licenses/gmp/COPYING.LESSERv3",
+          "<repository>/eng/linguist/licenses/gmp/COPYINGv3",
+          "<repository>/eng/linguist/licenses/gmp/COPYINGv2"
+        ]
+      },
+      "output": "licenses/gmp/",
+      "requiredOutputs": {
+        "win-x64": [
+          "licenses/gmp/README",
+          "licenses/gmp/COPYING.LESSERv3",
+          "licenses/gmp/COPYINGv3",
+          "licenses/gmp/COPYINGv2"
+        ]
+      }
+    },
+    {
       "component": "ICU DLLs",
       "license": "Unicode-3.0",
       "licenseSource": {
