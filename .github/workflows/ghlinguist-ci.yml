@@ -1,0 +1,575 @@
+name: GHLinguist CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish_nuget_org:
+        description: Publish the verified package to NuGet.org (trusted tags only)
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_NOLOGO: true
+
+jobs:
+  managed:
+    name: Managed build and test (${{ matrix.rid }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: windows-2025
+            rid: win-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout exact source and Linguist
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          submodules: true
+          persist-credentials: false
+
+      - name: Run managed build and tests once
+        uses: ./.github/actions/ghlinguist_build
+        env:
+          CI_PUBLISH_TARGET: none
+
+      - name: Verify dependency security baseline
+        shell: pwsh
+        run: ./eng/security/verify-security-baseline.ps1
+
+  native_windows:
+    name: Native win-x64
+    runs-on: windows-2025
+    steps:
+      - name: Checkout exact source and Linguist
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          submodules: true
+          persist-credentials: false
+
+      - name: Set up the pinned Ruby runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifest = Get-Content eng/linguist/native-dependencies.json -Raw | ConvertFrom-Json
+          $rubyArtifact = $manifest.ruby.windowsArtifact
+          if ($rubyArtifact.sha256 -notmatch '^[a-f0-9]{64}$') { throw 'The RubyInstaller artifact SHA-256 is invalid.' }
+          $rubyArtifactPath = Join-Path $env:RUNNER_TEMP $rubyArtifact.name
+          Invoke-WebRequest -Uri $rubyArtifact.url -OutFile $rubyArtifactPath
+          $actualRubyArtifactSha256 = (Get-FileHash -LiteralPath $rubyArtifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualRubyArtifactSha256 -ne $rubyArtifact.sha256) { throw 'The RubyInstaller artifact SHA-256 does not match the manifest.' }
+          if ([IO.Path]::GetExtension($rubyArtifact.name) -cne '.exe') { throw 'The pinned RubyInstaller Devkit artifact must be an installer executable.' }
+          $rubyRoot = Join-Path $env:RUNNER_TEMP 'ghlinguist-ruby'
+          $install = Start-Process -FilePath $rubyArtifactPath -ArgumentList @(
+            '/VERYSILENT'
+            '/SUPPRESSMSGBOXES'
+            '/NORESTART'
+            '/SP-'
+            "/DIR=`"$rubyRoot`""
+            '/TASKS=""'
+          ) -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Failed to install the pinned RubyInstaller Devkit artifact: $($install.ExitCode)." }
+          if (-not (Test-Path -LiteralPath (Join-Path $rubyRoot 'bin/ruby.exe') -PathType Leaf)) { throw 'The pinned RubyInstaller artifact has an unexpected layout.' }
+          $msysBash = Join-Path $rubyRoot 'msys64/usr/bin/bash.exe'
+          if (-not (Test-Path -LiteralPath $msysBash -PathType Leaf)) { throw 'The pinned RubyInstaller artifact does not contain MSYS2.' }
+          & $msysBash -lc 'true'
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to initialize the pinned MSYS2 environment.' }
+          "RUBY_ROOT=$rubyRoot" >> $env:GITHUB_ENV
+          Join-Path $rubyRoot 'bin' >> $env:GITHUB_PATH
+          Join-Path $rubyRoot 'msys64/ucrt64/bin' >> $env:GITHUB_PATH
+          Join-Path $rubyRoot 'msys64/usr/bin' >> $env:GITHUB_PATH
+
+      - name: Install Windows native prerequisites
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifest = Get-Content eng/linguist/native-dependencies.json -Raw | ConvertFrom-Json
+          $packages = @($manifest.windows.pacmanPackages)
+          if ($packages.Count -eq 0) { throw 'The pacman package allowlist is empty.' }
+          & (Join-Path $env:RUBY_ROOT 'msys64/usr/bin/pacman.exe') --noconfirm -S --needed @packages
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to install the allowlisted Windows native prerequisites.' }
+          $gemCache = Join-Path $env:RUNNER_TEMP 'ghlinguist-gems'
+          New-Item -ItemType Directory -Path $gemCache -Force | Out-Null
+          foreach ($gem in $manifest.gems) {
+            if ($gem.artifact -ne "$($gem.name)-$($gem.version).gem") { throw "Unexpected artifact name for $($gem.name) $($gem.version)." }
+            if ($gem.artifactUrl -ne "https://rubygems.org/downloads/$($gem.artifact)") { throw "Unexpected artifact URL for $($gem.name) $($gem.version)." }
+            if ($gem.sha256 -notmatch '^[a-f0-9]{64}$') { throw "Invalid SHA-256 for $($gem.name) $($gem.version)." }
+            $artifactPath = Join-Path $gemCache $gem.artifact
+            Invoke-WebRequest -Uri $gem.artifactUrl -OutFile $artifactPath
+            $actualSha256 = (Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actualSha256 -ne $gem.sha256) { throw "SHA-256 mismatch for gem artifact $($gem.artifact)." }
+            $arguments = @('install', '--local', '--no-document', '--ignore-dependencies', $artifactPath)
+            $buildArguments = @($gem.windowsBuildArguments)
+            if ($buildArguments.Count -gt 0) {
+              $arguments += '--'
+              $arguments += $buildArguments
+            }
+            & (Join-Path $env:RUBY_ROOT 'bin/gem.cmd') @arguments
+            if ($LASTEXITCODE -ne 0) { throw "Failed to install $($gem.name) $($gem.version)." }
+          }
+
+      - name: Build and validate win-x64 native closure
+        shell: pwsh
+        run: ./eng/linguist/build-windows.ps1 -RubyRoot $env:RUBY_ROOT
+
+      - name: Inspect win-x64 exports and dependencies
+        shell: pwsh
+        run: ./eng/linguist/inspect-windows.ps1
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Run managed tests against the win-x64 closure
+        shell: pwsh
+        env:
+          GHL_RUN_NATIVE_INTEGRATION: true
+        run: dotnet test --project tests/MBW.GHLinguist.Tests/MBW.GHLinguist.Tests.csproj --configuration Release --runtime win-x64 -p:RunNativeIntegrationTests=true --minimum-expected-tests 1
+
+      - name: Upload win-x64 native closure
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: native-win-x64
+          path: .tmp/artifacts/native/win-x64
+          include-hidden-files: true
+          if-no-files-found: error
+
+  native_linux:
+    name: Native linux-x64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact source and Linguist
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          submodules: true
+          persist-credentials: false
+
+      - name: Build and validate linux-x64 native closure
+        shell: pwsh
+        run: ./eng/linguist/build-docker.ps1
+
+      - name: Inspect linux-x64 exports and dependencies
+        shell: bash
+        run: ./eng/linguist/inspect-linux.sh
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Run managed tests against the linux-x64 closure
+        shell: pwsh
+        env:
+          GHL_RUN_NATIVE_INTEGRATION: true
+        run: dotnet test --project tests/MBW.GHLinguist.Tests/MBW.GHLinguist.Tests.csproj --configuration Release --runtime linux-x64 -p:RunNativeIntegrationTests=true --minimum-expected-tests 1
+
+      - name: Upload linux-x64 native closure
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: native-linux-x64
+          path: .tmp/artifacts/native/linux-x64
+          include-hidden-files: true
+          if-no-files-found: error
+
+  package:
+    name: Merge native closures and package
+    needs:
+      - managed
+      - native_windows
+      - native_linux
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.package_context.outputs.version }}
+      release-tag: ${{ steps.context.outputs.release-tag }}
+      is-release: ${{ steps.context.outputs.is-release }}
+      is-prerelease: ${{ steps.context.outputs.is-prerelease }}
+    steps:
+      - name: Checkout exact source and Linguist
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          submodules: true
+          persist-credentials: false
+
+      - name: Initialize package version
+        id: context
+        uses: ./.github/actions/ghlinguist_initialize_ci
+
+      - name: Download win-x64 native closure
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4.3.0
+        with:
+          name: native-win-x64
+          path: .tmp/artifacts/native/win-x64
+
+      - name: Download linux-x64 native closure
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4.3.0
+        with:
+          name: native-linux-x64
+          path: .tmp/artifacts/native/linux-x64
+
+      - name: Validate downloaded native provenance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifestPath = 'eng/linguist/native-dependencies.json'
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+          $expectedLocks = [ordered]@{
+            nativeDependenciesSha256 = (Get-FileHash $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            thirdPartyRedistributionSha256 = (Get-FileHash eng/linguist/third-party-redistribution.json -Algorithm SHA256).Hash.ToLowerInvariant()
+            bridgeSha256 = (Get-FileHash src/MBW.GHLinguist.Native/ruby/ghlinguist/bridge.rb -Algorithm SHA256).Hash.ToLowerInvariant()
+            linguistVersionSha256 = (Get-FileHash extern/linguist/lib/linguist/VERSION -Algorithm SHA256).Hash.ToLowerInvariant()
+          }
+          foreach ($rid in 'win-x64', 'linux-x64') {
+            $root = Join-Path '.tmp/artifacts/native' $rid
+            $provenancePath = Join-Path $root 'provenance.json'
+            if (-not (Test-Path -LiteralPath $provenancePath)) { throw "Missing provenance for $rid." }
+            $provenance = Get-Content -LiteralPath $provenancePath -Raw | ConvertFrom-Json
+            if ($provenance.schemaVersion -ne 2) { throw "Unexpected provenance schema version for $rid." }
+            if ($provenance.platform -ne $rid) { throw "Provenance platform '$($provenance.platform)' does not match $rid." }
+            if ($provenance.manifestSha256 -ne $expectedLocks.nativeDependenciesSha256) { throw "Provenance manifest hash does not match the checked-out source for $rid." }
+            if ($provenance.classifierSha256 -ne $manifest.linguist.classifierSha256) { throw "Provenance classifier hash does not match the manifest for $rid." }
+            foreach ($lockName in $expectedLocks.Keys) {
+              if ($provenance.lockInputs.$lockName -ne $expectedLocks[$lockName]) { throw "Provenance lock input '$lockName' does not match the checked-out source for $rid." }
+            }
+            if ($provenance.externalDependencies.ruby.version -ne $manifest.ruby.version) { throw "Provenance Ruby version does not match the manifest for $rid." }
+            if ($rid -eq 'win-x64') {
+              $expectedRubyArtifact = ConvertTo-Json -InputObject $manifest.ruby.windowsArtifact -Compress
+              $actualRubyArtifact = ConvertTo-Json -InputObject $provenance.externalDependencies.ruby.artifact -Compress
+              if ($actualRubyArtifact -cne $expectedRubyArtifact) { throw 'Windows Ruby artifact provenance does not match the manifest.' }
+            }
+            $expectedBundledComponents = ConvertTo-Json -InputObject @($manifest.ruby.bundledComponents) -Depth 5 -Compress
+            $actualBundledComponents = ConvertTo-Json -InputObject @($provenance.externalDependencies.ruby.bundledComponents) -Depth 5 -Compress
+            if ($actualBundledComponents -cne $expectedBundledComponents) { throw "Provenance bundled Ruby components do not match the manifest for $rid." }
+            if ($rid -eq 'linux-x64' -and $provenance.externalDependencies.ruby.dockerImage -ne $manifest.ruby.dockerImage) { throw 'Linux provenance Ruby image does not match the pinned manifest digest.' }
+            foreach ($gem in $manifest.gems) {
+              $actualGem = @($provenance.externalDependencies.gems | Where-Object { $_.name -eq $gem.name -and $_.version -eq $gem.version })
+              if ($actualGem.Count -ne 1 -or $actualGem[0].artifact -ne $gem.artifact -or $actualGem[0].artifactUrl -ne $gem.artifactUrl -or $actualGem[0].sha256 -ne $gem.sha256) {
+                throw "Provenance gem artifact identity does not match the manifest for $($gem.name) $($gem.version) in $rid."
+              }
+              $expectedBuildArguments = @($gem.windowsBuildArguments)
+              $actualBuildArguments = @($actualGem[0].windowsBuildArguments)
+              if (($actualBuildArguments -join '|') -cne ($expectedBuildArguments -join '|')) {
+                throw "Provenance Windows build arguments do not match the manifest for $($gem.name) $($gem.version) in $rid."
+              }
+            }
+            $expectedPackageNames = if ($rid -eq 'win-x64') { @($manifest.windows.pacmanPackages | Sort-Object) } else { @($manifest.linux.aptPackages | Sort-Object) }
+            $actualPackages = if ($rid -eq 'win-x64') { @($provenance.externalDependencies.pacmanPackages) } else { @($provenance.externalDependencies.aptPackages) }
+            $actualPackageNames = @($actualPackages | ForEach-Object { $_.name } | Sort-Object)
+            if (($actualPackageNames -join '|') -ne ($expectedPackageNames -join '|')) { throw "Provenance package identities do not match the strict allowlist for $rid." }
+            foreach ($package in $actualPackages) {
+              $expectedVersion = if ($rid -eq 'win-x64') { $manifest.windows.pacmanPackageVersions.PSObject.Properties[$package.name].Value } else { $manifest.linux.aptPackageVersions.PSObject.Properties[$package.name].Value }
+              if (-not $expectedVersion -or $package.version -ne $expectedVersion) { throw "Provenance package version does not match the manifest for $($package.name) in $rid." }
+            }
+            $expectedBuildConfiguration = ConvertTo-Json -InputObject $manifest.build -Depth 8 -Compress
+            $actualBuildConfiguration = ConvertTo-Json -InputObject $provenance.buildConfiguration -Depth 8 -Compress
+            if ($actualBuildConfiguration -cne $expectedBuildConfiguration) { throw "Provenance build configuration does not match the manifest for $rid." }
+            if (@($provenance.files).Count -eq 0) { throw "Provenance for $rid contains no files." }
+            foreach ($file in $provenance.files) {
+              $relativePath = [string]$file.path
+              if ([IO.Path]::IsPathRooted($relativePath) -or $relativePath.Replace('\', '/').Split('/') -contains '..') { throw "Invalid provenance path '$relativePath' for $rid." }
+              $asset = Join-Path $root $relativePath
+              if (-not (Test-Path -LiteralPath $asset -PathType Leaf)) { throw "Missing native asset '$relativePath' for $rid." }
+              $actualHash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant()
+              if ($actualHash -ne $file.sha256) { throw "Native asset hash mismatch for '$relativePath' in $rid." }
+            }
+            $normalizedFiles = @($provenance.files | ForEach-Object { ([string]$_.path).Replace('\', '/') })
+            if (-not ($normalizedFiles -match '/psych\.so$')) { throw "The $rid closure does not contain the pinned Psych native extension." }
+            $libyamlPattern = if ($rid -eq 'win-x64') { '/libyaml-0-2\.dll$' } else { '^lib/libyaml-0\.so\.2$' }
+            if (-not ($normalizedFiles -match $libyamlPattern)) { throw "The $rid closure does not contain the pinned libyaml runtime." }
+            $classifier = @($provenance.files | Where-Object { ([string]$_.path).Replace('\', '/') -ceq 'lib/linguist/samples_data.rb' })
+            if ($classifier.Count -ne 1 -or $classifier[0].sha256 -cne $manifest.linguist.classifierSha256) { throw "The $rid classifier asset does not match the pinned digest." }
+          }
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Build package projects
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build src/MBW.GHLinguist/MBW.GHLinguist.csproj --configuration Release
+          dotnet build src/MBW.GHLinguist.Runtime.win-x64/MBW.GHLinguist.Runtime.win-x64.csproj --configuration Release
+          dotnet build src/MBW.GHLinguist.Runtime.linux-x64/MBW.GHLinguist.Runtime.linux-x64.csproj --configuration Release
+
+      - name: Build the managed and RID runtime NuGet packages
+        shell: bash
+        env:
+          CI_VERSION: ${{ steps.context.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p .artifacts/nuget
+          version_args=()
+          if [ -n "$CI_VERSION" ]; then
+            version_args+=("-p:MinVerVersionOverride=$CI_VERSION")
+          fi
+          dotnet pack src/MBW.GHLinguist/MBW.GHLinguist.csproj --configuration Release --no-build --output .artifacts/nuget "${version_args[@]}"
+          dotnet pack src/MBW.GHLinguist.Runtime.win-x64/MBW.GHLinguist.Runtime.win-x64.csproj --configuration Release --no-build --output .artifacts/nuget -p:ValidateRidAssets=true "${version_args[@]}"
+          dotnet pack src/MBW.GHLinguist.Runtime.linux-x64/MBW.GHLinguist.Runtime.linux-x64.csproj --configuration Release --no-build --output .artifacts/nuget -p:ValidateRidAssets=true "${version_args[@]}"
+          mapfile -t packages < <(find .artifacts/nuget -maxdepth 1 -type f -name '*.nupkg' ! -name '*.snupkg' -print | sort)
+          mapfile -t symbols < <(find .artifacts/nuget -maxdepth 1 -type f -name '*.snupkg' -print | sort)
+          [ "${#packages[@]}" -eq 3 ] || { echo "Expected exactly three nupkg files, found ${#packages[@]}."; exit 1; }
+          [ "${#symbols[@]}" -eq 1 ] || { echo "Expected exactly one snupkg file, found ${#symbols[@]}."; exit 1; }
+
+      - name: Verify NuGet package contents
+        id: package_context
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $packages = @(Get-ChildItem .artifacts/nuget -Filter '*.nupkg' -File |
+            Where-Object { $_.Name -notlike '*.snupkg' })
+          if ($packages.Count -ne 3) { throw "Expected exactly three nupkg files, found $($packages.Count)." }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $packageById = @{}
+          foreach ($package in $packages) {
+            $archive = [System.IO.Compression.ZipFile]::OpenRead($package.FullName)
+            try {
+              $nuspec = @($archive.Entries | Where-Object { $_.FullName -like '*.nuspec' })
+              if ($nuspec.Count -ne 1) { throw "Expected exactly one nuspec in $($package.Name), found $($nuspec.Count)." }
+              $reader = [IO.StreamReader]::new($nuspec[0].Open())
+              try { [xml]$document = $reader.ReadToEnd() } finally { $reader.Dispose() }
+              $id = $document.SelectSingleNode("/*[local-name()='package']/*[local-name()='metadata']/*[local-name()='id']").InnerText
+              $version = $document.SelectSingleNode("/*[local-name()='package']/*[local-name()='metadata']/*[local-name()='version']").InnerText
+              if ($packageById.ContainsKey($id)) { throw "Multiple packages declare ID $id." }
+              $packageById[$id] = [pscustomobject]@{ File = $package; Version = $version }
+            }
+            finally { $archive.Dispose() }
+          }
+          $managed = $packageById['MBW.GHLinguist']
+          $windows = $packageById['MBW.GHLinguist.Runtime.win-x64']
+          $linux = $packageById['MBW.GHLinguist.Runtime.linux-x64']
+          if (-not $managed -or -not $windows -or -not $linux -or $packageById.Count -ne 3) { throw 'Package output must contain the managed package and both RID runtime packages.' }
+          if ($windows.Version -ne $managed.Version -or $linux.Version -ne $managed.Version) { throw 'Managed and runtime package versions must match exactly.' }
+          ./eng/nuget/verify-package.ps1 -Package $managed.File.FullName -ExpectedVersion $managed.Version -ExpectedCommit $env:GITHUB_SHA -Kind managed
+          ./eng/nuget/verify-package.ps1 -Package $windows.File.FullName -ExpectedVersion $managed.Version -ExpectedCommit $env:GITHUB_SHA -Kind runtime -RuntimeIdentifier win-x64
+          ./eng/nuget/verify-package.ps1 -Package $linux.File.FullName -ExpectedVersion $managed.Version -ExpectedCommit $env:GITHUB_SHA -Kind runtime -RuntimeIdentifier linux-x64
+          $version = $managed.Version
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: package-artifacts
+          path: .artifacts
+          include-hidden-files: true
+          if-no-files-found: error
+
+  package_consumers:
+    name: Package consumer ${{ matrix.rid }}
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: windows-2025
+            rid: win-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download package artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4.3.0
+        with:
+          name: package-artifacts
+          path: .artifacts
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Build RID-neutral package library
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Invoke-DotNet {
+            param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+            & dotnet @Arguments
+            if ($LASTEXITCODE -ne 0) { throw "dotnet $($Arguments -join ' ') failed with exit code $LASTEXITCODE." }
+          }
+          if (-not $env:PACKAGE_VERSION) { throw 'The package job did not report a package version.' }
+          $project = 'tests/MBW.GHLinguist.PackageTopology/MBW.GHLinguist.PackageTopology.Library/MBW.GHLinguist.PackageTopology.Library.csproj'
+          $source = (Resolve-Path '.artifacts/nuget').Path
+          Invoke-DotNet restore $project "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" --source https://api.nuget.org/v3/index.json --source $source
+          Invoke-DotNet build $project --configuration Release --no-restore "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION"
+
+      - name: Restore and run direct package consumer
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ needs.package.outputs.version }}
+          TEST_RID: ${{ matrix.rid }}
+          RUNTIME_PACKAGE_ID: MBW.GHLinguist.Runtime.${{ matrix.rid }}
+          # Host Ruby tooling settings must not reach the embedded runtime.
+          RUBYOPT: -rghlinguist_host_rubyopt_must_be_ignored
+          LINGUIST_DEBUG: '3'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Invoke-DotNet {
+            param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+            & dotnet @Arguments
+            if ($LASTEXITCODE -ne 0) { throw "dotnet $($Arguments -join ' ') failed with exit code $LASTEXITCODE." }
+          }
+          if (-not $env:PACKAGE_VERSION) { throw 'The package job did not report a package version.' }
+          $project = 'tests/MBW.GHLinguist.PackageSmoke/MBW.GHLinguist.PackageSmoke.csproj'
+          $source = (Resolve-Path '.artifacts/nuget').Path
+          Invoke-DotNet restore $project --runtime $env:TEST_RID "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID" --source https://api.nuget.org/v3/index.json --source $source
+          Invoke-DotNet run --project $project --configuration Release --runtime $env:TEST_RID --no-restore "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID"
+
+      - name: Restore and run transitive package consumer
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ needs.package.outputs.version }}
+          TEST_RID: ${{ matrix.rid }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Invoke-DotNet {
+            param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+            & dotnet @Arguments
+            if ($LASTEXITCODE -ne 0) { throw "dotnet $($Arguments -join ' ') failed with exit code $LASTEXITCODE." }
+          }
+          if (-not $env:PACKAGE_VERSION) { throw 'The package job did not report a package version.' }
+          $project = 'tests/MBW.GHLinguist.PackageTopology/MBW.GHLinguist.PackageTopology.App/MBW.GHLinguist.PackageTopology.App.csproj'
+          $source = (Resolve-Path '.artifacts/nuget').Path
+          Invoke-DotNet restore $project --runtime $env:TEST_RID "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" --source https://api.nuget.org/v3/index.json --source $source
+          Invoke-DotNet run --project $project --configuration Release --runtime $env:TEST_RID --no-restore "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION"
+
+      - name: Restore, publish, and run framework-dependent package consumer
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ needs.package.outputs.version }}
+          TEST_RID: ${{ matrix.rid }}
+          RUNTIME_PACKAGE_ID: MBW.GHLinguist.Runtime.${{ matrix.rid }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Invoke-DotNet {
+            param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+            & dotnet @Arguments
+            if ($LASTEXITCODE -ne 0) { throw "dotnet $($Arguments -join ' ') failed with exit code $LASTEXITCODE." }
+          }
+          if (-not $env:PACKAGE_VERSION) { throw 'The package job did not report a package version.' }
+          $project = 'tests/MBW.GHLinguist.PackageSmoke/MBW.GHLinguist.PackageSmoke.csproj'
+          $source = (Resolve-Path '.artifacts/nuget').Path
+          $publish = Join-Path '.tmp/package-smoke-publish' $env:TEST_RID
+          Invoke-DotNet restore $project --runtime $env:TEST_RID "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID" --source https://api.nuget.org/v3/index.json --source $source
+          Invoke-DotNet publish $project --configuration FrameworkDependent --runtime $env:TEST_RID --self-contained false --no-restore --output $publish "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID"
+          $assetRoot = Join-Path $publish 'MBW.GHLinguist'
+          $bridge = if ($env:TEST_RID -eq 'win-x64') { 'ghlinguist.dll' } else { 'ghlinguist.so' }
+          if (-not (Test-Path -LiteralPath (Join-Path $assetRoot $bridge) -PathType Leaf)) { throw "Missing isolated native bridge in $assetRoot." }
+          if (-not (Test-Path -LiteralPath (Join-Path $assetRoot 'provenance.json') -PathType Leaf)) { throw "Missing isolated native provenance in $assetRoot." }
+          if (-not (Test-Path -LiteralPath (Join-Path $assetRoot 'lib/ruby') -PathType Container)) { throw "Missing isolated Ruby standard library in $assetRoot." }
+          if (Test-Path -LiteralPath (Join-Path $publish $bridge) -PathType Leaf) { throw 'The native bridge leaked into the publish root.' }
+          Invoke-DotNet (Join-Path $publish 'MBW.GHLinguist.PackageSmoke.dll')
+          $selfContainedPublish = Join-Path '.tmp/package-smoke-self-contained-publish' $env:TEST_RID
+          Invoke-DotNet restore $project --runtime $env:TEST_RID "-p:SelfContained=true" "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID" --source https://api.nuget.org/v3/index.json --source $source
+          Invoke-DotNet publish $project --configuration Release --runtime $env:TEST_RID --self-contained true --no-restore --output $selfContainedPublish "-p:MBWGHLinguistPackageVersion=$env:PACKAGE_VERSION" "-p:MBWGHLinguistRuntimePackageId=$env:RUNTIME_PACKAGE_ID"
+          $selfContainedAssetRoot = Join-Path $selfContainedPublish 'MBW.GHLinguist'
+          if (-not (Test-Path -LiteralPath (Join-Path $selfContainedAssetRoot $bridge) -PathType Leaf)) { throw "Missing isolated native bridge in self-contained publish $selfContainedAssetRoot." }
+          if (Test-Path -LiteralPath (Join-Path $selfContainedPublish $bridge) -PathType Leaf) { throw 'The native bridge leaked into the self-contained publish root.' }
+          $appHost = Join-Path $selfContainedPublish ('MBW.GHLinguist.PackageSmoke' + $(if ($env:TEST_RID -eq 'win-x64') { '.exe' } else { '' }))
+          if (-not (Test-Path -LiteralPath $appHost -PathType Leaf)) { throw "Missing self-contained app host $appHost." }
+          & $appHost
+          if ($LASTEXITCODE -ne 0) { throw "The self-contained package consumer failed with exit code $LASTEXITCODE." }
+
+  publish_github_packages:
+    name: Publish GitHub Packages
+    needs:
+      - package
+      - package_consumers
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/tags/'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download package artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4.3.0
+        with:
+          name: package-artifacts
+          path: .artifacts
+
+      - name: Publish packages to GitHub Packages
+        uses: ./.github/actions/ghlinguist_publish_nuget
+        with:
+          publish-target: github
+          publish-nuget-org: false
+        env:
+          NUGET_GITHUB_TOKEN: ${{ github.token }}
+
+  publish_nuget_org:
+    name: Publish NuGet.org
+    needs:
+      - package
+      - package_consumers
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.publish_nuget_org &&
+      startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download package artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4.3.0
+        with:
+          name: package-artifacts
+          path: .artifacts
+
+      - name: Publish packages to NuGet.org
+        uses: ./.github/actions/ghlinguist_publish_nuget
+        with:
+          publish-target: nuget-org
+          publish-nuget-org: true
+        env:
+          NUGET_ORG_KEY: ${{ secrets.NUGET_KEY }}
+
+  github_release:
+    name: Publish GitHub Release
+    needs:
+      - package
+      - package_consumers
+    if: >-
+      github.event_name == 'push' &&
+      needs.package.outputs.is-release == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/deploy.yml
+    with:
+      release-tag: ${{ needs.package.outputs.release-tag }}
+      version: ${{ needs.package.outputs.version }}
+      is-prerelease: ${{ needs.package.outputs.is-prerelease }}

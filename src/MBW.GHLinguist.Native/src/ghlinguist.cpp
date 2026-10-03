@@ -25,6 +25,10 @@
 #include <windows.h>
 #endif
 
+#if defined(GHL_RUBY_EMBEDDING) && !defined(_WIN32)
+#include <signal.h>
+#endif
+
 #if defined(GHL_RUBY_EMBEDDING)
 #include <ruby.h>
 #endif
@@ -572,6 +576,39 @@ VALUE marshal_classification(VALUE opaque) {
 }
 #endif
 
+#if defined(GHL_RUBY_EMBEDDING) && !defined(_WIN32)
+// CRuby startup replaces process-wide signal handlers, including the SIGSEGV, SIGBUS, SIGILL, and SIGABRT
+// handlers the host runtime relies on (CoreCLR raises NullReferenceException from SIGSEGV). Restore every handler
+// the host had installed before Ruby started; signals that still had their default disposition keep Ruby's handler.
+class HostSignalHandlers {
+public:
+    HostSignalHandlers() {
+        for (int signal_number = 1; signal_number < NSIG; ++signal_number) {
+            saved_[signal_number].valid = sigaction(signal_number, nullptr, &saved_[signal_number].action) == 0 &&
+                !is_default_disposition(saved_[signal_number].action);
+        }
+    }
+
+    void restore() const {
+        for (int signal_number = 1; signal_number < NSIG; ++signal_number) {
+            if (saved_[signal_number].valid) sigaction(signal_number, &saved_[signal_number].action, nullptr);
+        }
+    }
+
+private:
+    static bool is_default_disposition(const struct sigaction& action) {
+        return (action.sa_flags & SA_SIGINFO) == 0 && (action.sa_handler == SIG_DFL || action.sa_handler == SIG_IGN);
+    }
+
+    struct SavedAction {
+        struct sigaction action {};
+        bool valid = false;
+    };
+
+    SavedAction saved_[NSIG];
+};
+#endif
+
 class RubyWorker {
 public:
     RubyWorker() : thread_([this] { run(); }) {}
@@ -605,7 +642,9 @@ private:
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (is_classification && (queued_classifications_ >= kMaxQueuedClassifications ||
                     classification_bytes > kMaxQueuedClassificationBytes - queued_classification_bytes_)) {
-                    return {GHL_STATUS_OUT_OF_MEMORY, "Classification queue is at capacity.", {}, {}, {}, {}};
+                    return {GHL_STATUS_NATIVE_FAILURE,
+                        "Too many Classify calls are queued on the process-wide Linguist worker. Reuse one LinguistRuntime "
+                        "or limit concurrent Classify calls.", {}, {}, {}, {}};
                 }
                 jobs_.push({[operation = std::forward<F>(operation), completion]() mutable {
                     try {
@@ -648,6 +687,9 @@ private:
             return initialization_result_;
         }
 #endif
+#if !defined(_WIN32)
+        const HostSignalHandlers host_signal_handlers;
+#endif
         RubyStartupContext context{asset_root, path_to_utf8(path_from_utf8(asset_root) / "lib"), {}, {}};
         char program_name[] = "ghlinguist";
         char* arguments[] = {program_name, nullptr};
@@ -659,12 +701,16 @@ private:
         ruby_init_loadpath();
         configure_runtime_load_path(&context);
         ruby_script("ghlinguist");
-        char disable_gems[] = "--disable-gems";
+        // RUBYOPT belongs to the host's Ruby tooling, not to the embedded runtime; honoring it can abort startup.
+        char disable_options[] = "--disable=gems,rubyopt";
         char require_date[] = "-rdate";
         char option[] = "-e";
         char expression[] = "";
-        char* ruby_arguments[] = {program_name, disable_gems, require_date, option, expression, nullptr};
+        char* ruby_arguments[] = {program_name, disable_options, require_date, option, expression, nullptr};
         ruby_exec_node(ruby_options(5, ruby_arguments));
+#if !defined(_WIN32)
+        host_signal_handlers.restore();
+#endif
         int state = 0;
         rb_protect(load_runtime_assets, reinterpret_cast<VALUE>(&context), &state);
         if (state != 0) {

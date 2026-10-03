@@ -19,6 +19,7 @@ Thumbs.db
 [Rr]elease*/
 _ReSharper*/
 packages/
+.artifacts/
 .tmp/
 tmp/
 *.user
