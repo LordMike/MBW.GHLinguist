@@ -128,7 +128,7 @@
       "libgmp10": "2:6.2.1+dfsg1-1.1",
       "libicu-dev": "72.1-3+deb12u1",
       "libicu72": "72.1-3+deb12u1",
-      "libssl3": "3.0.20-1~deb12u2",
+      "libssl3": "3.0.22-1~deb12u1",
       "libstdc++6": "12.2.0-14+deb12u1",
       "libyaml-0-2": "0.2.5-1",
       "patchelf": "0.14.3-1+b1",
@@ -272,7 +272,7 @@
         "destinations": [
           "lib/libcrypto.so.3"
         ],
-        "sha256": "72db1b3de8b7dfbaba4c056135f408da555f9d5e137c82129478e07e769f8070"
+        "sha256": "76dd3d93e5ee48950a92a58d59b94de8143847f91a80d9682c938767b991577d"
       },
       {
         "source": "/lib/x86_64-linux-gnu/libgcc_s.so.1",
@@ -321,7 +321,7 @@
         "destinations": [
           "lib/libssl.so.3"
         ],
-        "sha256": "9aec161fdbc82d3e4280f5084843118939f1f4acc53c98ec963de03cfe812fad"
+        "sha256": "df53c8f504722cacd8035111fdaed5151ce17b79fd380efcf28b3b4a1ca70cd5"
       },
       {
         "source": "/usr/lib/x86_64-linux-gnu/libstdc++.so.6",
