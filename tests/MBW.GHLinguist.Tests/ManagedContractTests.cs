@@ -9,8 +9,8 @@ public sealed class ManagedContractTests
         Assert.Equal(0x0fU, (uint)LanguageTypeMask.All);
         Assert.Equal(5U, (uint)LanguageLookupKind.Interpreter);
         Assert.Equal(8U, (uint)DetectionStrategy.Classifier);
-        Assert.Equal(0xffU, (uint)DetectionStrategyMask.Default);
-        Assert.Equal(1UL << 6, (ulong)LinguistCapabilities.PathClassification);
+        Assert.Equal(0xffU, (uint)DetectionStrategyMask.All);
+        Assert.Equal(DetectionStrategyMask.All, DetectionStrategyMask.Default);
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public sealed class ManagedContractTests
     [Fact]
     public void BlobAnalysisProjectsNativeResultFlags()
     {
-        BlobAnalysis analysis = new(
+        BlobAnalysis analysis = NativeLinguistRuntimeBackend.CreateAnalysis(
             CreateLanguage([]),
             DetectionStrategy.Extension,
             isEmpty: false,
@@ -153,7 +153,7 @@ public sealed class ManagedContractTests
     [Fact]
     public void BlobAnalysisRejectsMismatchedLanguageAndStrategyState()
     {
-        Assert.Throws<LinguistException>(() => new BlobAnalysis(
+        Assert.Throws<LinguistException>(() => NativeLinguistRuntimeBackend.CreateAnalysis(
             CreateLanguage([]),
             DetectionStrategy.None,
             isEmpty: false,
@@ -169,21 +169,19 @@ public sealed class ManagedContractTests
             []));
     }
 
-    private static LinguistLanguage CreateLanguage(IEnumerable<string> aliases) => new(
-        42,
-        null,
-        "C#",
-        "CSharp",
-        LanguageType.Programming,
-        isPopular: true,
-        wrapLines: false,
-        "#178600",
-        "source.cs",
-        "csharp",
-        "clike",
-        "text/x-csharp",
-        aliases,
-        [".cs"],
-        [],
-        []);
+    private static LinguistLanguage CreateLanguage(IEnumerable<string> aliases) => new()
+    {
+        Id = 42,
+        Name = "C#",
+        FileSystemName = "CSharp",
+        Type = LanguageType.Programming,
+        IsPopular = true,
+        Color = "#178600",
+        TextMateScope = "source.cs",
+        AceMode = "csharp",
+        CodeMirrorMode = "clike",
+        CodeMirrorMimeType = "text/x-csharp",
+        Aliases = aliases.ToArray(),
+        Extensions = [".cs"],
+    };
 }

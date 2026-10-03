@@ -27,16 +27,9 @@ public sealed class NativeRuntimeIntegrationTests
         Assert.Equal(LinguistRevision, runtime.Version.LinguistRevision);
         Assert.Equal(ClassifierSha256, runtime.Version.ClassifierSha256);
 
-        const LinguistCapabilities expectedCapabilities =
-            LinguistCapabilities.LanguageRegistry |
-            LinguistCapabilities.StandardDetection |
-            LinguistCapabilities.ContentClassifier |
-            LinguistCapabilities.StrategyTrace |
-            LinguistCapabilities.EncodingAndBinaryDetection |
-            LinguistCapabilities.GeneratedDetection |
-            LinguistCapabilities.PathClassification;
-        Assert.Equal(expectedCapabilities, runtime.Capabilities);
+        Assert.False(string.IsNullOrEmpty(runtime.Version.PackageVersion));
         Assert.True(runtime.Languages.Count > 700);
+        Assert.All(runtime.Languages, language => Assert.Same(language, runtime.FindById(language.Id)));
 
         BlobAnalysis empty = runtime.Analyze([]);
         Assert.Null(empty.Language);
@@ -260,7 +253,7 @@ public sealed class NativeRuntimeIntegrationTests
         ClassificationResults bounded = runtime.Classify(
             oversizedSource,
             new ClassificationOptions { CandidateLanguageIds = [ruby.Id] });
-        Assert.Equal(ClassificationOptions.DefaultMaximumBytes, bounded.ConsideredBytes);
+        Assert.Equal(ClassificationOptions.MaximumAllowedBytes, bounded.ConsideredBytes);
 
         Task<BlobAnalysis>[] concurrentCalls = Enumerable.Range(0, 16)
             .Select(index => Task.Run(() => runtime.Analyze(

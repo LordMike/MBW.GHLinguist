@@ -16,15 +16,8 @@ namespace MBW.GHLinguist;
 /// </code>
 /// </example>
 /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/docs/how-linguist-works.md" />
-public sealed class LinguistRuntime : IDisposable
+public sealed class LinguistRuntime : ILinguistRuntime, IDisposable
 {
-    private const LinguistCapabilities CompleteAnalysisCapabilities =
-        LinguistCapabilities.LanguageRegistry |
-        LinguistCapabilities.StandardDetection |
-        LinguistCapabilities.EncodingAndBinaryDetection |
-        LinguistCapabilities.GeneratedDetection |
-        LinguistCapabilities.PathClassification;
-
     private readonly object _gate = new();
     private ILinguistRuntimeBackend? _backend;
 
@@ -45,7 +38,7 @@ public sealed class LinguistRuntime : IDisposable
     /// <exception cref="DllNotFoundException">The native runtime or one of its dependencies cannot be found.</exception>
     /// <exception cref="BadImageFormatException">A native asset targets the wrong architecture or platform.</exception>
     /// <exception cref="PlatformNotSupportedException">The process is not x64 Windows or Linux, or single-file deployment prevents locating the native asset directory.</exception>
-    /// <exception cref="LinguistException">The deployed native closure fails integrity validation or cannot initialize Linguist.</exception>
+    /// <exception cref="LinguistException">The deployed native closure fails integrity validation, lacks a required feature, or cannot initialize Linguist.</exception>
     /// <example>
     /// <code>using LinguistRuntime runtime = LinguistRuntime.Create();</code>
     /// </example>
@@ -65,35 +58,9 @@ public sealed class LinguistRuntime : IDisposable
         }
     }
 
-    /// <summary>Gets the features implemented by the loaded native runtime.</summary>
-    /// <value>A flags value such as <see cref="LinguistCapabilities.LanguageRegistry" />.</value>
-    /// <remarks>
-    /// Registry lookup requires <see cref="LinguistCapabilities.LanguageRegistry" />. Complete analysis additionally
-    /// requires <see cref="LinguistCapabilities.StandardDetection" />,
-    /// <see cref="LinguistCapabilities.EncodingAndBinaryDetection" />,
-    /// <see cref="LinguistCapabilities.GeneratedDetection" />, and
-    /// <see cref="LinguistCapabilities.PathClassification" />. Analysis also requires
-    /// <see cref="LinguistCapabilities.StrategyTrace" /> or <see cref="LinguistCapabilities.ContentClassifier" />
-    /// when the corresponding option or strategy is enabled. Direct classification requires language-registry and
-    /// content-classifier capabilities, except for an explicit empty candidate list. Unsupported operations throw
-    /// <see cref="NotSupportedException" /> before invoking the backend.
-    /// </remarks>
-    /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
-    public LinguistCapabilities Capabilities
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return GetBackend().Capabilities;
-            }
-        }
-    }
-
     /// <summary>Gets the complete copied GitHub Linguist language registry.</summary>
     /// <value>A read-only list containing entries such as Ruby, C#, and Markdown.</value>
     /// <remarks>The list retains Linguist's registry order. Use <see cref="LinguistLanguage.Id" /> for stable identity.</remarks>
-    /// <exception cref="NotSupportedException">The loaded runtime does not provide language-registry access.</exception>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
     public IReadOnlyList<LinguistLanguage> Languages
     {
@@ -101,10 +68,22 @@ public sealed class LinguistRuntime : IDisposable
         {
             lock (_gate)
             {
-                ILinguistRuntimeBackend backend = GetBackend();
-                RequireCapabilities(backend, LinguistCapabilities.LanguageRegistry, nameof(Languages));
-                return backend.Languages;
+                return GetBackend().Languages;
             }
+        }
+    }
+
+    /// <summary>Finds a language by its stable numeric Linguist language ID.</summary>
+    /// <param name="id">The language ID, for example from <see cref="LinguistLanguage.GroupLanguageId" />.</param>
+    /// <returns>The matching language, or <see langword="null" /> when the loaded registry has no such ID.</returns>
+    /// <remarks>The lookup uses a cached index and does not scan <see cref="Languages" />.</remarks>
+    /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
+    /// <example><code>LinguistLanguage? group = runtime.FindById(language.GroupLanguageId!.Value);</code></example>
+    public LinguistLanguage? FindById(ulong id)
+    {
+        lock (_gate)
+        {
+            return GetBackend().FindById(id);
         }
     }
 
@@ -113,7 +92,6 @@ public sealed class LinguistRuntime : IDisposable
     /// <returns>The matching language, or <see langword="null" /> when no language matches.</returns>
     /// <remarks>Empty strings return <see langword="null" />. Whitespace is not trimmed, matching Linguist.</remarks>
     /// <exception cref="ArgumentNullException"><paramref name="name" /> is <see langword="null" />.</exception>
-    /// <exception cref="NotSupportedException">The loaded runtime does not provide language-registry access.</exception>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
     /// <example><code>LinguistLanguage? ruby = runtime.FindByName("ruby");</code></example>
     /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/lib/linguist/language.rb#L103-L116" />
@@ -123,7 +101,6 @@ public sealed class LinguistRuntime : IDisposable
         {
             ILinguistRuntimeBackend backend = GetBackend();
             ArgumentNullException.ThrowIfNull(name);
-            RequireCapabilities(backend, LinguistCapabilities.LanguageRegistry, nameof(FindByName));
             return backend.FindByName(name);
         }
     }
@@ -133,7 +110,6 @@ public sealed class LinguistRuntime : IDisposable
     /// <returns>The matching language, or <see langword="null" /> when no language matches.</returns>
     /// <remarks>Empty strings return <see langword="null" />. Whitespace is not trimmed, matching Linguist.</remarks>
     /// <exception cref="ArgumentNullException"><paramref name="alias" /> is <see langword="null" />.</exception>
-    /// <exception cref="NotSupportedException">The loaded runtime does not provide language-registry access.</exception>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
     /// <example><code>LinguistLanguage? cpp = runtime.FindByAlias("cpp");</code></example>
     /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/lib/linguist/language.rb#L118-L131" />
@@ -143,7 +119,6 @@ public sealed class LinguistRuntime : IDisposable
         {
             ILinguistRuntimeBackend backend = GetBackend();
             ArgumentNullException.ThrowIfNull(alias);
-            RequireCapabilities(backend, LinguistCapabilities.LanguageRegistry, nameof(FindByAlias));
             return backend.FindByAlias(alias);
         }
     }
@@ -153,7 +128,6 @@ public sealed class LinguistRuntime : IDisposable
     /// <returns>A read-only list of matches; for example, <c>Cakefile</c> includes CoffeeScript. The list is empty when none match.</returns>
     /// <remarks>Linguist compares the basename case-sensitively and does not inspect ordinary file extensions here.</remarks>
     /// <exception cref="ArgumentNullException"><paramref name="filenameOrPath" /> is <see langword="null" />.</exception>
-    /// <exception cref="NotSupportedException">The loaded runtime does not provide language-registry access.</exception>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
     /// <example><code>IReadOnlyList&lt;LinguistLanguage&gt; matches = runtime.FindByFilename("Cakefile");</code></example>
     /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/lib/linguist/language.rb#L133-L151" />
@@ -163,7 +137,6 @@ public sealed class LinguistRuntime : IDisposable
         {
             ILinguistRuntimeBackend backend = GetBackend();
             ArgumentNullException.ThrowIfNull(filenameOrPath);
-            RequireCapabilities(backend, LinguistCapabilities.LanguageRegistry, nameof(FindByFilename));
             return backend.FindByFilename(filenameOrPath);
         }
     }
@@ -173,7 +146,6 @@ public sealed class LinguistRuntime : IDisposable
     /// <returns>A read-only list of matches; for example, <c>program.rb</c> includes Ruby. The list is empty when none match.</returns>
     /// <remarks>Linguist lowercases the filename and considers recognized compound extensions in its own precedence order.</remarks>
     /// <exception cref="ArgumentNullException"><paramref name="filenameOrPath" /> is <see langword="null" />.</exception>
-    /// <exception cref="NotSupportedException">The loaded runtime does not provide language-registry access.</exception>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
     /// <example><code>IReadOnlyList&lt;LinguistLanguage&gt; matches = runtime.FindByExtension("program.rb");</code></example>
     /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/lib/linguist/language.rb#L153-L175" />
@@ -183,7 +155,6 @@ public sealed class LinguistRuntime : IDisposable
         {
             ILinguistRuntimeBackend backend = GetBackend();
             ArgumentNullException.ThrowIfNull(filenameOrPath);
-            RequireCapabilities(backend, LinguistCapabilities.LanguageRegistry, nameof(FindByExtension));
             return backend.FindByExtension(filenameOrPath);
         }
     }
@@ -193,7 +164,6 @@ public sealed class LinguistRuntime : IDisposable
     /// <returns>A read-only list of matches; for example, <c>bash</c> includes Shell. The list is empty when none match.</returns>
     /// <remarks>The interpreter lookup is case-sensitive and does not parse a complete shebang line.</remarks>
     /// <exception cref="ArgumentNullException"><paramref name="interpreter" /> is <see langword="null" />.</exception>
-    /// <exception cref="NotSupportedException">The loaded runtime does not provide language-registry access.</exception>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
     /// <example><code>IReadOnlyList&lt;LinguistLanguage&gt; matches = runtime.FindByInterpreter("bash");</code></example>
     /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/lib/linguist/language.rb#L177-L189" />
@@ -203,7 +173,6 @@ public sealed class LinguistRuntime : IDisposable
         {
             ILinguistRuntimeBackend backend = GetBackend();
             ArgumentNullException.ThrowIfNull(interpreter);
-            RequireCapabilities(backend, LinguistCapabilities.LanguageRegistry, nameof(FindByInterpreter));
             return backend.FindByInterpreter(interpreter);
         }
     }
@@ -224,7 +193,6 @@ public sealed class LinguistRuntime : IDisposable
     /// <returns>A copied result; for example, a <c>hello.rb</c> blob can report Ruby selected by <see cref="DetectionStrategy.Extension" />.</returns>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
     /// <exception cref="ArgumentException"><see cref="BlobInput.Path" /> or <see cref="BlobInput.Name" /> contains invalid UTF-16.</exception>
-    /// <exception cref="NotSupportedException">The loaded runtime lacks a capability required for complete blob analysis.</exception>
     /// <exception cref="LinguistException">Linguist or the native runtime cannot analyze the blob.</exception>
     /// <example>
     /// <code>
@@ -242,21 +210,7 @@ public sealed class LinguistRuntime : IDisposable
     {
         lock (_gate)
         {
-            ILinguistRuntimeBackend backend = GetBackend();
-            BlobAnalysisOptions effectiveOptions = options ?? new BlobAnalysisOptions();
-            LinguistCapabilities requiredCapabilities = CompleteAnalysisCapabilities;
-            if (effectiveOptions.IncludeStrategyTrace)
-            {
-                requiredCapabilities |= LinguistCapabilities.StrategyTrace;
-            }
-
-            if ((effectiveOptions.Strategies & DetectionStrategyMask.Classifier) != 0)
-            {
-                requiredCapabilities |= LinguistCapabilities.ContentClassifier;
-            }
-
-            RequireCapabilities(backend, requiredCapabilities, nameof(Analyze));
-            return backend.Analyze(data, input ?? new BlobInput(), effectiveOptions);
+            return GetBackend().Analyze(data, input ?? new BlobInput(), options ?? new BlobAnalysisOptions());
         }
     }
 
@@ -270,7 +224,6 @@ public sealed class LinguistRuntime : IDisposable
     /// <returns>Matches ordered by descending similarity; for example, C# may be first with a score near <c>0.9</c>.</returns>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
     /// <exception cref="ArgumentException">A candidate language ID is not present in this runtime's registry.</exception>
-    /// <exception cref="NotSupportedException">The loaded runtime does not provide content classification or required registry access.</exception>
     /// <exception cref="LinguistException">Linguist or the native runtime cannot classify the content.</exception>
     /// <example><code>ClassificationResults results = runtime.Classify("class Example {}"u8);</code></example>
     /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/lib/linguist/classifier.rb#L91-L149" />
@@ -285,19 +238,14 @@ public sealed class LinguistRuntime : IDisposable
             ClassificationOptions effectiveOptions = options ?? new ClassificationOptions();
             if (effectiveOptions.CandidateLanguageIds is { Count: 0 })
             {
-                return new ClassificationResults(0, []);
+                return new ClassificationResults();
             }
 
-            RequireCapabilities(
-                backend,
-                LinguistCapabilities.ContentClassifier | LinguistCapabilities.LanguageRegistry,
-                nameof(Classify));
             if (effectiveOptions.CandidateLanguageIds is { } candidateLanguageIds)
             {
-                var knownLanguageIds = backend.Languages.Select(language => language.Id).ToHashSet();
                 foreach (ulong languageId in candidateLanguageIds)
                 {
-                    if (!knownLanguageIds.Contains(languageId))
+                    if (backend.FindById(languageId) is null)
                     {
                         throw new ArgumentException(
                             $"Candidate language ID {languageId} does not exist in the loaded Linguist registry.",
@@ -329,27 +277,15 @@ public sealed class LinguistRuntime : IDisposable
 
     private ILinguistRuntimeBackend GetBackend() =>
         _backend ?? throw new ObjectDisposedException(nameof(LinguistRuntime));
-
-    private static void RequireCapabilities(
-        ILinguistRuntimeBackend backend,
-        LinguistCapabilities required,
-        string operation)
-    {
-        LinguistCapabilities missing = required & ~backend.Capabilities;
-        if (missing != LinguistCapabilities.None)
-        {
-            throw new NotSupportedException($"{operation} requires unavailable Linguist capabilities: {missing}.");
-        }
-    }
 }
 
 internal interface ILinguistRuntimeBackend : IDisposable
 {
     LinguistVersionInfo Version { get; }
 
-    LinguistCapabilities Capabilities { get; }
-
     IReadOnlyList<LinguistLanguage> Languages { get; }
+
+    LinguistLanguage? FindById(ulong id);
 
     LinguistLanguage? FindByName(string name);
 

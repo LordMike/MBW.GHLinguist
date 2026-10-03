@@ -26,8 +26,8 @@ public sealed class LinguistRuntimeTests
         runtime.Dispose();
 
         Assert.Throws<ObjectDisposedException>(() => runtime.Version);
-        Assert.Throws<ObjectDisposedException>(() => runtime.Capabilities);
         Assert.Throws<ObjectDisposedException>(() => runtime.Languages);
+        Assert.Throws<ObjectDisposedException>(() => runtime.FindById(326));
         Assert.Throws<ObjectDisposedException>(() => runtime.FindByName("Ruby"));
         Assert.Throws<ObjectDisposedException>(() => runtime.FindByName(null!));
         Assert.Throws<ObjectDisposedException>(() => runtime.FindByAlias("ruby"));
@@ -165,60 +165,37 @@ public sealed class LinguistRuntimeTests
     }
 
     [Fact]
-    public void OperationsRejectMissingCapabilitiesBeforeCallingTheBackend()
+    public void FindByIdUsesTheBackendIndex()
     {
-        var backend = new FakeBackend(capabilities: LinguistCapabilities.None);
+        var backend = new FakeBackend();
         using var runtime = new LinguistRuntime(backend);
 
-        Assert.Throws<NotSupportedException>(() => runtime.Languages);
-        Assert.Throws<NotSupportedException>(() => runtime.FindByName("Ruby"));
-        Assert.Throws<NotSupportedException>(() => runtime.Analyze([]));
-        Assert.Throws<NotSupportedException>(() => runtime.Classify("puts 'Hello'\n"u8));
-        Assert.Equal(0, backend.AnalyzeCount);
-        Assert.Equal(0, backend.ClassifyCount);
-        Assert.Empty(backend.Lookups);
+        Assert.Same(backend.Language, runtime.FindById(326));
+        Assert.Null(runtime.FindById(1));
     }
 
     [Fact]
-    public void ResultProducingOperationsRequireLanguageRegistryProjection()
+    public void ConsumersCanSubstituteTheRuntimeAndConstructResults()
     {
-        LinguistCapabilities analysisWithoutRegistry = LinguistCapabilities.StandardDetection |
-            LinguistCapabilities.EncodingAndBinaryDetection |
-            LinguistCapabilities.GeneratedDetection |
-            LinguistCapabilities.PathClassification;
-        var analysisBackend = new FakeBackend(capabilities: analysisWithoutRegistry);
-        using var analysisRuntime = new LinguistRuntime(analysisBackend);
-        var classifierBackend = new FakeBackend(capabilities: LinguistCapabilities.ContentClassifier);
-        using var classifierRuntime = new LinguistRuntime(classifierBackend);
+        var language = new LinguistLanguage { Id = 303, Name = "Python", Type = LanguageType.Programming, Extensions = [".py"] };
+        var analysis = new BlobAnalysis { Language = language, Strategy = DetectionStrategy.Extension, IsText = true };
+        var classification = new ClassificationResults
+        {
+            ConsideredBytes = 10,
+            Results = [new ClassificationResult { Language = language, Score = 0.5 }],
+        };
+        var version = new LinguistVersionInfo { LinguistVersion = "9.6.0" };
+        var trace = new StrategyTraceEntry { Strategy = DetectionStrategy.Extension, Candidates = [language] };
 
-        Assert.Throws<NotSupportedException>(() => analysisRuntime.Analyze([]));
-        Assert.Throws<NotSupportedException>(() => classifierRuntime.Classify("puts 'Hello'\n"u8));
-        Assert.Equal(0, analysisBackend.AnalyzeCount);
-        Assert.Equal(0, classifierBackend.ClassifyCount);
-    }
-
-    [Fact]
-    public void AnalyzeRequiresClassifierCapabilityOnlyWhenThatStrategyIsEnabled()
-    {
-        LinguistCapabilities capabilitiesWithoutClassifier = LinguistCapabilities.LanguageRegistry |
-            LinguistCapabilities.StandardDetection |
-            LinguistCapabilities.EncodingAndBinaryDetection |
-            LinguistCapabilities.GeneratedDetection |
-            LinguistCapabilities.PathClassification;
-        var backend = new FakeBackend(capabilities: capabilitiesWithoutClassifier);
-        using var runtime = new LinguistRuntime(backend);
-
-        Assert.Throws<NotSupportedException>(() => runtime.Analyze([]));
-
-        BlobAnalysis analysis = runtime.Analyze(
-            [],
-            options: new BlobAnalysisOptions
-            {
-                Strategies = DetectionStrategyMask.Default & ~DetectionStrategyMask.Classifier,
-            });
-
-        Assert.Same(backend.Analysis, analysis);
-        Assert.Equal(1, backend.AnalyzeCount);
+        Assert.Equal([".py"], language.Extensions);
+        Assert.Same(language, analysis.Language);
+        Assert.True(analysis.IsText);
+        Assert.Empty(analysis.StrategyTrace);
+        Assert.Same(language, Assert.Single(classification.Results).Language);
+        Assert.Equal("9.6.0", version.LinguistVersion);
+        Assert.Null(version.NativeBridgeRevision);
+        Assert.Same(language, Assert.Single(trace.Candidates));
+        Assert.True(typeof(ILinguistRuntime).IsAssignableFrom(typeof(LinguistRuntime)));
     }
 
     [Fact]
@@ -238,6 +215,7 @@ public sealed class LinguistRuntimeTests
         Assembly assembly = typeof(LinguistRuntime).Assembly;
 
         Assert.DoesNotContain(assembly.GetExportedTypes(), type => type.Name == "LanguageLookupKind");
+        Assert.DoesNotContain(assembly.GetExportedTypes(), type => type.Name == "LinguistCapabilities");
         Assert.Equal(typeof(LinguistLanguage), typeof(LinguistRuntime).GetMethod(nameof(LinguistRuntime.FindByName))?.ReturnType);
         Assert.Equal(typeof(LinguistLanguage), typeof(LinguistRuntime).GetMethod(nameof(LinguistRuntime.FindByAlias))?.ReturnType);
         Assert.Equal(typeof(IReadOnlyList<LinguistLanguage>), typeof(LinguistRuntime).GetMethod(nameof(LinguistRuntime.FindByFilename))?.ReturnType);
@@ -257,7 +235,7 @@ public sealed class LinguistRuntimeTests
             .Select(member => (string)member.Attribute("name")!)
             .ToArray();
 
-        Assert.Equal(9, runtimeMethods.Length);
+        Assert.Equal(10, runtimeMethods.Length);
         Assert.All(runtimeMethods, member => Assert.NotNull(member.Element("summary")));
         Assert.All(runtimeMethods, member => Assert.NotNull(member.Element("example")));
         Assert.All(
@@ -272,7 +250,7 @@ public sealed class LinguistRuntimeTests
     }
 
     [Fact]
-    public void DocumentationDistinguishesAnalysisFromClassificationAndListsCapabilities()
+    public void DocumentationDistinguishesAnalysisFromClassification()
     {
         string documentationPath = Path.ChangeExtension(typeof(LinguistRuntime).Assembly.Location, ".xml");
         XDocument documentation = XDocument.Load(documentationPath);
@@ -280,21 +258,16 @@ public sealed class LinguistRuntimeTests
             ((string?)member.Attribute("name"))?.StartsWith(
                 "M:MBW.GHLinguist.LinguistRuntime.Analyze",
                 StringComparison.Ordinal) == true);
-        XElement capabilities = Assert.Single(documentation.Descendants("member"), member =>
-            (string?)member.Attribute("name") == "P:MBW.GHLinguist.LinguistRuntime.Capabilities");
 
         Assert.Contains("not equivalent", analyze.Value, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(nameof(LinguistCapabilities.LanguageRegistry), capabilities.ToString(), StringComparison.Ordinal);
-        Assert.Contains(nameof(LinguistCapabilities.ContentClassifier), capabilities.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
-    public void ReadmeContainsThePrimaryDecisionAndCapabilityGuidance()
+    public void ReadmeContainsThePrimaryDecisionGuidance()
     {
         string readme = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "README.md"));
 
         Assert.Contains("Analyze(data)` is not equivalent to `Classify(data)", readme, StringComparison.Ordinal);
-        Assert.Contains("## Runtime capabilities", readme, StringComparison.Ordinal);
         Assert.Contains("FindByExtension", readme, StringComparison.Ordinal);
         Assert.Contains("explicit empty candidate list", readme, StringComparison.Ordinal);
     }
@@ -339,40 +312,37 @@ public sealed class LinguistRuntimeTests
         private readonly bool _blockAnalysis;
         private readonly bool _blockDispose;
 
-        internal FakeBackend(
-            bool blockAnalysis = false,
-            bool blockDispose = false,
-            LinguistCapabilities capabilities = LinguistCapabilities.LanguageRegistry |
-                LinguistCapabilities.StandardDetection |
-                LinguistCapabilities.ContentClassifier |
-                LinguistCapabilities.StrategyTrace |
-                LinguistCapabilities.EncodingAndBinaryDetection |
-                LinguistCapabilities.GeneratedDetection |
-                LinguistCapabilities.PathClassification)
+        internal FakeBackend(bool blockAnalysis = false, bool blockDispose = false)
         {
             _blockAnalysis = blockAnalysis;
             _blockDispose = blockDispose;
-            Capabilities = capabilities;
-            Language = new LinguistLanguage(
-                326,
-                null,
-                "Ruby",
-                null,
-                LanguageType.Programming,
-                isPopular: true,
-                wrapLines: false,
-                "#701516",
-                "source.ruby",
-                "ruby",
-                "ruby",
-                "text/x-ruby",
-                ["ruby"],
-                [".rb"],
-                ["ruby"],
-                ["Gemfile"]);
+            Language = new LinguistLanguage
+            {
+                Id = 326,
+                Name = "Ruby",
+                Type = LanguageType.Programming,
+                IsPopular = true,
+                Color = "#701516",
+                TextMateScope = "source.ruby",
+                AceMode = "ruby",
+                CodeMirrorMode = "ruby",
+                CodeMirrorMimeType = "text/x-ruby",
+                Aliases = ["ruby"],
+                Extensions = [".rb"],
+                Interpreters = ["ruby"],
+                Filenames = ["Gemfile"],
+            };
             Languages = Array.AsReadOnly([Language]);
-            Version = new LinguistVersionInfo(1, 0, "1.0.0", "4.0.6", "9.6.0", "196b2a1", "sha256");
-            Analysis = new BlobAnalysis(
+            Version = new LinguistVersionInfo
+            {
+                AbiMajor = 1,
+                PackageVersion = "1.0.0",
+                RubyVersion = "4.0.6",
+                LinguistVersion = "9.6.0",
+                LinguistRevision = "196b2a1",
+                ClassifierSha256 = "sha256",
+            };
+            Analysis = NativeLinguistRuntimeBackend.CreateAnalysis(
                 Language,
                 DetectionStrategy.Extension,
                 isEmpty: false,
@@ -386,7 +356,11 @@ public sealed class LinguistRuntimeTests
                 1,
                 1,
                 []);
-            Classification = new ClassificationResults(13, [new ClassificationResult(Language, 0.9)]);
+            Classification = new ClassificationResults
+            {
+                ConsideredBytes = 13,
+                Results = [new ClassificationResult { Language = Language, Score = 0.9 }],
+            };
         }
 
         internal int DisposeCount { get; private set; }
@@ -415,9 +389,9 @@ public sealed class LinguistRuntimeTests
 
         public LinguistVersionInfo Version { get; }
 
-        public LinguistCapabilities Capabilities { get; }
-
         public IReadOnlyList<LinguistLanguage> Languages { get; }
+
+        public LinguistLanguage? FindById(ulong id) => id == Language.Id ? Language : null;
 
         public LinguistLanguage? FindByName(string name)
         {
