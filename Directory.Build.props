@@ -9,7 +9,7 @@
   <PropertyGroup>
     <Authors>LordMike</Authors>
     <Company>MBWarez</Company>
-    <Copyright>Michael Bisbjerg $([System.DateTime]::Now.ToString(yyyy))</Copyright>
+    <Copyright>Michael Bisbjerg 2026</Copyright>
   </PropertyGroup>
 
   <!-- Release stuff -->
@@ -48,7 +48,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.102" PrivateAssets="All"/>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.401" PrivateAssets="All"/>
   </ItemGroup>
 
   <Import Project="_Imports\Local.targets" Condition="Exists('_Imports\Local.targets')" />

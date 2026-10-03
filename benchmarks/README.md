@@ -35,7 +35,7 @@ CSS analysis, line-count and trace toggles, tiny and large blobs, and registry l
 External corpus discovery is opt-in. It inspects extensionless ZIP/NuGet-like files without modifying the source:
 
 ```powershell
-pwsh -File benchmarks\discover-corpus.ps1 -CorpusRoot D:\OriginaryTemp\Cache -OutputRoot .tmp\benchmark-corpus
+pwsh -File benchmarks\discover-corpus.ps1 -CorpusRoot C:\path\to\local-corpus -OutputRoot .tmp\benchmark-corpus
 ```
 
 It bounds inspected files, archives, entries, and uncompressed bytes; rejects traversal names and binary content; and selects a

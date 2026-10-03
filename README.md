@@ -88,7 +88,9 @@ the selected `RuntimeIdentifier` are included in build and publish output. Do no
 reference the runtime packages directly.
 
 Restore, build, and publish with the same RID. A missing or unsupported RID fails
-the build with an actionable error.
+the build with an actionable error for executable projects (`Exe` and `WinExe`)
+and for test projects (`IsTestProject` is `true`). Class libraries build without a
+RID because the application that hosts them chooses it.
 
 ### Development packages
 
@@ -514,6 +516,9 @@ pipeline.
 | `BadImageFormatException` | A native asset targets the wrong architecture or platform |
 | `ArgumentNullException` | A required managed argument is `null` |
 | `ArgumentException` | Metadata, candidate IDs, or UTF-16 input is invalid |
+| `ArgumentOutOfRangeException` | An option value is outside its documented range, such as an unsupported mask bit or `MaximumBytes` |
+| `KeyNotFoundException` | The native runtime reported a missing registry entry; the public lookups return `null` instead, so this is not expected in normal use |
+| `PlatformNotSupportedException` | The process is not x64 Windows or Linux, or the deployment is single-file so the native asset directory cannot be located |
 | `NotSupportedException` | The loaded runtime lacks a capability required by the operation |
 | `OutOfMemoryException` | Managed or native allocation failed, commonly because an input or workload was not bounded |
 | `ObjectDisposedException` | A state-dependent member was used after disposal |
