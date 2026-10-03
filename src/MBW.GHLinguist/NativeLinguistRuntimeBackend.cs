@@ -118,15 +118,15 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
         return _languagesById!.GetValueOrDefault(id);
     }
 
-    public LinguistLanguage? FindByName(string name) => FindOne(LanguageLookupKind.Name, name);
+    public LinguistLanguage? FindByName(string name) => FindOne(LanguageLookupKind.Name, name, nameof(name));
 
-    public LinguistLanguage? FindByAlias(string alias) => FindOne(LanguageLookupKind.Alias, alias);
+    public LinguistLanguage? FindByAlias(string alias) => FindOne(LanguageLookupKind.Alias, alias, nameof(alias));
 
-    public IReadOnlyList<LinguistLanguage> FindByFilename(string filenameOrPath) => FindMany(LanguageLookupKind.Filename, filenameOrPath);
+    public IReadOnlyList<LinguistLanguage> FindByFilename(string filenameOrPath) => FindMany(LanguageLookupKind.Filename, filenameOrPath, nameof(filenameOrPath));
 
-    public IReadOnlyList<LinguistLanguage> FindByExtension(string filenameOrPath) => FindMany(LanguageLookupKind.Extension, filenameOrPath);
+    public IReadOnlyList<LinguistLanguage> FindByExtension(string filenameOrPath) => FindMany(LanguageLookupKind.Extension, filenameOrPath, nameof(filenameOrPath));
 
-    public IReadOnlyList<LinguistLanguage> FindByInterpreter(string interpreter) => FindMany(LanguageLookupKind.Interpreter, interpreter);
+    public IReadOnlyList<LinguistLanguage> FindByInterpreter(string interpreter) => FindMany(LanguageLookupKind.Interpreter, interpreter, nameof(interpreter));
 
     public BlobAnalysis Analyze(ReadOnlySpan<byte> data, BlobInput input, BlobAnalysisOptions options)
     {
@@ -402,9 +402,9 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
         return values;
     }
 
-    private LinguistLanguage? FindOne(LanguageLookupKind kind, string value)
+    private LinguistLanguage? FindOne(LanguageLookupKind kind, string value, string parameterName)
     {
-        IReadOnlyList<LinguistLanguage> matches = FindMany(kind, value);
+        IReadOnlyList<LinguistLanguage> matches = FindMany(kind, value, parameterName);
         return matches.Count switch
         {
             0 => null,
@@ -413,11 +413,11 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
         };
     }
 
-    private IReadOnlyList<LinguistLanguage> FindMany(LanguageLookupKind kind, string value)
+    private IReadOnlyList<LinguistLanguage> FindMany(LanguageLookupKind kind, string value, string parameterName)
     {
         ThrowIfDisposed();
-        ArgumentNullException.ThrowIfNull(value);
-        byte[] valueBytes = EncodeRequired(value, nameof(value));
+        ArgumentNullException.ThrowIfNull(value, parameterName);
+        byte[] valueBytes = EncodeRequired(value, parameterName);
         fixed (byte* valuePointer = valueBytes)
         {
             nint languages = 0;

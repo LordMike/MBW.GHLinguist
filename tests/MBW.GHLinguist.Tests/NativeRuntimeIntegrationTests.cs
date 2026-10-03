@@ -53,6 +53,13 @@ public sealed class NativeRuntimeIntegrationTests
         Assert.Throws<KeyNotFoundException>(() => runtime.FindByName("Not A Linguist Language"));
         Assert.Contains(ruby, runtime.FindByFilename("Gemfile"));
         Assert.Contains(ruby, runtime.FindByExtension("example.rb"));
+        Assert.Contains(ruby, runtime.FindByExtension(".rb"));
+        Assert.Equal("filenameOrPath", Assert.Throws<ArgumentException>(() => runtime.FindByExtension("rb")).ParamName);
+        Assert.Equal("name", Assert.Throws<ArgumentException>(() => runtime.TryFindByName("\uD800", out _)).ParamName);
+        Assert.Equal("alias", Assert.Throws<ArgumentException>(() => runtime.TryFindByAlias("\uD800", out _)).ParamName);
+        Assert.Equal("filenameOrPath", Assert.Throws<ArgumentException>(() => runtime.FindByFilename("\uD800")).ParamName);
+        Assert.Equal("filenameOrPath", Assert.Throws<ArgumentException>(() => runtime.FindByExtension("\uD800.rb")).ParamName);
+        Assert.Equal("interpreter", Assert.Throws<ArgumentException>(() => runtime.FindByInterpreter("\uD800")).ParamName);
         Assert.Contains(ruby, runtime.FindByInterpreter("ruby"));
         Assert.Contains(runtime.Languages, language => language.Color is null);
         Assert.Contains(runtime.Languages, language => language.CodeMirrorMode is null);
