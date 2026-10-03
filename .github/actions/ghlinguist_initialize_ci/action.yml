@@ -33,6 +33,7 @@ runs:
         CI_EVENT_NAME: ${{ github.event_name }}
         CI_REPOSITORY: ${{ github.repository }}
         CI_RUN_ID: ${{ github.run_id }}
+        CI_RUN_NUMBER: ${{ github.run_number }}
         CI_RUN_ATTEMPT: ${{ github.run_attempt }}
       run: |
         set -euo pipefail
@@ -57,6 +58,8 @@ runs:
         publish_target=none
         if [ "$CI_EVENT_NAME" = push ] && [ "$GITHUB_REF" = "refs/heads/$CI_DEFAULT_BRANCH" ]; then
           publish_target=development
+          version="0.0.0-alpha.$CI_RUN_NUMBER"
+          is_prerelease=true
         elif [ "$CI_EVENT_NAME" = push ] && [ "$is_release" = true ]; then
           publish_target=release
         fi
