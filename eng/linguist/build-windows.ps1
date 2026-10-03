@@ -327,6 +327,9 @@ Copy-FirstRequiredLicense -Sources $icuLicenseSources -Destination (Join-Path $n
 Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/gcc-libs/COPYING3')) -Destination (Join-Path $nativeAssetRoot 'licenses/msys2/gcc/COPYING3') -Description 'GCC'
 Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/gcc-libs/COPYING.RUNTIME')) -Destination (Join-Path $nativeAssetRoot 'licenses/msys2/gcc/COPYING.RUNTIME') -Description 'GCC runtime exception'
 Copy-FirstRequiredLicense -Sources @((Join-Path $RubyRoot 'msys64/ucrt64/share/licenses/winpthreads/COPYING')) -Destination (Join-Path $nativeAssetRoot 'licenses/msys2/winpthreads/COPYING') -Description 'winpthreads'
+foreach ($gmpLicense in @('README', 'COPYING.LESSERv3', 'COPYINGv3', 'COPYINGv2')) {
+  Copy-FirstRequiredLicense -Sources @((Join-Path $scriptRoot "licenses/gmp/$gmpLicense")) -Destination (Join-Path $nativeAssetRoot "licenses/gmp/$gmpLicense") -Description "GMP $gmpLicense"
+}
 
 foreach ($path in $manifest.linguist.paths) {
   if ($path -eq 'lib') {

@@ -12,6 +12,11 @@ Ruby or native handles to callers.
 > independently audited or benchmarked. Consumers should evaluate the documented
 > limitations and native-runtime constraints for their own workloads.
 
+This is an independent community project. It is not affiliated with, sponsored
+by, or endorsed by GitHub, Inc. "GitHub" and "Linguist" are used only to identify
+the upstream [GitHub Linguist](https://github.com/github-linguist/linguist)
+library that this package embeds.
+
 ## Links
 
 - [Source repository](https://github.com/LordMike/MBW.GHLinguist)
@@ -569,3 +574,12 @@ closure under `nativeassets/<rid>`. Its `buildTransitive` target contributes the
 closure as normal content under `MBW.GHLinguist` with its relative layout intact
 for build and publish. The managed package requires an explicit supported
 `RuntimeIdentifier`.
+
+## License
+
+The MBW.GHLinguist source code is licensed under the [MIT License](LICENSE).
+The runtime packages also redistribute CRuby, GitHub Linguist, Ruby gems, and
+native libraries under their own licenses, including LGPL-licensed libraries.
+See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and
+[PACKAGE-LICENSES.md](PACKAGE-LICENSES.md) before redistributing an application
+that contains a runtime closure.

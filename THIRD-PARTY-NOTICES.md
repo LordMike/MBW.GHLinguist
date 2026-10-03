@@ -22,8 +22,35 @@ gem artifacts, and resolved platform package identities in
 | zlib Ruby gem | 3.2.3 | `licenses/gems/zlib-3.2.3/` |
 | resolv | 0.7.2 | `licenses/gems/resolv-0.7.2/` |
 | RubyInstaller distribution | Resolved in Windows provenance | `licenses/rubyinstaller/LICENSE` |
+| GNU MP (GMP), Windows | `libgmp-10.dll` from the pinned RubyInstaller distribution | `licenses/gmp/` |
 | Debian runtime libraries | Exact packages resolved in Linux provenance | `licenses/debian/` |
 | MSYS2 ICU, GCC runtime, and winpthreads | Exact packages resolved in Windows provenance | `licenses/msys2/` |
+
+The Linux closure copies these Debian Bookworm libraries: GMP (`libgmp10`,
+LGPL-3.0-or-later or GPL-2.0-or-later), libxcrypt (`libcrypt1`,
+LGPL-2.1-or-later), OpenSSL 3 (`libssl3`, Apache-2.0), ICU (`libicu72`),
+libyaml (`libyaml-0-2`), zlib (`zlib1g`), and the GCC runtime libraries
+(`libgcc-s1` and `libstdc++6`, GPL-3.0 with the GCC Runtime Library Exception).
+Their Debian copyright files are under `licenses/debian/<package>/`.
+
+## LGPL-licensed libraries
+
+GMP and libxcrypt are licensed under the GNU LGPL. They are separate shared
+libraries that CRuby loads dynamically, and you may replace them with
+compatible builds. On Linux, the build changes only the ELF `RUNPATH` of every
+copied shared library, including these two, so that they resolve dependencies
+inside the closure; no code is changed. The Windows `libgmp-10.dll` is
+redistributed unmodified.
+
+Corresponding source for the exact versions is available from:
+
+- GMP 6.2.1 (Debian `2:6.2.1+dfsg1-1.1`):
+  <https://snapshot.debian.org/package/gmp/2%3A6.2.1%2Bdfsg1-1.1/>
+- libxcrypt 4.4.33 (Debian `1:4.4.33-2`):
+  <https://snapshot.debian.org/package/libxcrypt/1%3A4.4.33-2/>
+- GMP for Windows: the GMP project at <https://gmplib.org/> and the MSYS2
+  `mingw-w64-gmp` source packages used by RubyInstaller at
+  <https://repo.msys2.org/mingw/sources/>
 
 The build removes inherited RubyGems content before staging the five locked
 gems above. Repository traversal support and its Rugged/libgit2 dependencies
