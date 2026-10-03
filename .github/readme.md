@@ -12,3 +12,7 @@ The files listed below may be present depending on the repository profile. Build
 - `actions/publish_nuget/action.yml` — may publish collected NuGet packages.
 - `actions/publish_docker/action.yml` — may build and publish discovered Docker images.
 - `actions/publish_github_release/action.yml` — may create or update a GitHub Release and upload its assets.
+
+Conventional .NET repositories may provide `.ci/prepare-pack.sh`. It runs only on publishable default-branch and SemVer-tag builds, immediately before `dotnet pack`, and may prepare generated or native package inputs. It receives the exported `CI_*` context, receives no publishing credentials, and must not publish packages itself.
+
+Add `.ci-skip-docker` when a repository contains Dockerfiles used only as development or build tooling. This prevents automatic Docker image publication without affecting validation or NuGet packaging.
