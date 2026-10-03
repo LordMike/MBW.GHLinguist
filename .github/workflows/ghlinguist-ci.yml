@@ -60,7 +60,20 @@ jobs:
           submodules: true
           persist-credentials: false
 
+      # The cache holds the installed RubyInstaller, MSYS2 packages, and gems,
+      # keyed on the dependency manifest. It is saved only after a fresh,
+      # hash-verified install, before anything is built into it, and
+      # build-windows.ps1 still checks pacman versions and runtime file hashes
+      # against the manifest on every run.
+      - name: Restore the pinned Ruby toolchain
+        id: ruby_cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/ghlinguist-ruby
+          key: ghlinguist-ruby-${{ runner.os }}-v1-${{ hashFiles('eng/linguist/native-dependencies.json') }}
+
       - name: Set up the pinned Ruby runtime
+        if: steps.ruby_cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -87,12 +100,20 @@ jobs:
           if (-not (Test-Path -LiteralPath $msysBash -PathType Leaf)) { throw 'The pinned RubyInstaller artifact does not contain MSYS2.' }
           & $msysBash -lc 'true'
           if ($LASTEXITCODE -ne 0) { throw 'Failed to initialize the pinned MSYS2 environment.' }
+
+      - name: Put the pinned Ruby runtime on PATH
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $rubyRoot = Join-Path $env:RUNNER_TEMP 'ghlinguist-ruby'
+          if (-not (Test-Path -LiteralPath (Join-Path $rubyRoot 'bin/ruby.exe') -PathType Leaf)) { throw 'The pinned Ruby runtime is missing.' }
           "RUBY_ROOT=$rubyRoot" >> $env:GITHUB_ENV
           Join-Path $rubyRoot 'bin' >> $env:GITHUB_PATH
           Join-Path $rubyRoot 'msys64/ucrt64/bin' >> $env:GITHUB_PATH
           Join-Path $rubyRoot 'msys64/usr/bin' >> $env:GITHUB_PATH
 
       - name: Install Windows native prerequisites
+        if: steps.ruby_cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -120,6 +141,21 @@ jobs:
             & (Join-Path $env:RUBY_ROOT 'bin/gem.cmd') @arguments
             if ($LASTEXITCODE -ne 0) { throw "Failed to install $($gem.name) $($gem.version)." }
           }
+
+      - name: Prepare the pinned Ruby toolchain for caching
+        if: steps.ruby_cache.outputs.cache-hit != 'true' && github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & (Join-Path $env:RUBY_ROOT 'msys64/usr/bin/bash.exe') -lc 'gpgconf --homedir /etc/pacman.d/gnupg --kill all; rm -rf /var/cache/pacman/pkg/*'
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to prepare the pinned Ruby toolchain for caching.' }
+
+      - name: Save the pinned Ruby toolchain
+        if: steps.ruby_cache.outputs.cache-hit != 'true' && github.event_name == 'push'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/ghlinguist-ruby
+          key: ghlinguist-ruby-${{ runner.os }}-v1-${{ hashFiles('eng/linguist/native-dependencies.json') }}
 
       - name: Build and validate win-x64 native closure
         shell: pwsh
