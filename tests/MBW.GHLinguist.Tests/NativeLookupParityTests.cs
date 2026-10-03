@@ -89,7 +89,7 @@ public sealed class NativeLookupParityTests
         }
 
         Assert.True(checkedExtensions > 500, $"Only {checkedExtensions} extensions were checked.");
-        Assert.Empty(runtime.FindByExtension("sample"));
+        Assert.Throws<ArgumentException>(() => runtime.FindByExtension("sample"));
         Assert.Empty(runtime.FindByExtension("sample.no-such-extension-exists"));
     }
 
