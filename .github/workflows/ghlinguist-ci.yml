@@ -313,7 +313,6 @@ jobs:
   package:
     name: Merge native closures and package
     needs:
-      - managed
       - native_windows
       - native_linux
     runs-on: ubuntu-latest
@@ -644,6 +643,7 @@ jobs:
     name: Publish GitHub Packages
     needs:
       - package
+      - managed
       - native_tests
       - package_consumers
     if: >-
@@ -678,6 +678,7 @@ jobs:
     name: Publish NuGet.org
     needs:
       - package
+      - managed
       - native_tests
       - package_consumers
     if: >-
@@ -712,6 +713,7 @@ jobs:
     name: Publish GitHub Release
     needs:
       - package
+      - managed
       - native_tests
       - package_consumers
       - publish_nuget_org
