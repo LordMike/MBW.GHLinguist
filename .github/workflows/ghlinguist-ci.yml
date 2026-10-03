@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_nuget_org:
-        description: Publish the verified package to NuGet.org (trusted tags only)
+        description: Re-run NuGet.org publication for this tag (tag pushes already publish automatically)
         required: false
         default: false
         type: boolean
@@ -531,9 +531,9 @@ jobs:
       - package
       - package_consumers
     if: >-
-      github.event_name == 'workflow_dispatch' &&
-      inputs.publish_nuget_org &&
-      startsWith(github.ref, 'refs/tags/')
+      needs.package.outputs.is-release == 'true' &&
+      (github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish_nuget_org))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -563,9 +563,11 @@ jobs:
     needs:
       - package
       - package_consumers
+      - publish_nuget_org
     if: >-
       github.event_name == 'push' &&
-      needs.package.outputs.is-release == 'true'
+      needs.package.outputs.is-release == 'true' &&
+      needs.publish_nuget_org.result == 'success'
     permissions:
       contents: write
     uses: ./.github/workflows/deploy.yml
