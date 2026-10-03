@@ -21,6 +21,7 @@ env:
 jobs:
   managed:
     name: Managed build and test (${{ matrix.rid }})
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     strategy:
       fail-fast: false
       matrix:
@@ -49,6 +50,7 @@ jobs:
 
   native_windows:
     name: Native win-x64
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: windows-2025
     steps:
       - name: Checkout exact source and Linguist
@@ -58,7 +60,42 @@ jobs:
           submodules: true
           persist-credentials: false
 
+      # A native closure depends only on the Linguist submodule commit, the
+      # pinned dependency manifest, the native sources, and the build scripts,
+      # so a closure built from the same inputs is reused. The package job
+      # re-verifies every file against provenance.json and the checked-out
+      # lock inputs either way.
+      - name: Compute the win-x64 native closure key
+        id: native_key
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $linguist = (git rev-parse HEAD:extern/linguist).Trim()
+          if ($LASTEXITCODE -ne 0 -or $linguist -notmatch '^[0-9a-f]{40}$') { throw 'Unable to read the Linguist submodule commit.' }
+          "key=ghlinguist-native-win-x64-v1-$linguist-${{ hashFiles('.github/workflows/ghlinguist-ci.yml', 'eng/linguist/**', 'src/MBW.GHLinguist.Native/**') }}" >> $env:GITHUB_OUTPUT
+
+      - name: Restore the win-x64 native closure
+        id: native_cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .tmp/artifacts/native/win-x64
+          key: ${{ steps.native_key.outputs.key }}
+
+      # The cache holds the installed RubyInstaller, MSYS2 packages, and gems,
+      # keyed on the dependency manifest. It is saved only after a fresh,
+      # hash-verified install, before anything is built into it, and
+      # build-windows.ps1 still checks pacman versions and runtime file hashes
+      # against the manifest on every run.
+      - name: Restore the pinned Ruby toolchain
+        id: ruby_cache
+        if: steps.native_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/ghlinguist-ruby
+          key: ghlinguist-ruby-${{ runner.os }}-v1-${{ hashFiles('eng/linguist/native-dependencies.json') }}
+
       - name: Set up the pinned Ruby runtime
+        if: steps.native_cache.outputs.cache-hit != 'true' && steps.ruby_cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -85,12 +122,21 @@ jobs:
           if (-not (Test-Path -LiteralPath $msysBash -PathType Leaf)) { throw 'The pinned RubyInstaller artifact does not contain MSYS2.' }
           & $msysBash -lc 'true'
           if ($LASTEXITCODE -ne 0) { throw 'Failed to initialize the pinned MSYS2 environment.' }
+
+      - name: Put the pinned Ruby runtime on PATH
+        if: steps.native_cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $rubyRoot = Join-Path $env:RUNNER_TEMP 'ghlinguist-ruby'
+          if (-not (Test-Path -LiteralPath (Join-Path $rubyRoot 'bin/ruby.exe') -PathType Leaf)) { throw 'The pinned Ruby runtime is missing.' }
           "RUBY_ROOT=$rubyRoot" >> $env:GITHUB_ENV
           Join-Path $rubyRoot 'bin' >> $env:GITHUB_PATH
           Join-Path $rubyRoot 'msys64/ucrt64/bin' >> $env:GITHUB_PATH
           Join-Path $rubyRoot 'msys64/usr/bin' >> $env:GITHUB_PATH
 
       - name: Install Windows native prerequisites
+        if: steps.native_cache.outputs.cache-hit != 'true' && steps.ruby_cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -119,7 +165,23 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Failed to install $($gem.name) $($gem.version)." }
           }
 
+      - name: Prepare the pinned Ruby toolchain for caching
+        if: steps.native_cache.outputs.cache-hit != 'true' && steps.ruby_cache.outputs.cache-hit != 'true' && github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & (Join-Path $env:RUBY_ROOT 'msys64/usr/bin/bash.exe') -lc 'gpgconf --homedir /etc/pacman.d/gnupg --kill all; rm -rf /var/cache/pacman/pkg/*'
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to prepare the pinned Ruby toolchain for caching.' }
+
+      - name: Save the pinned Ruby toolchain
+        if: steps.native_cache.outputs.cache-hit != 'true' && steps.ruby_cache.outputs.cache-hit != 'true' && github.event_name == 'push'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/ghlinguist-ruby
+          key: ghlinguist-ruby-${{ runner.os }}-v1-${{ hashFiles('eng/linguist/native-dependencies.json') }}
+
       - name: Build and validate win-x64 native closure
+        if: steps.native_cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: ./eng/linguist/build-windows.ps1 -RubyRoot $env:RUBY_ROOT
 
@@ -127,16 +189,12 @@ jobs:
         shell: pwsh
         run: ./eng/linguist/inspect-windows.ps1
 
-      - name: Set up .NET
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
+      - name: Save the win-x64 native closure
+        if: steps.native_cache.outputs.cache-hit != 'true' && github.event_name == 'push'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          dotnet-version: 10.0.400
-
-      - name: Run managed tests against the win-x64 closure
-        shell: pwsh
-        env:
-          GHL_RUN_NATIVE_INTEGRATION: true
-        run: dotnet test --project tests/MBW.GHLinguist.Tests/MBW.GHLinguist.Tests.csproj --configuration Release --runtime win-x64 -p:RunNativeIntegrationTests=true --minimum-expected-tests 1
+          path: .tmp/artifacts/native/win-x64
+          key: ${{ steps.native_key.outputs.key }}
 
       - name: Upload win-x64 native closure
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
@@ -148,6 +206,7 @@ jobs:
 
   native_linux:
     name: Native linux-x64
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - name: Checkout exact source and Linguist
@@ -157,7 +216,28 @@ jobs:
           submodules: true
           persist-credentials: false
 
+      # A native closure depends only on the Linguist submodule commit, the
+      # pinned dependency manifest, the native sources, and the build scripts,
+      # so a closure built from the same inputs is reused. The package job
+      # re-verifies every file against provenance.json and the checked-out
+      # lock inputs either way.
+      - name: Compute the linux-x64 native closure key
+        id: native_key
+        shell: bash
+        run: |
+          set -euo pipefail
+          linguist="$(git rev-parse HEAD:extern/linguist)"
+          echo "key=ghlinguist-native-linux-x64-v1-$linguist-${{ hashFiles('.github/workflows/ghlinguist-ci.yml', 'eng/linguist/**', 'src/MBW.GHLinguist.Native/**') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the linux-x64 native closure
+        id: native_cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .tmp/artifacts/native/linux-x64
+          key: ${{ steps.native_key.outputs.key }}
+
       - name: Build and validate linux-x64 native closure
+        if: steps.native_cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: ./eng/linguist/build-docker.ps1
 
@@ -165,16 +245,12 @@ jobs:
         shell: bash
         run: ./eng/linguist/inspect-linux.sh
 
-      - name: Set up .NET
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
+      - name: Save the linux-x64 native closure
+        if: steps.native_cache.outputs.cache-hit != 'true' && github.event_name == 'push'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          dotnet-version: 10.0.400
-
-      - name: Run managed tests against the linux-x64 closure
-        shell: pwsh
-        env:
-          GHL_RUN_NATIVE_INTEGRATION: true
-        run: dotnet test --project tests/MBW.GHLinguist.Tests/MBW.GHLinguist.Tests.csproj --configuration Release --runtime linux-x64 -p:RunNativeIntegrationTests=true --minimum-expected-tests 1
+          path: .tmp/artifacts/native/linux-x64
+          key: ${{ steps.native_key.outputs.key }}
 
       - name: Upload linux-x64 native closure
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
@@ -184,10 +260,59 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
 
+  native_tests:
+    name: Native integration tests (${{ matrix.rid }})
+    needs:
+      - native_windows
+      - native_linux
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: windows-2025
+            rid: win-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout exact source and Linguist
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          submodules: true
+          persist-credentials: false
+
+      - name: Download ${{ matrix.rid }} native closure
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4.3.0
+        with:
+          name: native-${{ matrix.rid }}
+          path: .tmp/artifacts/native/${{ matrix.rid }}
+
+      # Only third-party packages are cached; the GHLinguist packages built by
+      # this run are always restored from its own artifacts.
+      - name: Cache NuGet packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.nuget/packages
+            !~/.nuget/packages/mbw.ghlinguist*
+          key: nuget-${{ github.job }}-${{ runner.os }}-${{ hashFiles('global.json', '**/Directory.Build.props', '**/Directory.Build.targets', '**/*.csproj', '!extern/**') }}
+          restore-keys: nuget-${{ github.job }}-${{ runner.os }}-
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Run managed tests against the ${{ matrix.rid }} closure
+        shell: pwsh
+        env:
+          GHL_RUN_NATIVE_INTEGRATION: true
+        run: dotnet test --project tests/MBW.GHLinguist.Tests/MBW.GHLinguist.Tests.csproj --configuration Release --runtime ${{ matrix.rid }} -p:RunNativeIntegrationTests=true --minimum-expected-tests 1
+
   package:
     name: Merge native closures and package
     needs:
-      - managed
       - native_windows
       - native_linux
     runs-on: ubuntu-latest
@@ -293,6 +418,17 @@ jobs:
             if ($classifier.Count -ne 1 -or $classifier[0].sha256 -cne $manifest.linguist.classifierSha256) { throw "The $rid classifier asset does not match the pinned digest." }
           }
 
+      # Only third-party packages are cached; the GHLinguist packages built by
+      # this run are always restored from its own artifacts.
+      - name: Cache NuGet packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.nuget/packages
+            !~/.nuget/packages/mbw.ghlinguist*
+          key: nuget-${{ github.job }}-${{ runner.os }}-${{ hashFiles('global.json', '**/Directory.Build.props', '**/Directory.Build.targets', '**/*.csproj', '!extern/**') }}
+          restore-keys: nuget-${{ github.job }}-${{ runner.os }}-
+
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
         with:
@@ -392,6 +528,17 @@ jobs:
         with:
           name: package-artifacts
           path: .artifacts
+
+      # Only third-party packages are cached; the GHLinguist packages built by
+      # this run are always restored from its own artifacts.
+      - name: Cache NuGet packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.nuget/packages
+            !~/.nuget/packages/mbw.ghlinguist*
+          key: nuget-${{ github.job }}-${{ runner.os }}-${{ hashFiles('global.json', '**/Directory.Build.props', '**/Directory.Build.targets', '**/*.csproj', '!extern/**') }}
+          restore-keys: nuget-${{ github.job }}-${{ runner.os }}-
 
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4.3.1
@@ -496,6 +643,8 @@ jobs:
     name: Publish GitHub Packages
     needs:
       - package
+      - managed
+      - native_tests
       - package_consumers
     if: >-
       github.event_name == 'push' &&
@@ -529,6 +678,8 @@ jobs:
     name: Publish NuGet.org
     needs:
       - package
+      - managed
+      - native_tests
       - package_consumers
     if: >-
       needs.package.outputs.is-release == 'true' &&
@@ -562,6 +713,8 @@ jobs:
     name: Publish GitHub Release
     needs:
       - package
+      - managed
+      - native_tests
       - package_consumers
       - publish_nuget_org
     if: >-
