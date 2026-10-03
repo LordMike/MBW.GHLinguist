@@ -194,6 +194,44 @@ public sealed class LinguistRuntimeTests
         Assert.Throws<KeyNotFoundException>(() => runtime.FindByName("Missing"));
         Assert.Throws<KeyNotFoundException>(() => runtime.FindByAlias("missing"));
         Assert.Throws<ArgumentNullException>(() => runtime.TryFindByName(null!, out _));
+        Assert.Throws<ArgumentNullException>(() => runtime.TryFindByAlias(null!, out _));
+        Assert.Throws<ArgumentNullException>(() => runtime.FindByName(null!));
+        Assert.Throws<ArgumentNullException>(() => runtime.FindByAlias(null!));
+    }
+
+    [Theory]
+    [InlineData("rb")]
+    [InlineData("")]
+    [InlineData("Makefile")]
+    [InlineData("src/Makefile")]
+    [InlineData("src.d/Makefile")]
+    [InlineData("src.d\\Makefile")]
+    [InlineData("src/")]
+    public void FindByExtensionRejectsInputWithoutAnExtension(string filenameOrPath)
+    {
+        var backend = new FakeBackend();
+        using var runtime = new LinguistRuntime(backend);
+
+        ArgumentException exception = Assert.Throws<ArgumentException>(() => runtime.FindByExtension(filenameOrPath));
+
+        Assert.Equal("filenameOrPath", exception.ParamName);
+        Assert.Empty(backend.Lookups);
+    }
+
+    [Theory]
+    [InlineData(".rb")]
+    [InlineData("example.rb")]
+    [InlineData("src/example.rb")]
+    [InlineData("src\\example.rb")]
+    [InlineData("src/.gitignore")]
+    [InlineData("example.")]
+    public void FindByExtensionPassesFilenamesWithADotToTheBackend(string filenameOrPath)
+    {
+        var backend = new FakeBackend();
+        using var runtime = new LinguistRuntime(backend);
+
+        Assert.Equal([backend.Language], runtime.FindByExtension(filenameOrPath));
+        Assert.Equal([$"extension:{filenameOrPath}"], backend.Lookups);
     }
 
     [Fact]

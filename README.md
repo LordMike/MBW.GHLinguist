@@ -301,12 +301,15 @@ The lookup names and inputs intentionally follow Linguist's Ruby API:
 | `FindByName("ruby")` | Canonical/filesystem name, case-insensitive | One language; throws `KeyNotFoundException` when absent |
 | `FindByAlias("cpp")` | Alias, case-insensitive | One language; throws `KeyNotFoundException` when absent |
 | `FindByFilename("src/Cakefile")` | Exact basename, case-sensitive | Read-only list |
-| `FindByExtension("src/example.rb")` | A complete filename/path, lowercased by Linguist | Read-only list |
+| `FindByExtension("src/example.rb")` | A filename/path with an extension, lowercased by Linguist | Read-only list; throws `ArgumentException` when the filename has no dot |
 | `FindByInterpreter("bash")` | Exact interpreter, case-sensitive | Read-only list |
 
-`FindByExtension` is the most likely lookup footgun: pass `"example.rb"` or
-`"src/example.rb"`, not the bare string `"rb"`. Linguist considers recognized
-compound extensions in its own precedence order.
+`FindByExtension` takes a filename, not a bare extension: pass `"example.rb"`,
+`"src/example.rb"` or `".rb"`. A filename with no dot, such as `"rb"` or
+`"Makefile"`, has nothing for Linguist to match, so it throws `ArgumentException`
+instead of silently returning an empty list. Use `FindByFilename` for special
+extensionless names. Linguist considers recognized compound extensions in its own
+precedence order.
 
 `FindById`, `FindByName`, and `FindByAlias` each have a `TryFind...` partner
 that returns `false` instead of throwing. Use `FindBy...` when the language is

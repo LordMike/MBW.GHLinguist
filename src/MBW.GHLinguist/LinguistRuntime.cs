@@ -199,10 +199,18 @@ public sealed class LinguistRuntime : ILinguistRuntime, IDisposable
     }
 
     /// <summary>Finds languages by the recognized extension of a filename using Linguist's <c>find_by_extension</c>.</summary>
-    /// <param name="filenameOrPath">A filename or path such as <c>src/program.rb</c>, not a bare extension such as <c>rb</c>.</param>
+    /// <param name="filenameOrPath">
+    /// A filename or path such as <c>src/program.rb</c> or <c>.rb</c>, not a bare extension such as <c>rb</c>.
+    /// </param>
     /// <returns>A read-only list of matches; for example, <c>program.rb</c> includes Ruby. The list is empty when none match.</returns>
-    /// <remarks>Linguist lowercases the filename and considers recognized compound extensions in its own precedence order.</remarks>
+    /// <remarks>
+    /// Linguist lowercases the filename and considers recognized compound extensions in its own precedence order.
+    /// A name without a dot, such as <c>rb</c> or <c>Makefile</c>, has no extension for Linguist to match and is
+    /// rejected rather than silently returning no languages. Use <see cref="FindByFilename(string)" /> for special
+    /// extensionless filenames.
+    /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="filenameOrPath" /> is <see langword="null" />.</exception>
+    /// <exception cref="ArgumentException">The filename part of <paramref name="filenameOrPath" /> contains no dot, or <paramref name="filenameOrPath" /> contains invalid UTF-16.</exception>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
     /// <example><code>IReadOnlyList&lt;LinguistLanguage&gt; matches = runtime.FindByExtension("program.rb");</code></example>
     /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/lib/linguist/language.rb#L153-L175" />
@@ -212,6 +220,14 @@ public sealed class LinguistRuntime : ILinguistRuntime, IDisposable
         {
             ILinguistRuntimeBackend backend = GetBackend();
             ArgumentNullException.ThrowIfNull(filenameOrPath);
+            int filenameStart = filenameOrPath.LastIndexOfAny(['/', '\\']) + 1;
+            if (filenameOrPath.IndexOf('.', filenameStart) < 0)
+            {
+                throw new ArgumentException(
+                    $"'{filenameOrPath}' has no file extension. Pass a filename such as 'example.rb' or '.rb', not a bare extension such as 'rb'.",
+                    nameof(filenameOrPath));
+            }
+
             return backend.FindByExtension(filenameOrPath);
         }
     }
