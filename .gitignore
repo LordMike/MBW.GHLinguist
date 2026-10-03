@@ -19,9 +19,9 @@ Thumbs.db
 [Rr]elease*/
 _ReSharper*/
 packages/
-.artifacts/
 .tmp/
 tmp/
+.artifacts/
 *.user
 *.local.json
 .terraform/
