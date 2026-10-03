@@ -10,6 +10,7 @@ Require(Directory.Exists(Path.Combine(nativeAssetRoot, "lib", "ruby")), "Missing
 Require(File.Exists(Path.Combine(nativeAssetRoot, "provenance.json")), "Missing packaged provenance manifest.");
 
 LinguistRuntime runtime = LinguistRuntime.Create();
+Require(HostNullReferenceIsCatchable(), "Creating the runtime replaced the host's fault handling.");
 Require(runtime.Version.RubyVersion == "4.0.6", $"Unexpected Ruby version {runtime.Version.RubyVersion}.");
 Require(runtime.Version.LinguistVersion == "9.6.0", $"Unexpected Linguist version {runtime.Version.LinguistVersion}.");
 Require(runtime.Version.LinguistRevision == expectedRevision, $"Unexpected Linguist revision {runtime.Version.LinguistRevision}.");
@@ -33,6 +34,8 @@ ClassificationResults classification = runtime.Classify(
     "class PackageSmoke\n  def value = 42\nend\n"u8,
     new ClassificationOptions { CandidateLanguageIds = [ruby.Id] });
 Require(classification.Results.Count == 1 && classification.Results[0].Language == ruby, "The packaged classifier did not return Ruby.");
+ClassificationResults unrestricted = runtime.Classify("class PackageSmoke\n  def value = 42\nend\n"u8);
+Require(unrestricted.Results.Count > 0, "Unrestricted classification returned no results.");
 
 runtime.Dispose();
 Require(ruby.Name == "Ruby", "Language results were not copied before runtime disposal.");
@@ -40,6 +43,23 @@ Require(analysis.Language == ruby, "Analysis results were not copied before runt
 Require(pathOnly.Language == ruby, "Nullable path-only analysis was not copied before runtime disposal.");
 
 Console.WriteLine($"Validated MBW.GHLinguist package with Ruby {rubyVersion} and Linguist {linguistVersion}.");
+
+// CoreCLR raises NullReferenceException from a hardware fault, so this fails if CRuby kept its fault handlers.
+static bool HostNullReferenceIsCatchable()
+{
+    try
+    {
+        _ = ReadLength(null);
+        return false;
+    }
+    catch (NullReferenceException)
+    {
+        return true;
+    }
+}
+
+[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+static int ReadLength(string? value) => value!.Length;
 
 static void Require(bool condition, string message)
 {

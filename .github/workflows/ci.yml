@@ -421,6 +421,9 @@ jobs:
           PACKAGE_VERSION: ${{ needs.package.outputs.version }}
           TEST_RID: ${{ matrix.rid }}
           RUNTIME_PACKAGE_ID: MBW.GHLinguist.Runtime.${{ matrix.rid }}
+          # Host Ruby tooling settings must not reach the embedded runtime.
+          RUBYOPT: -rghlinguist_host_rubyopt_must_be_ignored
+          LINGUIST_DEBUG: '3'
         run: |
           $ErrorActionPreference = 'Stop'
           function Invoke-DotNet {
