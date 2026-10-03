@@ -1,6 +1,4 @@
 #nullable enable
-const MBW.GHLinguist.ClassificationOptions.DefaultMaximumBytes = 51200 -> int
-const MBW.GHLinguist.ClassificationOptions.MaximumAllowedBytes = 51200 -> int
 MBW.GHLinguist.BlobAnalysis
 MBW.GHLinguist.BlobAnalysis.BlobAnalysis() -> void
 MBW.GHLinguist.BlobAnalysis.ContentType.get -> string!
@@ -87,6 +85,8 @@ MBW.GHLinguist.ClassificationOptions.AllowedTypes.init -> void
 MBW.GHLinguist.ClassificationOptions.CandidateLanguageIds.get -> System.Collections.Generic.IReadOnlyList<ulong>?
 MBW.GHLinguist.ClassificationOptions.CandidateLanguageIds.init -> void
 MBW.GHLinguist.ClassificationOptions.ClassificationOptions() -> void
+const MBW.GHLinguist.ClassificationOptions.DefaultMaximumBytes = 51200 -> int
+const MBW.GHLinguist.ClassificationOptions.MaximumAllowedBytes = 51200 -> int
 MBW.GHLinguist.ClassificationOptions.MaximumBytes.get -> int
 MBW.GHLinguist.ClassificationOptions.MaximumBytes.init -> void
 MBW.GHLinguist.ClassificationResult
@@ -126,13 +126,16 @@ MBW.GHLinguist.DetectionStrategyMask.Xml = 16 -> MBW.GHLinguist.DetectionStrateg
 MBW.GHLinguist.ILinguistRuntime
 MBW.GHLinguist.ILinguistRuntime.Analyze(System.ReadOnlySpan<byte> data, MBW.GHLinguist.BlobInput? input = null, MBW.GHLinguist.BlobAnalysisOptions? options = null) -> MBW.GHLinguist.BlobAnalysis!
 MBW.GHLinguist.ILinguistRuntime.Classify(System.ReadOnlySpan<byte> data, MBW.GHLinguist.ClassificationOptions? options = null) -> MBW.GHLinguist.ClassificationResults!
-MBW.GHLinguist.ILinguistRuntime.FindByAlias(string! alias) -> MBW.GHLinguist.LinguistLanguage?
+MBW.GHLinguist.ILinguistRuntime.FindByAlias(string! alias) -> MBW.GHLinguist.LinguistLanguage!
 MBW.GHLinguist.ILinguistRuntime.FindByExtension(string! filenameOrPath) -> System.Collections.Generic.IReadOnlyList<MBW.GHLinguist.LinguistLanguage!>!
 MBW.GHLinguist.ILinguistRuntime.FindByFilename(string! filenameOrPath) -> System.Collections.Generic.IReadOnlyList<MBW.GHLinguist.LinguistLanguage!>!
-MBW.GHLinguist.ILinguistRuntime.FindById(ulong id) -> MBW.GHLinguist.LinguistLanguage?
+MBW.GHLinguist.ILinguistRuntime.FindById(ulong id) -> MBW.GHLinguist.LinguistLanguage!
 MBW.GHLinguist.ILinguistRuntime.FindByInterpreter(string! interpreter) -> System.Collections.Generic.IReadOnlyList<MBW.GHLinguist.LinguistLanguage!>!
-MBW.GHLinguist.ILinguistRuntime.FindByName(string! name) -> MBW.GHLinguist.LinguistLanguage?
+MBW.GHLinguist.ILinguistRuntime.FindByName(string! name) -> MBW.GHLinguist.LinguistLanguage!
 MBW.GHLinguist.ILinguistRuntime.Languages.get -> System.Collections.Generic.IReadOnlyList<MBW.GHLinguist.LinguistLanguage!>!
+MBW.GHLinguist.ILinguistRuntime.TryFindByAlias(string! alias, out MBW.GHLinguist.LinguistLanguage? language) -> bool
+MBW.GHLinguist.ILinguistRuntime.TryFindById(ulong id, out MBW.GHLinguist.LinguistLanguage? language) -> bool
+MBW.GHLinguist.ILinguistRuntime.TryFindByName(string! name, out MBW.GHLinguist.LinguistLanguage? language) -> bool
 MBW.GHLinguist.ILinguistRuntime.Version.get -> MBW.GHLinguist.LinguistVersionInfo!
 MBW.GHLinguist.LanguageType
 MBW.GHLinguist.LanguageType.Data = 1 -> MBW.GHLinguist.LanguageType
@@ -162,12 +165,14 @@ MBW.GHLinguist.LinguistLanguage.CodeMirrorMode.init -> void
 MBW.GHLinguist.LinguistLanguage.Color.get -> string?
 MBW.GHLinguist.LinguistLanguage.Color.init -> void
 MBW.GHLinguist.LinguistLanguage.Equals(MBW.GHLinguist.LinguistLanguage? other) -> bool
+override MBW.GHLinguist.LinguistLanguage.Equals(object? obj) -> bool
 MBW.GHLinguist.LinguistLanguage.Extensions.get -> System.Collections.Generic.IReadOnlyList<string!>!
 MBW.GHLinguist.LinguistLanguage.Extensions.init -> void
-MBW.GHLinguist.LinguistLanguage.Filenames.get -> System.Collections.Generic.IReadOnlyList<string!>!
-MBW.GHLinguist.LinguistLanguage.Filenames.init -> void
 MBW.GHLinguist.LinguistLanguage.FileSystemName.get -> string?
 MBW.GHLinguist.LinguistLanguage.FileSystemName.init -> void
+MBW.GHLinguist.LinguistLanguage.Filenames.get -> System.Collections.Generic.IReadOnlyList<string!>!
+MBW.GHLinguist.LinguistLanguage.Filenames.init -> void
+override MBW.GHLinguist.LinguistLanguage.GetHashCode() -> int
 MBW.GHLinguist.LinguistLanguage.GroupLanguageId.get -> ulong?
 MBW.GHLinguist.LinguistLanguage.GroupLanguageId.init -> void
 MBW.GHLinguist.LinguistLanguage.Id.get -> ulong
@@ -181,6 +186,7 @@ MBW.GHLinguist.LinguistLanguage.Name.get -> string!
 MBW.GHLinguist.LinguistLanguage.Name.init -> void
 MBW.GHLinguist.LinguistLanguage.TextMateScope.get -> string!
 MBW.GHLinguist.LinguistLanguage.TextMateScope.init -> void
+override MBW.GHLinguist.LinguistLanguage.ToString() -> string!
 MBW.GHLinguist.LinguistLanguage.Type.get -> MBW.GHLinguist.LanguageType
 MBW.GHLinguist.LinguistLanguage.Type.init -> void
 MBW.GHLinguist.LinguistLanguage.WrapLines.get -> bool
@@ -192,14 +198,18 @@ MBW.GHLinguist.LinguistRubyException.RubyClass.get -> string?
 MBW.GHLinguist.LinguistRuntime
 MBW.GHLinguist.LinguistRuntime.Analyze(System.ReadOnlySpan<byte> data, MBW.GHLinguist.BlobInput? input = null, MBW.GHLinguist.BlobAnalysisOptions? options = null) -> MBW.GHLinguist.BlobAnalysis!
 MBW.GHLinguist.LinguistRuntime.Classify(System.ReadOnlySpan<byte> data, MBW.GHLinguist.ClassificationOptions? options = null) -> MBW.GHLinguist.ClassificationResults!
+static MBW.GHLinguist.LinguistRuntime.Create() -> MBW.GHLinguist.LinguistRuntime!
 MBW.GHLinguist.LinguistRuntime.Dispose() -> void
-MBW.GHLinguist.LinguistRuntime.FindByAlias(string! alias) -> MBW.GHLinguist.LinguistLanguage?
+MBW.GHLinguist.LinguistRuntime.FindByAlias(string! alias) -> MBW.GHLinguist.LinguistLanguage!
 MBW.GHLinguist.LinguistRuntime.FindByExtension(string! filenameOrPath) -> System.Collections.Generic.IReadOnlyList<MBW.GHLinguist.LinguistLanguage!>!
 MBW.GHLinguist.LinguistRuntime.FindByFilename(string! filenameOrPath) -> System.Collections.Generic.IReadOnlyList<MBW.GHLinguist.LinguistLanguage!>!
-MBW.GHLinguist.LinguistRuntime.FindById(ulong id) -> MBW.GHLinguist.LinguistLanguage?
+MBW.GHLinguist.LinguistRuntime.FindById(ulong id) -> MBW.GHLinguist.LinguistLanguage!
 MBW.GHLinguist.LinguistRuntime.FindByInterpreter(string! interpreter) -> System.Collections.Generic.IReadOnlyList<MBW.GHLinguist.LinguistLanguage!>!
-MBW.GHLinguist.LinguistRuntime.FindByName(string! name) -> MBW.GHLinguist.LinguistLanguage?
+MBW.GHLinguist.LinguistRuntime.FindByName(string! name) -> MBW.GHLinguist.LinguistLanguage!
 MBW.GHLinguist.LinguistRuntime.Languages.get -> System.Collections.Generic.IReadOnlyList<MBW.GHLinguist.LinguistLanguage!>!
+MBW.GHLinguist.LinguistRuntime.TryFindByAlias(string! alias, out MBW.GHLinguist.LinguistLanguage? language) -> bool
+MBW.GHLinguist.LinguistRuntime.TryFindById(ulong id, out MBW.GHLinguist.LinguistLanguage? language) -> bool
+MBW.GHLinguist.LinguistRuntime.TryFindByName(string! name, out MBW.GHLinguist.LinguistLanguage? language) -> bool
 MBW.GHLinguist.LinguistRuntime.Version.get -> MBW.GHLinguist.LinguistVersionInfo!
 MBW.GHLinguist.LinguistVersionInfo
 MBW.GHLinguist.LinguistVersionInfo.AbiMajor.get -> uint
@@ -225,7 +235,3 @@ MBW.GHLinguist.StrategyTraceEntry.Candidates.init -> void
 MBW.GHLinguist.StrategyTraceEntry.Strategy.get -> MBW.GHLinguist.DetectionStrategy
 MBW.GHLinguist.StrategyTraceEntry.Strategy.init -> void
 MBW.GHLinguist.StrategyTraceEntry.StrategyTraceEntry() -> void
-override MBW.GHLinguist.LinguistLanguage.Equals(object? obj) -> bool
-override MBW.GHLinguist.LinguistLanguage.GetHashCode() -> int
-override MBW.GHLinguist.LinguistLanguage.ToString() -> string!
-static MBW.GHLinguist.LinguistRuntime.Create() -> MBW.GHLinguist.LinguistRuntime!

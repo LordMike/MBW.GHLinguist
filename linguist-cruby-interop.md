@@ -432,10 +432,11 @@ Add `src/MBW.GHLinguist` targeting `net10.0`. Use source-generated `LibraryImpor
 The public managed surface is:
 
 ```csharp
-public sealed class LinguistRuntime : ILinguistRuntime, IDisposable
+public sealed class LinguistRuntime : IDisposable
 {
     public static LinguistRuntime Create();
     public LinguistVersionInfo Version { get; }
+    public LinguistCapabilities Capabilities { get; }
     public IReadOnlyList<LinguistLanguage> Languages { get; }
 
     public BlobAnalysis Analyze(
@@ -447,7 +448,6 @@ public sealed class LinguistRuntime : ILinguistRuntime, IDisposable
         ReadOnlySpan<byte> data,
         ClassificationOptions? options = null);
 
-    public LinguistLanguage? FindById(ulong id);
     public LinguistLanguage? FindByName(string name);
     public LinguistLanguage? FindByAlias(string alias);
     public IReadOnlyList<LinguistLanguage> FindByFilename(string filename);
@@ -483,10 +483,12 @@ Classifier candidate IDs preserve Ruby's `nil` versus empty-array distinction:
 matches without invoking the classifier. Zero, duplicate, and unknown language
 IDs are rejected by the managed facade before native classification.
 
-The managed facade does not expose `ghl_capabilities`. Because the managed
-assembly and native bridge ship as one matched unit, `LinguistRuntime.Create`
-verifies once that the bridge reports every capability the managed API uses and
-throws `LinguistException` otherwise.
+The managed facade checks `LinguistCapabilities` before dispatch. Registry
+operations require `LanguageRegistry`; complete analysis additionally requires
+standard detection, encoding/binary, generated detection, and path
+classification, plus trace or classifier capabilities when those features are
+enabled. Direct non-empty classification requires both language-registry and
+content-classifier capabilities.
 
 ## NuGet package
 

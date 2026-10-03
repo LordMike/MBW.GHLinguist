@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace MBW.GHLinguist;
 
 /// <summary>Owns a native GitHub Linguist runtime and exposes blob analysis and language-registry APIs.</summary>
@@ -9,7 +11,7 @@ namespace MBW.GHLinguist;
 /// <example>
 /// <code>
 /// using LinguistRuntime runtime = LinguistRuntime.Create();
-/// LinguistLanguage? ruby = runtime.FindByName("Ruby");
+/// LinguistLanguage ruby = runtime.FindByName("Ruby");
 /// BlobAnalysis analysis = runtime.Analyze(
 ///     "puts 'Hello'\n"u8,
 ///     new BlobInput { Path = "src/hello.rb", Name = "hello.rb" });
@@ -73,53 +75,108 @@ public sealed class LinguistRuntime : ILinguistRuntime, IDisposable
         }
     }
 
-    /// <summary>Finds a language by its stable numeric Linguist language ID.</summary>
+    /// <summary>Gets a language by its stable numeric Linguist language ID.</summary>
     /// <param name="id">The language ID, for example from <see cref="LinguistLanguage.GroupLanguageId" />.</param>
-    /// <returns>The matching language, or <see langword="null" /> when the loaded registry has no such ID.</returns>
+    /// <returns>The matching language.</returns>
+    /// <remarks>
+    /// The lookup uses a cached index and does not scan <see cref="Languages" />. Use
+    /// <see cref="TryFindById(ulong, out LinguistLanguage)" /> when the ID may be absent.
+    /// </remarks>
+    /// <exception cref="KeyNotFoundException">The loaded registry has no language with <paramref name="id" />.</exception>
+    /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
+    /// <example><code>LinguistLanguage group = runtime.FindById(language.GroupLanguageId!.Value);</code></example>
+    public LinguistLanguage FindById(ulong id) =>
+        TryFindById(id, out LinguistLanguage? language)
+            ? language
+            : throw new KeyNotFoundException($"The loaded Linguist registry has no language with ID {id}.");
+
+    /// <summary>Tries to find a language by its stable numeric Linguist language ID.</summary>
+    /// <param name="id">The language ID, for example from <see cref="LinguistLanguage.GroupLanguageId" />.</param>
+    /// <param name="language">The matching language, or <see langword="null" /> when none matches.</param>
+    /// <returns><see langword="true" /> when the loaded registry contains <paramref name="id" />; otherwise <see langword="false" />.</returns>
     /// <remarks>The lookup uses a cached index and does not scan <see cref="Languages" />.</remarks>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
-    /// <example><code>LinguistLanguage? group = runtime.FindById(language.GroupLanguageId!.Value);</code></example>
-    public LinguistLanguage? FindById(ulong id)
+    /// <example><code>if (runtime.TryFindById(id, out LinguistLanguage? language)) { Console.WriteLine(language.Name); }</code></example>
+    public bool TryFindById(ulong id, [NotNullWhen(true)] out LinguistLanguage? language)
     {
         lock (_gate)
         {
-            return GetBackend().FindById(id);
+            language = GetBackend().FindById(id);
+            return language is not null;
         }
     }
 
-    /// <summary>Finds a language by its canonical or filesystem name using Linguist's <c>find_by_name</c> semantics.</summary>
+    /// <summary>Gets a language by its canonical or filesystem name using Linguist's <c>find_by_name</c> semantics.</summary>
     /// <param name="name">The case-insensitive canonical or filesystem name, for example <c>Ruby</c>.</param>
-    /// <returns>The matching language, or <see langword="null" /> when no language matches.</returns>
-    /// <remarks>Empty strings return <see langword="null" />. Whitespace is not trimmed, matching Linguist.</remarks>
+    /// <returns>The matching language.</returns>
+    /// <remarks>
+    /// Whitespace is not trimmed, matching Linguist. Use <see cref="TryFindByName(string, out LinguistLanguage)" />
+    /// when the name may be unknown, for example when it comes from user input.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="name" /> is <see langword="null" />.</exception>
+    /// <exception cref="KeyNotFoundException">No language matches <paramref name="name" />, including an empty string.</exception>
+    /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
+    /// <example><code>LinguistLanguage ruby = runtime.FindByName("ruby");</code></example>
+    /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/lib/linguist/language.rb#L103-L116" />
+    public LinguistLanguage FindByName(string name) =>
+        TryFindByName(name, out LinguistLanguage? language)
+            ? language
+            : throw new KeyNotFoundException($"No Linguist language has the name '{name}'.");
+
+    /// <summary>Tries to find a language by its canonical or filesystem name using Linguist's <c>find_by_name</c> semantics.</summary>
+    /// <param name="name">The case-insensitive canonical or filesystem name, for example <c>Ruby</c>.</param>
+    /// <param name="language">The matching language, or <see langword="null" /> when none matches.</param>
+    /// <returns><see langword="true" /> when a language matches; otherwise <see langword="false" />.</returns>
+    /// <remarks>Empty strings return <see langword="false" />. Whitespace is not trimmed, matching Linguist.</remarks>
     /// <exception cref="ArgumentNullException"><paramref name="name" /> is <see langword="null" />.</exception>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
-    /// <example><code>LinguistLanguage? ruby = runtime.FindByName("ruby");</code></example>
+    /// <example><code>if (runtime.TryFindByName(userInput, out LinguistLanguage? language)) { Console.WriteLine(language.Id); }</code></example>
     /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/lib/linguist/language.rb#L103-L116" />
-    public LinguistLanguage? FindByName(string name)
+    public bool TryFindByName(string name, [NotNullWhen(true)] out LinguistLanguage? language)
     {
         lock (_gate)
         {
             ILinguistRuntimeBackend backend = GetBackend();
             ArgumentNullException.ThrowIfNull(name);
-            return backend.FindByName(name);
+            language = backend.FindByName(name);
+            return language is not null;
         }
     }
 
-    /// <summary>Finds a language by an alias using Linguist's <c>find_by_alias</c> semantics.</summary>
+    /// <summary>Gets a language by an alias using Linguist's <c>find_by_alias</c> semantics.</summary>
     /// <param name="alias">The case-insensitive alias, for example <c>cpp</c>.</param>
-    /// <returns>The matching language, or <see langword="null" /> when no language matches.</returns>
-    /// <remarks>Empty strings return <see langword="null" />. Whitespace is not trimmed, matching Linguist.</remarks>
+    /// <returns>The matching language.</returns>
+    /// <remarks>
+    /// Whitespace is not trimmed, matching Linguist. Use <see cref="TryFindByAlias(string, out LinguistLanguage)" />
+    /// when the alias may be unknown.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="alias" /> is <see langword="null" />.</exception>
+    /// <exception cref="KeyNotFoundException">No language matches <paramref name="alias" />, including an empty string.</exception>
+    /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
+    /// <example><code>LinguistLanguage cpp = runtime.FindByAlias("cpp");</code></example>
+    /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/lib/linguist/language.rb#L118-L131" />
+    public LinguistLanguage FindByAlias(string alias) =>
+        TryFindByAlias(alias, out LinguistLanguage? language)
+            ? language
+            : throw new KeyNotFoundException($"No Linguist language has the alias '{alias}'.");
+
+    /// <summary>Tries to find a language by an alias using Linguist's <c>find_by_alias</c> semantics.</summary>
+    /// <param name="alias">The case-insensitive alias, for example <c>cpp</c>.</param>
+    /// <param name="language">The matching language, or <see langword="null" /> when none matches.</param>
+    /// <returns><see langword="true" /> when a language matches; otherwise <see langword="false" />.</returns>
+    /// <remarks>Empty strings return <see langword="false" />. Whitespace is not trimmed, matching Linguist.</remarks>
     /// <exception cref="ArgumentNullException"><paramref name="alias" /> is <see langword="null" />.</exception>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
-    /// <example><code>LinguistLanguage? cpp = runtime.FindByAlias("cpp");</code></example>
+    /// <example><code>if (runtime.TryFindByAlias("cpp", out LinguistLanguage? cpp)) { Console.WriteLine(cpp.Name); }</code></example>
     /// <seealso href="https://github.com/github-linguist/linguist/blob/196b2a14418cab005065c72c9759370934c184bc/lib/linguist/language.rb#L118-L131" />
-    public LinguistLanguage? FindByAlias(string alias)
+    public bool TryFindByAlias(string alias, [NotNullWhen(true)] out LinguistLanguage? language)
     {
         lock (_gate)
         {
             ILinguistRuntimeBackend backend = GetBackend();
             ArgumentNullException.ThrowIfNull(alias);
-            return backend.FindByAlias(alias);
+            language = backend.FindByAlias(alias);
+            return language is not null;
         }
     }
 

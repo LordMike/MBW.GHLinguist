@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace MBW.GHLinguist;
 
 /// <summary>Analyzes blobs and queries GitHub Linguist's language registry.</summary>
@@ -21,13 +23,22 @@ public interface ILinguistRuntime
     IReadOnlyList<LinguistLanguage> Languages { get; }
 
     /// <inheritdoc cref="LinguistRuntime.FindById(ulong)" />
-    LinguistLanguage? FindById(ulong id);
+    LinguistLanguage FindById(ulong id);
+
+    /// <inheritdoc cref="LinguistRuntime.TryFindById(ulong, out LinguistLanguage)" />
+    bool TryFindById(ulong id, [NotNullWhen(true)] out LinguistLanguage? language);
 
     /// <inheritdoc cref="LinguistRuntime.FindByName(string)" />
-    LinguistLanguage? FindByName(string name);
+    LinguistLanguage FindByName(string name);
+
+    /// <inheritdoc cref="LinguistRuntime.TryFindByName(string, out LinguistLanguage)" />
+    bool TryFindByName(string name, [NotNullWhen(true)] out LinguistLanguage? language);
 
     /// <inheritdoc cref="LinguistRuntime.FindByAlias(string)" />
-    LinguistLanguage? FindByAlias(string alias);
+    LinguistLanguage FindByAlias(string alias);
+
+    /// <inheritdoc cref="LinguistRuntime.TryFindByAlias(string, out LinguistLanguage)" />
+    bool TryFindByAlias(string alias, [NotNullWhen(true)] out LinguistLanguage? language);
 
     /// <inheritdoc cref="LinguistRuntime.FindByFilename(string)" />
     IReadOnlyList<LinguistLanguage> FindByFilename(string filenameOrPath);

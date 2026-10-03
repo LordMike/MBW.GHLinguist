@@ -31,6 +31,9 @@ public sealed class LinguistRuntimeTests
         Assert.Throws<ObjectDisposedException>(() => runtime.FindByName("Ruby"));
         Assert.Throws<ObjectDisposedException>(() => runtime.FindByName(null!));
         Assert.Throws<ObjectDisposedException>(() => runtime.FindByAlias("ruby"));
+        Assert.Throws<ObjectDisposedException>(() => runtime.TryFindById(326, out _));
+        Assert.Throws<ObjectDisposedException>(() => runtime.TryFindByName("Ruby", out _));
+        Assert.Throws<ObjectDisposedException>(() => runtime.TryFindByAlias("ruby", out _));
         Assert.Throws<ObjectDisposedException>(() => runtime.FindByFilename("Gemfile"));
         Assert.Throws<ObjectDisposedException>(() => runtime.FindByExtension("example.rb"));
         Assert.Throws<ObjectDisposedException>(() => runtime.FindByInterpreter("ruby"));
@@ -171,7 +174,26 @@ public sealed class LinguistRuntimeTests
         using var runtime = new LinguistRuntime(backend);
 
         Assert.Same(backend.Language, runtime.FindById(326));
-        Assert.Null(runtime.FindById(1));
+        Assert.True(runtime.TryFindById(326, out LinguistLanguage? found));
+        Assert.Same(backend.Language, found);
+        Assert.False(runtime.TryFindById(1, out LinguistLanguage? missing));
+        Assert.Null(missing);
+        Assert.Throws<KeyNotFoundException>(() => runtime.FindById(1));
+    }
+
+    [Fact]
+    public void NameAndAliasLookupsThrowOnlyFromFindWhenNothingMatches()
+    {
+        var backend = new FakeBackend(lookupMatches: false);
+        using var runtime = new LinguistRuntime(backend);
+
+        Assert.False(runtime.TryFindByName("Missing", out LinguistLanguage? byName));
+        Assert.Null(byName);
+        Assert.False(runtime.TryFindByAlias("missing", out LinguistLanguage? byAlias));
+        Assert.Null(byAlias);
+        Assert.Throws<KeyNotFoundException>(() => runtime.FindByName("Missing"));
+        Assert.Throws<KeyNotFoundException>(() => runtime.FindByAlias("missing"));
+        Assert.Throws<ArgumentNullException>(() => runtime.TryFindByName(null!, out _));
     }
 
     [Fact]
@@ -235,7 +257,7 @@ public sealed class LinguistRuntimeTests
             .Select(member => (string)member.Attribute("name")!)
             .ToArray();
 
-        Assert.Equal(10, runtimeMethods.Length);
+        Assert.Equal(13, runtimeMethods.Length);
         Assert.All(runtimeMethods, member => Assert.NotNull(member.Element("summary")));
         Assert.All(runtimeMethods, member => Assert.NotNull(member.Element("example")));
         Assert.All(
@@ -312,8 +334,11 @@ public sealed class LinguistRuntimeTests
         private readonly bool _blockAnalysis;
         private readonly bool _blockDispose;
 
-        internal FakeBackend(bool blockAnalysis = false, bool blockDispose = false)
+        private readonly bool _lookupMatches;
+
+        internal FakeBackend(bool blockAnalysis = false, bool blockDispose = false, bool lookupMatches = true)
         {
+            _lookupMatches = lookupMatches;
             _blockAnalysis = blockAnalysis;
             _blockDispose = blockDispose;
             Language = new LinguistLanguage
@@ -396,13 +421,13 @@ public sealed class LinguistRuntimeTests
         public LinguistLanguage? FindByName(string name)
         {
             Lookups.Add($"name:{name}");
-            return Language;
+            return _lookupMatches ? Language : null;
         }
 
         public LinguistLanguage? FindByAlias(string alias)
         {
             Lookups.Add($"alias:{alias}");
-            return Language;
+            return _lookupMatches ? Language : null;
         }
 
         public IReadOnlyList<LinguistLanguage> FindByFilename(string filename)

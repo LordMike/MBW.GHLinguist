@@ -288,13 +288,13 @@ such as the long-line ratio that depend on Linguist's line representation.
 
 ## Language lookup
 
-The lookup names and return shapes intentionally follow Linguist's Ruby API:
+The lookup names and inputs intentionally follow Linguist's Ruby API:
 
 | Method | Input behavior | Result |
 |---|---|---|
-| `FindById(326)` | Stable numeric language ID | One language or `null` |
-| `FindByName("ruby")` | Canonical/filesystem name, case-insensitive | One language or `null` |
-| `FindByAlias("cpp")` | Alias, case-insensitive | One language or `null` |
+| `FindById(326)` | Stable numeric language ID | One language; throws `KeyNotFoundException` when absent |
+| `FindByName("ruby")` | Canonical/filesystem name, case-insensitive | One language; throws `KeyNotFoundException` when absent |
+| `FindByAlias("cpp")` | Alias, case-insensitive | One language; throws `KeyNotFoundException` when absent |
 | `FindByFilename("src/Cakefile")` | Exact basename, case-sensitive | Read-only list |
 | `FindByExtension("src/example.rb")` | A complete filename/path, lowercased by Linguist | Read-only list |
 | `FindByInterpreter("bash")` | Exact interpreter, case-sensitive | Read-only list |
@@ -303,9 +303,21 @@ The lookup names and return shapes intentionally follow Linguist's Ruby API:
 `"src/example.rb"`, not the bare string `"rb"`. Linguist considers recognized
 compound extensions in its own precedence order.
 
-Name and alias lookups return `null` for an empty string. Inputs are not trimmed,
-so whitespace remains significant. Passing `null` to a required lookup argument
-throws `ArgumentNullException`.
+`FindById`, `FindByName`, and `FindByAlias` each have a `TryFind...` partner
+that returns `false` instead of throwing. Use `FindBy...` when the language is
+expected to exist, and `TryFindBy...` when the input may be unknown, such as a
+language name typed by a user:
+
+```csharp
+if (runtime.TryFindByName(userInput, out LinguistLanguage? language))
+{
+    Console.WriteLine(language.Id);
+}
+```
+
+An empty name or alias finds nothing. Inputs are not trimmed, so whitespace
+remains significant. Passing `null` to a required lookup argument throws
+`ArgumentNullException`.
 
 `LinguistLanguage.Id` is the stable language identity used by equality and
 hashing. Names and aliases are metadata and can change between Linguist
@@ -325,8 +337,7 @@ Console.WriteLine(best?.Language.Name);
 Restrict classification using language IDs from the same runtime:
 
 ```csharp
-LinguistLanguage ruby = runtime.FindByName("Ruby")
-    ?? throw new InvalidOperationException("Ruby is missing from the registry.");
+LinguistLanguage ruby = runtime.FindByName("Ruby");
 
 ClassificationResults rubyOnly = runtime.Classify(
     source,
