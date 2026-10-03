@@ -1,0 +1,3 @@
+# The shared root .editorconfig silences CS1591. The published library must document its whole public API.
+[*.cs]
+dotnet_diagnostic.CS1591.severity = error
