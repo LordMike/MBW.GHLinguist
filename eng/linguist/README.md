@@ -34,12 +34,6 @@ Requires Docker with Linux containers:
 The image is pinned by digest in the manifest and installs only the compiler,
 CMake, and ICU development files needed to build this closure.
 
-Debian packages are fetched over HTTPS. Behind a TLS-intercepting HTTPS proxy,
-set `HTTPS_PROXY` (and optionally `NO_PROXY`) and point `SSL_CERT_FILE` at a CA
-bundle that trusts the proxy; the script then runs the image build and the
-container on the host network through that proxy and hands the bundle to apt
-and Ruby. Package versions and native library hashes are still enforced.
-
 The resulting package is exercised on Debian Bookworm. The closure contains CRuby,
 ICU, and its other non-system native dependencies, but deliberately relies on the
 target system's ELF loader and glibc family. It is not compatible with musl-based

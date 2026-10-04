@@ -35,29 +35,14 @@ if ($actualRevision -ne $manifest.linguist.revision) {
   throw "Expected Linguist revision $($manifest.linguist.revision), found $actualRevision."
 }
 
-# Behind an HTTPS proxy (HTTPS_PROXY) with its own trust store (SSL_CERT_FILE), the
-# containers use the host network to reach the proxy and trust the same CA bundle.
-$httpsProxy = if ($env:HTTPS_PROXY) { $env:HTTPS_PROXY } else { $env:https_proxy }
-$noProxy = if ($env:NO_PROXY) { $env:NO_PROXY } else { $env:no_proxy }
-$caBundle = if ($env:SSL_CERT_FILE -and (Test-Path -LiteralPath $env:SSL_CERT_FILE -PathType Leaf)) { (Resolve-Path -LiteralPath $env:SSL_CERT_FILE).Path } else { $null }
-
 $imageTag = 'ghlinguist-build:linux-x64'
-$buildArguments = @(
-  'build'
-  '--build-arg', "RUBY_IMAGE=$($manifest.ruby.dockerImage)"
-  '--tag', $imageTag
-)
-if ($httpsProxy) {
-  $buildArguments += @('--network', 'host', '--build-arg', "https_proxy=$httpsProxy")
-  if ($noProxy) {
-    $buildArguments += @('--build-arg', "no_proxy=$noProxy")
-  }
+# Pass through https_proxy/no_proxy and an SSL_CERT_FILE CA bundle, for builds behind an intercepting proxy.
+$caBuild = $caRun = @()
+if ($env:SSL_CERT_FILE) {
+  $caBuild = @('--secret', "id=ca-bundle,src=$env:SSL_CERT_FILE")
+  $caRun = @('--mount', "type=bind,source=$env:SSL_CERT_FILE,target=/etc/ssl/certs/ca-certificates.crt,readonly")
 }
-if ($caBundle) {
-  $buildArguments += @('--secret', "id=ca-bundle,src=$caBundle")
-}
-$buildArguments += $scriptRoot
-& docker @buildArguments
+& docker build --network host --build-arg https_proxy --build-arg no_proxy @caBuild --build-arg "RUBY_IMAGE=$($manifest.ruby.dockerImage)" --tag $imageTag $scriptRoot
 if ($LASTEXITCODE -ne 0) {
   throw 'Failed to build the Linguist build image.'
 }
@@ -65,22 +50,12 @@ if ($LASTEXITCODE -ne 0) {
 $dockerArguments = @(
   'run'
   '--rm'
+  '--network', 'host'
+  '--env', 'https_proxy'
+  '--env', 'no_proxy'
   '--env', "LINGUIST_REVISION=$actualRevision"
   '--mount', "type=bind,source=$repoRoot,target=/workspace"
 )
-
-if ($httpsProxy) {
-  $dockerArguments += @('--network', 'host', '--env', "https_proxy=$httpsProxy")
-  if ($noProxy) {
-    $dockerArguments += @('--env', "no_proxy=$noProxy")
-  }
-}
-if ($caBundle) {
-  $dockerArguments += @(
-    '--mount', "type=bind,source=$caBundle,target=/run/ghlinguist/ca-bundle.crt,readonly"
-    '--env', 'SSL_CERT_FILE=/run/ghlinguist/ca-bundle.crt'
-  )
-}
 
 if ($IsLinux -or $IsMacOS) {
   $uid = (& id -u).Trim()
@@ -88,6 +63,7 @@ if ($IsLinux -or $IsMacOS) {
   $dockerArguments += @('--user', "${uid}:${gid}")
 }
 
+$dockerArguments += $caRun
 $dockerArguments += $imageTag
 & docker @dockerArguments
 if ($LASTEXITCODE -ne 0) {
