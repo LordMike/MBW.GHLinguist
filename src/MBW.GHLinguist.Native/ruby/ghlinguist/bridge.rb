@@ -135,15 +135,85 @@ module GHLinguist
       languages = candidate_ids&.map { |id| Linguist::Language.find_by_id(id) }
       raise ArgumentError, "candidate language ID does not exist" if languages&.any?(&:nil?)
 
-      languages ||= Linguist::Language.all
-      languages = languages.select { |language| (allowed_types & TYPE_MASKS.fetch(language.type)) != 0 }
-      centroids = Linguist::Samples.cache.fetch("centroids")
-      names = languages.filter_map do |language|
-        key = language.fs_name || language.name
-        language.name if centroids.key?(key)
+      targets = candidate_ids ? classifier_targets(languages, allowed_types) : (@all_targets ||= {})[allowed_types] ||=
+        classifier_targets(Linguist::Language.all, allowed_types)
+      [considered, ClassifierIndex.score(prefix, targets)]
+    end
+
+    # The [centroid slot, language ID] pairs Linguist::Classifier would score, in its order, without repeats.
+    def classifier_targets(languages, allowed_types)
+      slots = ClassifierIndex.slots
+      languages.filter_map do |language|
+        next if (allowed_types & TYPE_MASKS.fetch(language.type)).zero?
+
+        slot = slots[language.fs_name || language.name]
+        [slot, language.language_id] if slot
+      end.uniq.freeze
+    end
+  end
+
+  # Computes Linguist::Classifier#classify results with an inverted index over the centroids. The classifier sums,
+  # for each language, query weight times centroid weight over the query terms the centroid contains, in query term
+  # order, so it visits every language for every term. Walking each query term's postings in the same query term
+  # order performs the same additions in the same order per language, so scores are bit-identical while the work
+  # follows only the centroid entries the query actually touches.
+  module ClassifierIndex
+    module_function
+
+    def slots
+      build unless @slots
+      @slots
+    end
+
+    def score(prefix, targets)
+      return [] if targets.empty?
+
+      build unless @slots
+      vec = Linguist::Classifier.to_vocabulary_index_termfreq_gaps(@vocabulary, Linguist::Tokenizer.tokenize(prefix))
+      vec.each do |idx, freq|
+        tf = 1.0 + Math.log(freq)
+        vec[idx] = tf * @icf[idx]
       end
-      results = Linguist::Classifier.classify(Linguist::Samples.cache, prefix, names)
-      [considered, results.map { |name, score| [Linguist::Language[name].language_id, score] }]
+      return [] if vec.empty?
+
+      Linguist::Classifier.l2_normalize!(vec)
+      sums = Array.new(@slots.size, 0.0)
+      vec.each do |idx, weight|
+        postings = @postings[idx]
+        index = 0
+        count = postings.size
+        while index < count
+          slot = postings[index]
+          sums[slot] += weight * postings[index + 1]
+          index += 2
+        end
+      end
+
+      results = []
+      targets.each do |slot, language_id|
+        score = sums[slot]
+        results << [language_id, score] if score > 0.0
+      end
+      results.sort_by { |x| -x[1] }
+    end
+
+    def build
+      db = Linguist::Samples.cache
+      @vocabulary = db.fetch("vocabulary")
+      @icf = db.fetch("icf")
+      postings = Array.new(@icf.size) { [] }
+      slots = {}
+      db.fetch("centroids").each do |key, centroid|
+        slot = slots.size
+        slots[key] = slot
+        centroid.each { |idx, weight| postings[idx] << slot << weight }
+      end
+      @postings = postings.each(&:freeze).freeze
+      @slots = slots.freeze
     end
   end
 end
+
+# Build the classifier index while the native worker starts, so the first Classify call does not pay for loading
+# Linguist's samples and indexing them.
+GHLinguist::ClassifierIndex.build

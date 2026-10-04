@@ -168,6 +168,38 @@ public sealed class LinguistRuntimeTests
     }
 
     [Fact]
+    public void ClassifyDotNetUsesTheManagedClassifierInsteadOfRuby()
+    {
+        var backend = new FakeBackend();
+        using var runtime = new LinguistRuntime(backend);
+
+        ClassificationResults results = runtime.ClassifyDotNet("puts 'Hello'\n"u8);
+
+        Assert.Same(backend.Classification, results);
+        Assert.Equal(1, backend.PrepareDotNetCount);
+        Assert.Equal(1, backend.ClassifyDotNetCount);
+        Assert.Equal(0, backend.ClassifyCount);
+    }
+
+    [Fact]
+    public void ClassifyDotNetValidatesCandidatesLikeClassify()
+    {
+        var backend = new FakeBackend();
+        using var runtime = new LinguistRuntime(backend);
+
+        ClassificationResults empty = runtime.ClassifyDotNet(
+            "puts 'Hello'\n"u8,
+            new ClassificationOptions { CandidateLanguageIds = [] });
+        ArgumentException exception = Assert.Throws<ArgumentException>(() => runtime.ClassifyDotNet(
+            "puts 'Hello'\n"u8,
+            new ClassificationOptions { CandidateLanguageIds = [327] }));
+
+        Assert.Empty(empty.Results);
+        Assert.Equal(nameof(ClassificationOptions.CandidateLanguageIds), exception.ParamName);
+        Assert.Equal(0, backend.ClassifyDotNetCount);
+    }
+
+    [Fact]
     public void FindByIdUsesTheBackendIndex()
     {
         var backend = new FakeBackend();
@@ -295,7 +327,7 @@ public sealed class LinguistRuntimeTests
             .Select(member => (string)member.Attribute("name")!)
             .ToArray();
 
-        Assert.Equal(13, runtimeMethods.Length);
+        Assert.Equal(14, runtimeMethods.Length);
         Assert.All(runtimeMethods, member => Assert.NotNull(member.Element("summary")));
         Assert.All(runtimeMethods, member => Assert.NotNull(member.Element("example")));
         Assert.All(
@@ -430,6 +462,10 @@ public sealed class LinguistRuntimeTests
 
         internal int ClassifyCount { get; private set; }
 
+        internal int PrepareDotNetCount { get; private set; }
+
+        internal int ClassifyDotNetCount { get; private set; }
+
         internal int AnalyzeCount { get; private set; }
 
         internal List<string> Lookups { get; } = [];
@@ -497,6 +533,17 @@ public sealed class LinguistRuntimeTests
             }
 
             return Analysis;
+        }
+
+        public void PrepareDotNetClassifier()
+        {
+            PrepareDotNetCount++;
+        }
+
+        public ClassificationResults ClassifyDotNet(ReadOnlySpan<byte> data, ClassificationOptions options)
+        {
+            ClassifyDotNetCount++;
+            return Classification;
         }
 
         public ClassificationResults Classify(ReadOnlySpan<byte> data, ClassificationOptions options)

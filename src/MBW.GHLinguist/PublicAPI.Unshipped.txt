@@ -126,6 +126,7 @@ MBW.GHLinguist.DetectionStrategyMask.Xml = 16 -> MBW.GHLinguist.DetectionStrateg
 MBW.GHLinguist.ILinguistRuntime
 MBW.GHLinguist.ILinguistRuntime.Analyze(System.ReadOnlySpan<byte> data, MBW.GHLinguist.BlobInput? input = null, MBW.GHLinguist.BlobAnalysisOptions? options = null) -> MBW.GHLinguist.BlobAnalysis!
 MBW.GHLinguist.ILinguistRuntime.Classify(System.ReadOnlySpan<byte> data, MBW.GHLinguist.ClassificationOptions? options = null) -> MBW.GHLinguist.ClassificationResults!
+MBW.GHLinguist.ILinguistRuntime.ClassifyDotNet(System.ReadOnlySpan<byte> data, MBW.GHLinguist.ClassificationOptions? options = null) -> MBW.GHLinguist.ClassificationResults!
 MBW.GHLinguist.ILinguistRuntime.FindByAlias(string! alias) -> MBW.GHLinguist.LinguistLanguage!
 MBW.GHLinguist.ILinguistRuntime.FindByExtension(string! filenameOrPath) -> System.Collections.Generic.IReadOnlyList<MBW.GHLinguist.LinguistLanguage!>!
 MBW.GHLinguist.ILinguistRuntime.FindByFilename(string! filenameOrPath) -> System.Collections.Generic.IReadOnlyList<MBW.GHLinguist.LinguistLanguage!>!
@@ -198,6 +199,7 @@ MBW.GHLinguist.LinguistRubyException.RubyClass.get -> string?
 MBW.GHLinguist.LinguistRuntime
 MBW.GHLinguist.LinguistRuntime.Analyze(System.ReadOnlySpan<byte> data, MBW.GHLinguist.BlobInput? input = null, MBW.GHLinguist.BlobAnalysisOptions? options = null) -> MBW.GHLinguist.BlobAnalysis!
 MBW.GHLinguist.LinguistRuntime.Classify(System.ReadOnlySpan<byte> data, MBW.GHLinguist.ClassificationOptions? options = null) -> MBW.GHLinguist.ClassificationResults!
+MBW.GHLinguist.LinguistRuntime.ClassifyDotNet(System.ReadOnlySpan<byte> data, MBW.GHLinguist.ClassificationOptions? options = null) -> MBW.GHLinguist.ClassificationResults!
 static MBW.GHLinguist.LinguistRuntime.Create() -> MBW.GHLinguist.LinguistRuntime!
 MBW.GHLinguist.LinguistRuntime.Dispose() -> void
 MBW.GHLinguist.LinguistRuntime.FindByAlias(string! alias) -> MBW.GHLinguist.LinguistLanguage!

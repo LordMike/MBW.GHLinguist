@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Reflection;
 using System.Text;
+using MBW.GHLinguist.Classification;
 using Microsoft.Win32.SafeHandles;
 
 namespace MBW.GHLinguist;
@@ -18,7 +19,10 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
     private const string NativeAssetDirectoryName = "MBW.GHLinguist";
     private const string NativeLibraryName = "ghlinguist";
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+    private static readonly Dictionary<string, ClassifierDatabase> ClassifierDatabases = new(StringComparer.Ordinal);
     private readonly NativeRuntimeHandle _runtime;
+    private readonly string _assetRoot;
+    private LinguistContentClassifier? _dotNetClassifier;
     private IReadOnlyList<LinguistLanguage>? _languages;
     private Dictionary<ulong, LinguistLanguage>? _languagesById;
     private LinguistVersionInfo? _version;
@@ -28,9 +32,10 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
         NativeLibrary.SetDllImportResolver(typeof(NativeLinguistRuntimeBackend).Assembly, ResolveNativeLibrary);
     }
 
-    private NativeLinguistRuntimeBackend(NativeRuntimeHandle runtime)
+    private NativeLinguistRuntimeBackend(NativeRuntimeHandle runtime, string assetRoot)
     {
         _runtime = runtime;
+        _assetRoot = assetRoot;
     }
 
     internal static NativeLinguistRuntimeBackend Create()
@@ -77,7 +82,7 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
             throw new LinguistException("The native runtime succeeded without returning a runtime handle.");
         }
 
-        var backend = new NativeLinguistRuntimeBackend(new NativeRuntimeHandle(runtime));
+        var backend = new NativeLinguistRuntimeBackend(new NativeRuntimeHandle(runtime), assetRoot);
         try
         {
             backend.ValidateCapabilities();
@@ -259,12 +264,8 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
                 ulong languageId = 0;
                 double score = 0;
                 ThrowForStatus(NativeMethods.ClassificationResult(handle, (nuint)index, &languageId, &score), 0);
-                if (!double.IsFinite(score) || score <= 0 || score > 1)
-                {
-                    throw new LinguistException($"The native runtime returned invalid classifier score {score}.");
-                }
-
-                results[index] = new ClassificationResult { Language = GetLanguage(languageId), Score = score };
+                // Ruby Linguist can return a few ULPs above 1; see ClassifierScore.Normalize.
+                results[index] = new ClassificationResult { Language = GetLanguage(languageId), Score = ClassifierScore.Normalize(score) };
             }
 
             return new ClassificationResults
@@ -273,6 +274,46 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
                 Results = results,
             };
         }
+    }
+
+    public void PrepareDotNetClassifier()
+    {
+        ThrowIfDisposed();
+        if (_dotNetClassifier is not null)
+        {
+            return;
+        }
+
+        // samples_data.rb is the database Linguist's Ruby classifier loads (also lazily). The deployed closure is
+        // treated as immutable once loaded, so every runtime on the same asset root shares one parsed copy.
+        string samplesDataPath = Path.Combine(Path.GetFullPath(_assetRoot), "lib", "linguist", "samples_data.rb");
+        EnsureLanguages();
+        try
+        {
+            ClassifierDatabase database;
+            lock (ClassifierDatabases)
+            {
+                if (!ClassifierDatabases.TryGetValue(samplesDataPath, out database!))
+                {
+                    database = ClassifierDatabase.Load(samplesDataPath);
+                    ClassifierDatabases.Add(samplesDataPath, database);
+                }
+            }
+
+            _dotNetClassifier = LinguistContentClassifier.Create(database, _languages!);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or FormatException)
+        {
+            throw new LinguistException($"Unable to load the Linguist classifier database: {exception.Message}", exception);
+        }
+    }
+
+    public ClassificationResults ClassifyDotNet(ReadOnlySpan<byte> data, ClassificationOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        LinguistContentClassifier classifier = _dotNetClassifier ??
+            throw new InvalidOperationException("PrepareDotNetClassifier must be called before ClassifyDotNet.");
+        return classifier.Classify(data, options);
     }
 
     public void Dispose() => _runtime.Dispose();
