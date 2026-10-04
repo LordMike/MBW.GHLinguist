@@ -35,8 +35,29 @@ if ($actualRevision -ne $manifest.linguist.revision) {
   throw "Expected Linguist revision $($manifest.linguist.revision), found $actualRevision."
 }
 
+# Behind an HTTPS proxy (HTTPS_PROXY) with its own trust store (SSL_CERT_FILE), the
+# containers use the host network to reach the proxy and trust the same CA bundle.
+$httpsProxy = if ($env:HTTPS_PROXY) { $env:HTTPS_PROXY } else { $env:https_proxy }
+$noProxy = if ($env:NO_PROXY) { $env:NO_PROXY } else { $env:no_proxy }
+$caBundle = if ($env:SSL_CERT_FILE -and (Test-Path -LiteralPath $env:SSL_CERT_FILE -PathType Leaf)) { (Resolve-Path -LiteralPath $env:SSL_CERT_FILE).Path } else { $null }
+
 $imageTag = 'ghlinguist-build:linux-x64'
-& docker build --build-arg "RUBY_IMAGE=$($manifest.ruby.dockerImage)" --tag $imageTag $scriptRoot
+$buildArguments = @(
+  'build'
+  '--build-arg', "RUBY_IMAGE=$($manifest.ruby.dockerImage)"
+  '--tag', $imageTag
+)
+if ($httpsProxy) {
+  $buildArguments += @('--network', 'host', '--build-arg', "https_proxy=$httpsProxy")
+  if ($noProxy) {
+    $buildArguments += @('--build-arg', "no_proxy=$noProxy")
+  }
+}
+if ($caBundle) {
+  $buildArguments += @('--secret', "id=ca-bundle,src=$caBundle")
+}
+$buildArguments += $scriptRoot
+& docker @buildArguments
 if ($LASTEXITCODE -ne 0) {
   throw 'Failed to build the Linguist build image.'
 }
@@ -47,6 +68,19 @@ $dockerArguments = @(
   '--env', "LINGUIST_REVISION=$actualRevision"
   '--mount', "type=bind,source=$repoRoot,target=/workspace"
 )
+
+if ($httpsProxy) {
+  $dockerArguments += @('--network', 'host', '--env', "https_proxy=$httpsProxy")
+  if ($noProxy) {
+    $dockerArguments += @('--env', "no_proxy=$noProxy")
+  }
+}
+if ($caBundle) {
+  $dockerArguments += @(
+    '--mount', "type=bind,source=$caBundle,target=/run/ghlinguist/ca-bundle.crt,readonly"
+    '--env', 'SSL_CERT_FILE=/run/ghlinguist/ca-bundle.crt'
+  )
+}
 
 if ($IsLinux -or $IsMacOS) {
   $uid = (& id -u).Trim()
