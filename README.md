@@ -41,11 +41,11 @@ Its explicit Ruby gem closure includes `zlib` 3.2.3 and `resolv` 0.7.2.
 CI enforces the patched minimum versions for the Ruby advisories that motivated
 those pins and performs a live NuGet vulnerability audit for managed packages.
 
-The checked-in benchmark results are preliminary synthetic Ruby-only measurements,
-not end-to-end managed performance results. They do not support a trustworthy
-timing speedup claim. They currently show generated-check allocation reductions of
-about 23%, 30%, and 33% for the sampled cases; direct `Classify` allocation is
-unaffected. See the [benchmark methodology and limitations](benchmarks/README.md).
+The checked-in benchmark results are preliminary synthetic Ruby-only measurements
+of the bridge, taken before `ClassifyDotNet` and `LinguistClassifier` existed, and
+are not end-to-end managed performance results. They show generated-check
+allocation reductions of about 23%, 30%, and 33% for the sampled cases. See the
+[benchmark methodology and limitations](benchmarks/README.md).
 
 Stable releases are published to NuGet.org. Development packages are published
 to GitHub Packages as incrementing authenticated prereleases.
@@ -367,13 +367,17 @@ database Linguist itself loads (`lib/linguist/samples.tsv`), so
 it does not take the process-wide Ruby lock and is far cheaper per call. The
 first call parses the database.
 
+```csharp
+ClassificationResults results = runtime.ClassifyDotNet(source);
+```
+
 When classification is all you need, `LinguistClassifier` gives the same
 results without creating a `LinguistRuntime`, so Ruby never starts. It reads the
 language registry and classifier database from the same deployed asset
 directory:
 
 ```csharp
-LinguistClassifier classifier = LinguistClassifier.Create();
+LinguistClassifier classifier = LinguistClassifier.Load();
 ClassificationResults results = classifier.Classify(source);
 ```
 
@@ -382,10 +386,6 @@ can return a score a few units in the last place above 1 (such as
 `1.0000000000000002`) for an input identical to a language's only sample; both
 methods clamp those to `1.0`, and reject anything further out of range with a
 `LinguistException`.
-
-```csharp
-ClassificationResults results = runtime.ClassifyDotNet(source);
-```
 
 Candidate-list semantics are deliberate:
 
@@ -408,6 +408,10 @@ inspect `ClassificationResults.ConsideredBytes` when input truncation matters.
 - A runtime is thread-safe, but calls through one instance are mutually
   exclusive, and all runtime instances ultimately share one process-wide Ruby
   worker. Concurrent work queues rather than running Ruby in parallel.
+  `ClassifyDotNet` is the exception: it runs no Ruby, so concurrent calls run in
+  parallel.
+- `LinguistClassifier` needs no runtime and no disposal. `Load()` reads the
+  data once per process and returns the same thread-safe instance on every call.
 - There is no asynchronous or cancellation API. A caller and `Dispose` wait for
   the active native operation to finish.
 - `Dispose` waits for an active call and for the native handle release to finish.
@@ -527,7 +531,8 @@ byte limits and consider a separate worker process that the application can
 terminate.
 
 Because all Ruby work is serialized, adding concurrent callers increases queue
-depth rather than Linguist throughput. If this becomes a bottleneck, scale with
+depth rather than Linguist throughput. For classification alone, use
+`LinguistClassifier` or `ClassifyDotNet`, which run in parallel. If this becomes a bottleneck, scale with
 separate processes, not additional `LinguistRuntime` instances in one process.
 Thread-safe means serialized, not parallel, bounded, fair, or guaranteed to
 finish within a particular time. Preliminary synthetic Ruby-only benchmark results
@@ -559,7 +564,9 @@ var ruby = new LinguistLanguage { Id = 326, Name = "Ruby", Type = LanguageType.P
 var analysis = new BlobAnalysis { Language = ruby, Strategy = DetectionStrategy.Extension, IsText = true };
 ```
 
-The interface does not include `IDisposable`; whoever owns the
+The interface covers the Ruby-backed operations; `ClassifyDotNet` is only on
+`LinguistRuntime`, and code that depends on the interface uses `Classify`, which
+returns the same results. The interface does not include `IDisposable`; whoever owns the
 `LinguistRuntime` instance, such as the dependency-injection container,
 disposes it.
 
@@ -576,7 +583,7 @@ disposes it.
 | `PlatformNotSupportedException` | The process is not x64 Windows or Linux, or the deployment is single-file so the native asset directory cannot be located |
 | `OutOfMemoryException` | Managed or native allocation failed, commonly because an input or workload was not bounded |
 | `ObjectDisposedException` | A state-dependent member was used after disposal |
-| `LinguistException` | The native runtime returned malformed data, lacks a required feature, or reported another native failure |
+| `LinguistException` | The native runtime returned malformed data, lacks a required feature, or reported another native failure; asset files failed integrity validation; or a classifier score fell outside 0 to 1 beyond rounding |
 | `LinguistRubyException` | The native bridge captured and copied a Ruby exception |
 
 ## Discovering the API
@@ -584,6 +591,7 @@ disposes it.
 Begin with these types in IntelliSense:
 
 - `LinguistRuntime` for lifecycle and operations
+- `LinguistClassifier` for classification without starting Ruby
 - `ILinguistRuntime` for depending on the runtime and substituting it in tests
 - `BlobInput` for path and filename metadata
 - `BlobAnalysisOptions` for optional trace and line-count work

@@ -12,7 +12,7 @@ namespace MBW.GHLinguist;
 /// </remarks>
 /// <example>
 /// <code>
-/// LinguistClassifier classifier = LinguistClassifier.Create();
+/// LinguistClassifier classifier = LinguistClassifier.Load();
 /// ClassificationResults results = classifier.Classify("class Example {}"u8);
 /// </code>
 /// </example>
@@ -41,7 +41,7 @@ public sealed class LinguistClassifier
     /// <returns>A loaded classifier.</returns>
     /// <exception cref="PlatformNotSupportedException">The process is not x64 Windows or Linux, or single-file deployment prevents locating the native asset directory.</exception>
     /// <exception cref="LinguistException">The deployed assets are missing, fail integrity validation, or cannot be read.</exception>
-    public static LinguistClassifier Create() => Get(NativeLinguistRuntimeBackend.GetNativeAssetRoot());
+    public static LinguistClassifier Load() => Get(NativeLinguistRuntimeBackend.GetNativeAssetRoot());
 
     /// <summary>Returns the process-wide classifier for <paramref name="assetRoot" />, loading it on first use.</summary>
     internal static LinguistClassifier Get(string assetRoot)
@@ -68,6 +68,7 @@ public sealed class LinguistClassifier
     /// <param name="options">Optional classifier filters and byte limit; <see langword="null" /> uses Linguist defaults.</param>
     /// <returns>Matches ordered by descending similarity.</returns>
     /// <exception cref="ArgumentException">A candidate language ID is not in <see cref="Languages" />.</exception>
+    /// <exception cref="LinguistException">The classifier produced a score outside 0 to 1 beyond rounding.</exception>
     /// <example><code>ClassificationResults results = classifier.Classify("class Example {}"u8);</code></example>
     public ClassificationResults Classify(ReadOnlySpan<byte> data, ClassificationOptions? options = null)
     {
