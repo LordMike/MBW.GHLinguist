@@ -1,5 +1,8 @@
 # Linguist Benchmarks
 
+[`ClassifierParity/`](ClassifierParity/README.md) checks that `ClassifyDotNet` matches `Classify` exactly and times
+both, end to end through the .NET API.
+
 `linguist_benchmark.rb` measures the public Ruby bridge used by the native runtime. It is intentionally a
 repeatable microbenchmark rather than a replacement for application profiling. Fixtures are synthesized and
 checked in; no source corpus content, paths, or package contents are recorded.

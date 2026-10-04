@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(DefaultTargetFramework)</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MBW.GHLinguist\MBW.GHLinguist.csproj" />
+  </ItemGroup>
+
+  <!-- Uses the closure staged by eng/linguist/build-*.ps1/sh, the same layout the native integration tests use. -->
+  <Target Name="CopyStagedNativeClosure" AfterTargets="Build">
+    <PropertyGroup>
+      <StagedNativeClosure>$(MSBuildThisFileDirectory)..\..\.tmp\artifacts\native\$(RuntimeIdentifier)</StagedNativeClosure>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(StagedNativeClosure)')" Text="The staged native closure is missing: $(StagedNativeClosure). Build it from source first." />
+    <ItemGroup>
+      <_StagedNativeAsset Include="$(StagedNativeClosure)/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_StagedNativeAsset)" DestinationFiles="@(_StagedNativeAsset->'$(OutDir)MBW.GHLinguist\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

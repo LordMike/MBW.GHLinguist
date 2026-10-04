@@ -1,0 +1,2 @@
+# Snippets are classifier inputs; keep their bytes (including CRLF) exactly as committed.
+* -text

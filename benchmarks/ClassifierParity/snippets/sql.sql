@@ -1,0 +1,2 @@
+CREATE TABLE orders (id INT PRIMARY KEY, total DECIMAL(10, 2) NOT NULL);
+SELECT id, SUM(total) FROM orders GROUP BY id HAVING SUM(total) > 100;
