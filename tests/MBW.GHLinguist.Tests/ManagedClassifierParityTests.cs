@@ -97,9 +97,9 @@ public sealed class ManagedClassifierParityTests
     public void ClassifierLanguagesMatchTheRuntimeRegistry()
     {
         using LinguistRuntime runtime = LinguistRuntime.Create();
-        LinguistClassifier classifier = LinguistClassifier.Create();
+        LinguistClassifier classifier = LinguistClassifier.Load();
 
-        Assert.Same(classifier, LinguistClassifier.Create());
+        Assert.Same(classifier, LinguistClassifier.Load());
         Assert.Equal(runtime.Languages.Count, classifier.Languages.Count);
         for (int index = 0; index < runtime.Languages.Count; index++)
         {
@@ -121,7 +121,7 @@ public sealed class ManagedClassifierParityTests
     [Fact(Skip = "Set GHL_RUN_NATIVE_INTEGRATION=true with staged native assets.", SkipUnless = nameof(NativeIntegrationEnabled))]
     public void ClassifierValidatesCandidatesLikeTheRuntime()
     {
-        LinguistClassifier classifier = LinguistClassifier.Create();
+        LinguistClassifier classifier = LinguistClassifier.Load();
 
         Assert.Empty(classifier.Classify("int x;"u8, new ClassificationOptions { CandidateLanguageIds = [] }).Results);
         Assert.Throws<ArgumentException>(() => classifier.Classify("int x;"u8, new ClassificationOptions { CandidateLanguageIds = [ulong.MaxValue - 1] }));
@@ -131,7 +131,7 @@ public sealed class ManagedClassifierParityTests
     {
         ClassificationResults expected = runtime.Classify(sample, options);
         AssertSame(expected, runtime.ClassifyDotNet(sample, options));
-        AssertSame(expected, LinguistClassifier.Create().Classify(sample, options));
+        AssertSame(expected, LinguistClassifier.Load().Classify(sample, options));
     }
 
     private static void AssertSame(ClassificationResults expected, ClassificationResults actual)

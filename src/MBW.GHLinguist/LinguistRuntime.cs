@@ -6,7 +6,8 @@ namespace MBW.GHLinguist;
 /// <remarks>
 /// Calls are synchronous and thread-safe. Ruby work is serialized process-wide, and runtime instances reuse the
 /// same initialized native runtime. <see cref="ClassifyDotNet" /> uses no Ruby, so its calls run in parallel.
-/// Disposal waits for an active call to finish. Dispose the runtime when it is no longer needed. Results returned before disposal are immutable managed copies and remain usable afterward.
+/// Disposal waits for an active call to finish. Dispose the runtime when it is no longer needed. Results returned
+/// before disposal are immutable managed copies and remain usable afterward.
 /// </remarks>
 /// <example>
 /// <code>
@@ -331,7 +332,7 @@ public sealed class LinguistRuntime : ILinguistRuntime, IDisposable
     /// <returns>Matches ordered by descending similarity, identical to <see cref="Classify" />.</returns>
     /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
     /// <exception cref="ArgumentException">A candidate language ID is not present in this runtime's registry.</exception>
-    /// <exception cref="LinguistException">The classifier database cannot be loaded.</exception>
+    /// <exception cref="LinguistException">The classifier database cannot be loaded, or the classifier produced a score outside 0 to 1 beyond rounding.</exception>
     /// <example><code>ClassificationResults results = runtime.ClassifyDotNet("class Example {}"u8);</code></example>
     /// <seealso cref="Classify(ReadOnlySpan{byte}, ClassificationOptions?)" />
     public ClassificationResults ClassifyDotNet(
