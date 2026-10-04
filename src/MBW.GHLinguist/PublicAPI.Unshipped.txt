@@ -237,3 +237,7 @@ MBW.GHLinguist.StrategyTraceEntry.Candidates.init -> void
 MBW.GHLinguist.StrategyTraceEntry.Strategy.get -> MBW.GHLinguist.DetectionStrategy
 MBW.GHLinguist.StrategyTraceEntry.Strategy.init -> void
 MBW.GHLinguist.StrategyTraceEntry.StrategyTraceEntry() -> void
+MBW.GHLinguist.LinguistClassifier
+MBW.GHLinguist.LinguistClassifier.Classify(System.ReadOnlySpan<byte> data, MBW.GHLinguist.ClassificationOptions? options = null) -> MBW.GHLinguist.ClassificationResults!
+MBW.GHLinguist.LinguistClassifier.Languages.get -> System.Collections.Generic.IReadOnlyList<MBW.GHLinguist.LinguistLanguage!>!
+static MBW.GHLinguist.LinguistClassifier.Create() -> MBW.GHLinguist.LinguistClassifier!

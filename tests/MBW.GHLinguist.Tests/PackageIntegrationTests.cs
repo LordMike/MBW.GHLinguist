@@ -90,6 +90,20 @@ public sealed class PackageIntegrationTests
     }
 
     [Fact]
+    public void NativeAssetIntegrityCanCheckOnlyTheFilesACallerReads()
+    {
+        using TestNativeClosure closure = TestNativeClosure.Create("win-x64");
+        NativeAssetIntegrity.ValidateUncached(closure.Root, "win-x64", ["lib/runtime.bin"]);
+
+        LinguistException unlisted = Assert.Throws<LinguistException>(() => NativeAssetIntegrity.ValidateUncached(closure.Root, "win-x64", ["lib/other.json"]));
+        Assert.Contains("does not describe 'lib/other.json'", unlisted.Message, StringComparison.Ordinal);
+
+        File.AppendAllText(closure.AssetPath, "corrupt");
+        LinguistException mismatch = Assert.Throws<LinguistException>(() => NativeAssetIntegrity.ValidateUncached(closure.Root, "win-x64", ["lib/runtime.bin"]));
+        Assert.Contains("does not match its recorded SHA-256", mismatch.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void NativeAssetIntegrityRejectsTraversalPaths()
     {
         using TestNativeClosure closure = TestNativeClosure.Create("win-x64", "../outside.dll");

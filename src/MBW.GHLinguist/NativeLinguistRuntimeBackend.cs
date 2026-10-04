@@ -19,10 +19,9 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
     private const string NativeAssetDirectoryName = "MBW.GHLinguist";
     private const string NativeLibraryName = "ghlinguist";
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
-    private static readonly Dictionary<string, ClassifierDatabase> ClassifierDatabases = new(StringComparer.Ordinal);
     private readonly NativeRuntimeHandle _runtime;
     private readonly string _assetRoot;
-    private LinguistContentClassifier? _dotNetClassifier;
+    private LinguistClassifier? _dotNetClassifier;
     private IReadOnlyList<LinguistLanguage>? _languages;
     private Dictionary<ulong, LinguistLanguage>? _languagesById;
     private LinguistVersionInfo? _version;
@@ -284,36 +283,16 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
             return;
         }
 
-        // samples_data.rb is the database Linguist's Ruby classifier loads (also lazily). The deployed closure is
-        // treated as immutable once loaded, so every runtime on the same asset root shares one parsed copy.
-        string samplesDataPath = Path.Combine(Path.GetFullPath(_assetRoot), "lib", "linguist", "samples_data.rb");
-        EnsureLanguages();
-        try
-        {
-            ClassifierDatabase database;
-            lock (ClassifierDatabases)
-            {
-                if (!ClassifierDatabases.TryGetValue(samplesDataPath, out database!))
-                {
-                    database = ClassifierDatabase.Load(samplesDataPath);
-                    ClassifierDatabases.Add(samplesDataPath, database);
-                }
-            }
-
-            _dotNetClassifier = LinguistContentClassifier.Create(database, _languages!);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or FormatException)
-        {
-            throw new LinguistException($"Unable to load the Linguist classifier database: {exception.Message}", exception);
-        }
+        // The runtime validated the whole closure at creation, so this only loads the data files once per process.
+        _dotNetClassifier = LinguistClassifier.Get(_assetRoot);
     }
 
     public ClassificationResults ClassifyDotNet(ReadOnlySpan<byte> data, ClassificationOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        LinguistContentClassifier classifier = _dotNetClassifier ??
+        LinguistClassifier classifier = _dotNetClassifier ??
             throw new InvalidOperationException("PrepareDotNetClassifier must be called before ClassifyDotNet.");
-        return classifier.Classify(data, options);
+        return classifier.ClassifyValidated(data, options);
     }
 
     public void Dispose() => _runtime.Dispose();

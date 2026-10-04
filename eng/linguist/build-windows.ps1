@@ -364,7 +364,7 @@ try {
   $env:RUBYLIB = Join-Path $nativeAssetRoot 'lib'
   $env:GEM_HOME = $gemHome
   $env:GEM_PATH = $gemHome
-  Invoke-Checked $ruby (Join-Path $scriptRoot 'generate-samples.rb') (Join-Path $nativeAssetRoot 'lib/linguist/samples_data.rb')
+  Invoke-Checked $ruby (Join-Path $scriptRoot 'generate-samples.rb') (Join-Path $nativeAssetRoot 'lib/linguist/samples_data.rb') (Join-Path $nativeAssetRoot 'ghlinguist')
 }
 finally {
   $env:RUBYLIB = $previousRubyLibForSamples

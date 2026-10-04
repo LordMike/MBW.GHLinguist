@@ -62,17 +62,12 @@ public sealed partial class ManagedClassifierTests
     }
 
     [Fact]
-    public void DatabaseReadsPrettyPrintedRubyLiterals()
+    public void DatabaseReadsTheGeneratedJson()
     {
         ClassifierDatabase database = ClassifierDatabase.Parse("""
-            # frozen_string_literal: true
-            DATA = {"extnames" => {"C" => [".c", ".h"]},
-             "vocabulary" => {"\"" => 1, "\\" => 2, "\#{" => 0, "x" => 3},
-             "icf" => [1.5, 2.0, 1.0e-05, 3.25],
-             "centroids" =>
-              {"A" => {0 => 0.5, 3 => 0.25},
-               "B" => {3 => 0.125}},
-             "sha256" => "abc"}
+            {"vocabulary":{"#{":0,"\"":1,"\\":2,"x":3},
+             "icf":[1.5,2.0,1.0e-05,3.25],
+             "centroids":{"A":{"0":0.5,"3":0.25},"B":{"3":0.125}}}
             """u8);
 
         Assert.Equal(0, database.Vocabulary.Find("#{"u8));
@@ -93,9 +88,7 @@ public sealed partial class ManagedClassifierTests
     public void ScoresFollowLinguistsArithmetic()
     {
         ClassifierDatabase database = ClassifierDatabase.Parse("""
-            DATA = {"vocabulary" => {"a" => 0, "b" => 1},
-             "icf" => [1.5, 2.5],
-             "centroids" => {"A" => {0 => 0.6, 1 => 0.8}, "B" => {1 => 1.0}, "C" => {}}}
+            {"vocabulary":{"a":0,"b":1},"icf":[1.5,2.5],"centroids":{"A":{"0":0.6,"1":0.8},"B":{"1":1.0},"C":{}}}
             """u8);
         ContentClassifier classifier = new(database);
         double[] scores = new double[3];
@@ -140,7 +133,7 @@ public sealed partial class ManagedClassifierTests
     public void VocabularyNeverMatchesNonAsciiTokens()
     {
         // Linguist's tokens are binary Ruby strings; Hash#key? only matches them against UTF-8 keys when ASCII-only.
-        ClassifierDatabase database = ClassifierDatabase.Parse("DATA = {\"vocabulary\" => {\"é\" => 0}, \"icf\" => [1.0], \"centroids\" => {}}"u8);
+        ClassifierDatabase database = ClassifierDatabase.Parse("""{"vocabulary":{"é":0},"icf":[1.0],"centroids":{}}"""u8);
 
         Assert.Equal(-1, database.Vocabulary.Find("é"u8));
     }
