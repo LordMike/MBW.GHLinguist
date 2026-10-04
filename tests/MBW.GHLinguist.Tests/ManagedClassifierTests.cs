@@ -43,7 +43,7 @@ public sealed partial class ManagedClassifierTests
     {
         string? scanner = FindRepositoryFile("extern", "linguist", "ext", "linguist", "lex.linguist_yy.c");
         Assert.SkipWhen(scanner is null, "The extern/linguist submodule is not checked out.");
-        string source = File.ReadAllText(scanner!);
+        string source = File.ReadAllText(scanner!).ReplaceLineEndings("\n");
 
         Assert.Equal(Table(source, "yy_accept"), ToInts(LinguistTokenizerTables.Accept));
         Assert.Equal(Table(source, "yy_ec"), ToInts(LinguistTokenizerTables.EquivalenceClasses));
