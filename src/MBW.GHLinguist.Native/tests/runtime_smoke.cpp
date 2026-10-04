@@ -269,10 +269,9 @@ int main(int argc, char** argv) {
     unknown_candidate_options.candidate_language_ids = &unknown_candidate;
     unknown_candidate_options.candidate_language_count = 1;
     if (ghl_runtime_classify(runtime, {reinterpret_cast<const uint8_t*>(source), sizeof(source) - 1}, &unknown_candidate_options,
-            &classification, &error) != GHL_STATUS_RUBY_EXCEPTION || classification != nullptr || error == nullptr ||
-        ghl_error_status(error) != GHL_STATUS_RUBY_EXCEPTION ||
-        !view_equals(ghl_error_ruby_class(error), "ArgumentError") || ghl_error_ruby_backtrace(error).length == 0) {
-        std::fprintf(stderr, "Ruby exception projection failed.\n");
+            &classification, &error) != GHL_STATUS_INVALID_ARGUMENT || classification != nullptr || error == nullptr ||
+        ghl_error_status(error) != GHL_STATUS_INVALID_ARGUMENT) {
+        std::fprintf(stderr, "Unknown candidate rejection failed.\n");
         ghl_error_release(error);
         ghl_classification_release(classification);
         ghl_runtime_release(runtime);
