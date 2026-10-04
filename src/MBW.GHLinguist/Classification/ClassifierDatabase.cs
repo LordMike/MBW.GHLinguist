@@ -1,13 +1,11 @@
-using System.Buffers.Text;
 using System.Numerics;
 using System.Text;
-using System.Text.Json;
 
 namespace MBW.GHLinguist.Classification;
 
 /// <summary>Linguist's trained classifier (<c>vocabulary</c>, <c>icf</c> and <c>centroids</c>) in flat arrays.</summary>
 /// <remarks>
-/// Loaded from <c>lib/linguist/samples.json</c>, the same file Linguist's Ruby classifier loads in the native bundle. Centroids are stored inverted: for each vocabulary index, the centroids
+/// Loaded from <c>lib/linguist/samples.bin</c>, the same file Linguist's Ruby classifier loads in the native bundle. Centroids are stored inverted: for each vocabulary index, the centroids
 /// that contain it, in centroid order.
 /// </remarks>
 internal sealed class ClassifierDatabase
@@ -44,93 +42,59 @@ internal sealed class ClassifierDatabase
 
     internal static ClassifierDatabase Load(string path) => Parse(File.ReadAllBytes(path));
 
-    /// <summary>Reads <c>{"vocabulary": {term: index}, "icf": [..], "centroids": {name: {"index": value}}}</c>, skipping other keys.</summary>
-    /// <remarks>Ruby writes these from Hashes, so no object repeats a key.</remarks>
-    internal static ClassifierDatabase Parse(ReadOnlySpan<byte> json)
+    /// <summary>Reads <c>samples.bin</c>; its layout is described in <c>ruby/linguist/samples_data.rb</c>.</summary>
+    internal static ClassifierDatabase Parse(ReadOnlySpan<byte> bytes)
     {
-        Utf8JsonReader reader = new(json);
-        List<(byte[] Term, int Index)>? vocabulary = null;
-        List<double>? icf = null;
-        List<string> centroidNames = [];
-        List<int> centroidEnds = [];
-        List<int> entryTerms = [];
-        List<double> entryValues = [];
-        bool hasCentroids = false;
-
-        Read(ref reader, JsonTokenType.StartObject);
-        while (Read(ref reader) == JsonTokenType.PropertyName)
+        BinaryCursor reader = new(bytes, "GHLS"u8, "classifier database");
+        for (int section = 0; section < 3; section++)
         {
-            if (reader.ValueTextEquals("vocabulary"u8))
+            // extnames, interpreters and filenames, which only Linguist's language registry uses.
+            for (int entry = reader.ReadCount(); entry > 0; entry--)
             {
-                vocabulary = [];
-                Read(ref reader, JsonTokenType.StartObject);
-                while (Read(ref reader) == JsonTokenType.PropertyName)
+                reader.SkipString();
+                for (int value = reader.ReadCount(); value > 0; value--)
                 {
-                    byte[] term = reader.ValueIsEscaped ? Encoding.UTF8.GetBytes(reader.GetString()!) : reader.ValueSpan.ToArray();
-                    Read(ref reader, JsonTokenType.Number);
-                    vocabulary.Add((term, reader.GetInt32()));
+                    reader.SkipString();
                 }
-            }
-            else if (reader.ValueTextEquals("icf"u8))
-            {
-                icf = [];
-                Read(ref reader, JsonTokenType.StartArray);
-                while (Read(ref reader) == JsonTokenType.Number)
-                {
-                    icf.Add(reader.GetDouble());
-                }
-            }
-            else if (reader.ValueTextEquals("centroids"u8))
-            {
-                hasCentroids = true;
-                Read(ref reader, JsonTokenType.StartObject);
-                while (Read(ref reader) == JsonTokenType.PropertyName)
-                {
-                    centroidNames.Add(reader.GetString()!);
-                    Read(ref reader, JsonTokenType.StartObject);
-                    while (Read(ref reader) == JsonTokenType.PropertyName)
-                    {
-                        if (!Utf8Parser.TryParse(reader.ValueSpan, out int term, out int consumed) || consumed != reader.ValueSpan.Length)
-                        {
-                            throw new FormatException($"The centroid '{centroidNames[^1]}' has a key that is not a vocabulary index.");
-                        }
-
-                        Read(ref reader, JsonTokenType.Number);
-                        entryTerms.Add(term);
-                        entryValues.Add(reader.GetDouble());
-                    }
-
-                    centroidEnds.Add(entryTerms.Count);
-                }
-            }
-            else
-            {
-                reader.Skip();
             }
         }
 
-        if (vocabulary is null || icf is null || !hasCentroids)
+        int termCount = reader.ReadCount();
+        (byte[] Term, int Index)[] vocabulary = new (byte[], int)[termCount];
+        for (int term = 0; term < termCount; term++)
         {
-            throw new FormatException("The classifier database lacks vocabulary, icf or centroids.");
+            vocabulary[term] = (reader.ReadBytes(), reader.ReadCount());
         }
 
-        if (icf.Count != vocabulary.Count)
+        if (reader.ReadCount() != termCount)
         {
-            throw new FormatException($"The classifier database has {vocabulary.Count} vocabulary terms but {icf.Count} icf values.");
+            throw new FormatException("The classifier database has a different number of icf values than vocabulary terms.");
         }
 
-        int termCount = icf.Count;
+        double[] icf = reader.ReadDoubles(termCount);
+        string[] centroidNames = new string[reader.ReadCount()];
+        int[][] centroidTerms = new int[centroidNames.Length][];
+        double[][] centroidValues = new double[centroidNames.Length][];
         int[] postingStarts = new int[termCount + 1];
-        foreach (int term in entryTerms)
+        for (int centroid = 0; centroid < centroidNames.Length; centroid++)
         {
-            if ((uint)term >= (uint)termCount)
+            centroidNames[centroid] = reader.ReadString();
+            int count = reader.ReadCount();
+            centroidTerms[centroid] = reader.ReadInt32s(count);
+            centroidValues[centroid] = reader.ReadDoubles(count);
+            foreach (int term in centroidTerms[centroid])
             {
-                throw new FormatException($"A centroid references vocabulary index {term}, outside 0..{termCount - 1}.");
-            }
+                if ((uint)term >= (uint)termCount)
+                {
+                    throw new FormatException($"A centroid references vocabulary index {term}, outside 0..{termCount - 1}.");
+                }
 
-            postingStarts[term + 1]++;
+                postingStarts[term + 1]++;
+            }
         }
 
+        reader.SkipString();
+        reader.ExpectEnd();
         for (int term = 0; term < termCount; term++)
         {
             postingStarts[term + 1] += postingStarts[term];
@@ -138,35 +102,25 @@ internal sealed class ClassifierDatabase
 
         // Invert to per-term postings; walking centroids in order keeps each term's postings in centroid order.
         int[] cursor = postingStarts[..termCount];
-        int[] postingCentroids = new int[entryTerms.Count];
-        double[] postingValues = new double[entryTerms.Count];
-        for (int centroid = 0, entry = 0; centroid < centroidEnds.Count; centroid++)
+        int[] postingCentroids = new int[postingStarts[termCount]];
+        double[] postingValues = new double[postingStarts[termCount]];
+        for (int centroid = 0; centroid < centroidNames.Length; centroid++)
         {
-            for (; entry < centroidEnds[centroid]; entry++)
+            for (int entry = 0; entry < centroidTerms[centroid].Length; entry++)
             {
-                int position = cursor[entryTerms[entry]]++;
+                int position = cursor[centroidTerms[centroid][entry]]++;
                 postingCentroids[position] = centroid;
-                postingValues[position] = entryValues[entry];
+                postingValues[position] = centroidValues[centroid][entry];
             }
         }
 
         return new ClassifierDatabase(
             new VocabularyTable(vocabulary),
-            [.. icf],
-            [.. centroidNames],
+            icf,
+            centroidNames,
             postingStarts,
             postingCentroids,
             postingValues);
-    }
-
-    private static JsonTokenType Read(ref Utf8JsonReader reader, JsonTokenType? expected = null)
-    {
-        if (!reader.Read() || (expected is { } type && reader.TokenType != type))
-        {
-            throw new FormatException($"The classifier database is malformed at byte {reader.TokenStartIndex}.");
-        }
-
-        return reader.TokenType;
     }
 }
 

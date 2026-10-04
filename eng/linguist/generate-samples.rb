@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "json"
 require "linguist/samples"
 
 module DeterministicSampleInputs
@@ -28,15 +27,36 @@ end
 File.singleton_class.prepend(DeterministicSampleInputs)
 Dir.singleton_class.prepend(DeterministicSampleOrder)
 
-# Usage: generate-samples.rb lib/linguist/samples.json ghlinguist/languages.json, with lib/linguist/samples_data.rb
-# already being the loader that reads samples.json.
+# Usage: generate-samples.rb lib/linguist/samples.bin ghlinguist/languages.bin, with lib/linguist/samples_data.rb
+# already being the loader that reads samples.bin. Both layouts are described where they are read: samples.bin in
+# src/MBW.GHLinguist.Native/ruby/linguist/samples_data.rb, languages.bin in src/MBW.GHLinguist/LinguistClassifier.cs.
 samples_destination = ARGV.fetch(0)
 languages_destination = ARGV.fetch(1)
 data = Linguist::Samples.data
-File.binwrite(samples_destination, JSON.generate(data) + "\n")
+abort("Linguist's samples data has unexpected keys: #{data.keys.inspect}") unless
+  data.keys == %w[extnames interpreters filenames vocabulary icf centroids sha256]
 
-# Ruby writes floats with their shortest round-trip digits, so both readers get back the same doubles. Prove it for
-# this Ruby: the Hash Linguist will load must equal the one it trained, in key order and to the bit.
+def u32(value) = [value].pack("L<")
+def str(value) = u32(value.bytesize) + value.b
+def optional_str(value) = value.nil? ? [0xffffffff].pack("L<") : str(value)
+def strs(values) = u32(values.length) + values.map { |value| str(value) }.join
+
+samples = +"GHLS".b << u32(1)
+%w[extnames interpreters filenames].each do |key|
+  samples << u32(data[key].length)
+  data[key].each { |name, values| samples << str(name) << strs(values) }
+end
+samples << u32(data["vocabulary"].length)
+data["vocabulary"].each { |term, index| samples << str(term) << u32(index) }
+samples << u32(data["icf"].length) << data["icf"].pack("E*")
+samples << u32(data["centroids"].length)
+data["centroids"].each do |name, centroid|
+  samples << str(name) << u32(centroid.length) << centroid.keys.pack("L<*") << centroid.values.pack("E*")
+end
+samples << str(data["sha256"])
+File.binwrite(samples_destination, samples)
+
+# The Hash Linguist will load must equal the one it trained, in key order and to the bit.
 def same?(left, right)
   return false unless left.instance_of?(right.class)
 
@@ -47,31 +67,22 @@ def same?(left, right)
   else left == right
   end
 end
-abort("samples.json does not load back as the trained samples data.") unless same?(data, Linguist::Samples.load_samples)
+abort("samples.bin does not load back as the trained samples data.") unless same?(data, Linguist::Samples.load_samples)
 
 # LinguistClassifier reads the registry instead of starting Ruby: Linguist::Language.all in registry order, with the
 # values the native bridge copies out of each language.
 require "linguist/language"
 
-languages = Linguist::Language.all.map do |language|
+types = { nil => 0, data: 1, markup: 2, programming: 3, prose: 4 }
+languages = +"GHLL".b << u32(1) << u32(Linguist::Language.all.length)
+Linguist::Language.all.each do |language|
   group_id = language.group.language_id
-  {
-    "id" => language.language_id,
-    "groupId" => group_id == language.language_id ? nil : group_id,
-    "name" => language.name,
-    "fsName" => language.fs_name,
-    "type" => language.type&.to_s,
-    "popular" => language.popular? ? true : false,
-    "wrap" => language.wrap ? true : false,
-    "color" => language.color,
-    "tmScope" => language.tm_scope,
-    "aceMode" => language.ace_mode,
-    "codemirrorMode" => language.codemirror_mode,
-    "codemirrorMimeType" => language.codemirror_mime_type,
-    "aliases" => language.aliases,
-    "extensions" => language.extensions,
-    "interpreters" => language.interpreters,
-    "filenames" => language.filenames
-  }
+  languages << [language.language_id, group_id == language.language_id ? 0xffffffffffffffff : group_id].pack("Q<Q<")
+  languages << [types.fetch(language.type), (language.popular? ? 1 : 0) | (language.wrap ? 2 : 0)].pack("CC")
+  languages << str(language.name) << optional_str(language.fs_name) << optional_str(language.color)
+  languages << str(language.tm_scope) << optional_str(language.ace_mode) << optional_str(language.codemirror_mode)
+  languages << optional_str(language.codemirror_mime_type)
+  languages << strs(language.aliases) << strs(language.extensions) << strs(language.interpreters)
+  languages << strs(language.filenames)
 end
-File.binwrite(languages_destination, JSON.generate(languages) + "\n")
+File.binwrite(languages_destination, languages)

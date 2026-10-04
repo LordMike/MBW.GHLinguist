@@ -1,4 +1,3 @@
-using System.Text.Json;
 using MBW.GHLinguist.Classification;
 
 namespace MBW.GHLinguist;
@@ -18,8 +17,8 @@ namespace MBW.GHLinguist;
 /// </example>
 public sealed class LinguistClassifier
 {
-    private const string LanguagesPath = "ghlinguist/languages.json";
-    private const string ClassifierPath = "lib/linguist/samples.json";
+    private const string LanguagesPath = "ghlinguist/languages.bin";
+    private const string ClassifierPath = "lib/linguist/samples.bin";
     private static readonly Dictionary<string, LinguistClassifier> Loaded = new(StringComparer.Ordinal);
 
     private readonly LinguistContentClassifier _classifier;
@@ -105,50 +104,50 @@ public sealed class LinguistClassifier
             ClassifierDatabase database = ClassifierDatabase.Load(Path.Combine(assetRoot, ClassifierPath));
             return new LinguistClassifier(languages, database);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or FormatException or JsonException or InvalidOperationException or KeyNotFoundException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or FormatException or OverflowException)
         {
             throw new LinguistException($"Unable to load the Linguist classifier data: {exception.Message}", exception);
         }
     }
 
-    /// <summary>Reads the registry eng/linguist/generate-samples.rb writes from <c>Linguist::Language.all</c>.</summary>
-    internal static IReadOnlyList<LinguistLanguage> ReadLanguages(byte[] json)
+    /// <summary>Reads <c>languages.bin</c>, which eng/linguist/generate-samples.rb writes from <c>Linguist::Language.all</c>.</summary>
+    /// <remarks>
+    /// After the header: u32 count, then per language: u64 id, u64 group id (<c>ulong.MaxValue</c> for none), u8 type,
+    /// u8 flags (1 popular, 2 wrap), strings name, fs_name?, color?, tm_scope, ace_mode?, codemirror_mode?,
+    /// codemirror_mime_type?, then string lists aliases, extensions, interpreters and filenames.
+    /// </remarks>
+    internal static IReadOnlyList<LinguistLanguage> ReadLanguages(ReadOnlySpan<byte> bytes)
     {
-        using JsonDocument document = JsonDocument.Parse(json);
-        List<LinguistLanguage> languages = [];
-        foreach (JsonElement language in document.RootElement.EnumerateArray())
+        BinaryCursor reader = new(bytes, "GHLL"u8, "language registry");
+        LinguistLanguage[] languages = new LinguistLanguage[reader.ReadCount()];
+        for (int index = 0; index < languages.Length; index++)
         {
-            languages.Add(new LinguistLanguage
+            ulong id = reader.ReadUInt64();
+            ulong groupId = reader.ReadUInt64();
+            LanguageType type = (LanguageType)reader.ReadByte();
+            byte flags = reader.ReadByte();
+            languages[index] = new LinguistLanguage
             {
-                Id = language.GetProperty("id").GetUInt64(),
-                GroupLanguageId = language.GetProperty("groupId") is { ValueKind: JsonValueKind.Number } group ? group.GetUInt64() : null,
-                Name = language.GetProperty("name").GetString()!,
-                FileSystemName = language.GetProperty("fsName").GetString(),
-                Type = language.GetProperty("type").GetString() switch
-                {
-                    "data" => LanguageType.Data,
-                    "markup" => LanguageType.Markup,
-                    "programming" => LanguageType.Programming,
-                    "prose" => LanguageType.Prose,
-                    _ => LanguageType.Unknown,
-                },
-                IsPopular = language.GetProperty("popular").GetBoolean(),
-                WrapLines = language.GetProperty("wrap").GetBoolean(),
-                Color = language.GetProperty("color").GetString(),
-                TextMateScope = language.GetProperty("tmScope").GetString()!,
-                AceMode = language.GetProperty("aceMode").GetString(),
-                CodeMirrorMode = language.GetProperty("codemirrorMode").GetString(),
-                CodeMirrorMimeType = language.GetProperty("codemirrorMimeType").GetString(),
-                Aliases = Strings(language, "aliases"),
-                Extensions = Strings(language, "extensions"),
-                Interpreters = Strings(language, "interpreters"),
-                Filenames = Strings(language, "filenames"),
-            });
+                Id = id,
+                GroupLanguageId = groupId == ulong.MaxValue ? null : groupId,
+                Type = type is >= LanguageType.Unknown and <= LanguageType.Prose ? type : throw new FormatException($"Language {id} has unknown type {type}."),
+                IsPopular = (flags & 1) != 0,
+                WrapLines = (flags & 2) != 0,
+                Name = reader.ReadString(),
+                FileSystemName = reader.ReadOptionalString(),
+                Color = reader.ReadOptionalString(),
+                TextMateScope = reader.ReadString(),
+                AceMode = reader.ReadOptionalString(),
+                CodeMirrorMode = reader.ReadOptionalString(),
+                CodeMirrorMimeType = reader.ReadOptionalString(),
+                Aliases = reader.ReadStrings(),
+                Extensions = reader.ReadStrings(),
+                Interpreters = reader.ReadStrings(),
+                Filenames = reader.ReadStrings(),
+            };
         }
 
-        return languages.AsReadOnly();
-
-        static string[] Strings(JsonElement language, string name) =>
-            [.. language.GetProperty(name).EnumerateArray().Select(value => value.GetString()!)];
+        reader.ExpectEnd();
+        return Array.AsReadOnly(languages);
     }
 }

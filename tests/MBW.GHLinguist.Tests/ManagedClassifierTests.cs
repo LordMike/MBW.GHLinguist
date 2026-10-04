@@ -62,13 +62,12 @@ public sealed partial class ManagedClassifierTests
     }
 
     [Fact]
-    public void DatabaseReadsTheGeneratedJson()
+    public void DatabaseReadsTheGeneratedFile()
     {
-        ClassifierDatabase database = ClassifierDatabase.Parse("""
-            {"vocabulary":{"#{":0,"\"":1,"\\":2,"x":3},
-             "icf":[1.5,2.0,1.0e-05,3.25],
-             "centroids":{"A":{"0":0.5,"3":0.25},"B":{"3":0.125}}}
-            """u8);
+        ClassifierDatabase database = ClassifierDatabase.Parse(SamplesBin(
+            [("#{", 0), ("\"", 1), ("\\", 2), ("x", 3)],
+            [1.5, 2.0, 1.0e-05, 3.25],
+            [("A", [(0, 0.5), (3, 0.25)]), ("B", [(3, 0.125)])]));
 
         Assert.Equal(0, database.Vocabulary.Find("#{"u8));
         Assert.Equal(1, database.Vocabulary.Find("\""u8));
@@ -87,9 +86,10 @@ public sealed partial class ManagedClassifierTests
     [Fact]
     public void ScoresFollowLinguistsArithmetic()
     {
-        ClassifierDatabase database = ClassifierDatabase.Parse("""
-            {"vocabulary":{"a":0,"b":1},"icf":[1.5,2.5],"centroids":{"A":{"0":0.6,"1":0.8},"B":{"1":1.0},"C":{}}}
-            """u8);
+        ClassifierDatabase database = ClassifierDatabase.Parse(SamplesBin(
+            [("a", 0), ("b", 1)],
+            [1.5, 2.5],
+            [("A", [(0, 0.6), (1, 0.8)]), ("B", [(1, 1.0)]), ("C", [])]));
         ContentClassifier classifier = new(database);
         double[] scores = new double[3];
 
@@ -133,9 +133,76 @@ public sealed partial class ManagedClassifierTests
     public void VocabularyNeverMatchesNonAsciiTokens()
     {
         // Linguist's tokens are binary Ruby strings; Hash#key? only matches them against UTF-8 keys when ASCII-only.
-        ClassifierDatabase database = ClassifierDatabase.Parse("""{"vocabulary":{"é":0},"icf":[1.0],"centroids":{}}"""u8);
+        ClassifierDatabase database = ClassifierDatabase.Parse(SamplesBin([("é", 0)], [1.0], []));
 
         Assert.Equal(-1, database.Vocabulary.Find("é"u8));
+    }
+
+    [Fact]
+    public void DatabaseRejectsTruncatedOrTrailingBytes()
+    {
+        byte[] valid = SamplesBin([("a", 0)], [1.0], [("A", [(0, 1.0)])]);
+
+        Assert.Throws<FormatException>(() => ClassifierDatabase.Parse(valid.AsSpan(0, valid.Length - 1)));
+        Assert.Throws<FormatException>(() => ClassifierDatabase.Parse([.. valid, 0]));
+        Assert.Throws<FormatException>(() => ClassifierDatabase.Parse("GHLS\u0002\0\0\0"u8));
+    }
+
+    /// <summary>Writes samples.bin the way eng/linguist/generate-samples.rb does.</summary>
+    private static byte[] SamplesBin(
+        (string Term, int Index)[] vocabulary,
+        double[] icf,
+        (string Name, (int Term, double Value)[] Entries)[] centroids)
+    {
+        using MemoryStream stream = new();
+        using BinaryWriter writer = new(stream);
+        writer.Write("GHLS"u8);
+        writer.Write(1U);
+        writer.Write(1U);
+        WriteString(writer, "C");
+        writer.Write(1U);
+        WriteString(writer, ".c");
+        writer.Write(0U);
+        writer.Write(0U);
+        writer.Write((uint)vocabulary.Length);
+        foreach ((string term, int index) in vocabulary)
+        {
+            WriteString(writer, term);
+            writer.Write((uint)index);
+        }
+
+        writer.Write((uint)icf.Length);
+        foreach (double value in icf)
+        {
+            writer.Write(value);
+        }
+
+        writer.Write((uint)centroids.Length);
+        foreach ((string name, (int Term, double Value)[] entries) in centroids)
+        {
+            WriteString(writer, name);
+            writer.Write((uint)entries.Length);
+            foreach ((int term, double _) in entries)
+            {
+                writer.Write((uint)term);
+            }
+
+            foreach ((int _, double value) in entries)
+            {
+                writer.Write(value);
+            }
+        }
+
+        WriteString(writer, "abc");
+        writer.Flush();
+        return stream.ToArray();
+
+        static void WriteString(BinaryWriter writer, string value)
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(value);
+            writer.Write((uint)bytes.Length);
+            writer.Write(bytes);
+        }
     }
 
     private static int[] ToInts(ReadOnlySpan<short> values)

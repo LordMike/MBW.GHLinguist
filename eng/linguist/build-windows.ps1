@@ -196,7 +196,7 @@ if ($actualLinguistVersion -ne $manifest.linguist.version) {
 $bridgeSource = Join-Path $repoRoot 'src/MBW.GHLinguist.Native/ruby/ghlinguist/bridge.rb'
 $samplesLoaderSource = Join-Path $repoRoot 'src/MBW.GHLinguist.Native/ruby/linguist/samples_data.rb'
 Require-Path $bridgeSource 'GHLinguist Ruby bridge'
-Require-Path $samplesLoaderSource 'samples.json loader'
+Require-Path $samplesLoaderSource 'samples.bin loader'
 
 $msysBin = Join-Path $RubyRoot 'msys64/ucrt64/bin'
 $msysUsrBin = Join-Path $RubyRoot 'msys64/usr/bin'
@@ -367,7 +367,7 @@ try {
   $env:RUBYLIB = Join-Path $nativeAssetRoot 'lib'
   $env:GEM_HOME = $gemHome
   $env:GEM_PATH = $gemHome
-  Invoke-Checked $ruby (Join-Path $scriptRoot 'generate-samples.rb') (Join-Path $nativeAssetRoot 'lib/linguist/samples.json') (Join-Path $nativeAssetRoot 'ghlinguist/languages.json')
+  Invoke-Checked $ruby (Join-Path $scriptRoot 'generate-samples.rb') (Join-Path $nativeAssetRoot 'lib/linguist/samples.bin') (Join-Path $nativeAssetRoot 'ghlinguist/languages.bin')
 }
 finally {
   $env:RUBYLIB = $previousRubyLibForSamples
@@ -375,7 +375,7 @@ finally {
   $env:GEM_PATH = $previousGemPathForSamples
   Remove-Item -LiteralPath (Join-Path $nativeAssetRoot 'samples') -Recurse -Force
 }
-$classifierSha256 = (Get-FileHash -LiteralPath (Join-Path $nativeAssetRoot 'lib/linguist/samples.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+$classifierSha256 = (Get-FileHash -LiteralPath (Join-Path $nativeAssetRoot 'lib/linguist/samples.bin') -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($classifierSha256 -ne $manifest.linguist.classifierSha256) {
   throw "Expected classifier SHA-256 $($manifest.linguist.classifierSha256), found $classifierSha256."
 }
