@@ -6,7 +6,8 @@ RUN sed -i 's#http://deb.debian.org/#https://deb.debian.org/#' /etc/apt/sources.
 COPY native-dependencies.json /tmp/native-dependencies.json
 COPY install-linux-prerequisites.sh /usr/local/bin/install-linux-prerequisites
 
-RUN --mount=type=secret,id=ca-bundle,target=/etc/ssl/certs/ca-certificates.crt,required=false,mode=0444 bash /usr/local/bin/install-linux-prerequisites /tmp/native-dependencies.json
+RUN --mount=type=secret,id=ca-bundle,target=/usr/local/share/ca-certificates/build-proxy-ca.crt,required=false \
+  update-ca-certificates && bash /usr/local/bin/install-linux-prerequisites /tmp/native-dependencies.json
 
 WORKDIR /workspace
 
