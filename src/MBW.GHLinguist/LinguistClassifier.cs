@@ -19,7 +19,7 @@ namespace MBW.GHLinguist;
 public sealed class LinguistClassifier
 {
     private const string LanguagesPath = "ghlinguist/languages.json";
-    private const string ClassifierPath = "ghlinguist/classifier.json";
+    private const string ClassifierPath = "lib/linguist/samples.json";
     private static readonly Dictionary<string, LinguistClassifier> Loaded = new(StringComparer.Ordinal);
 
     private readonly LinguistContentClassifier _classifier;

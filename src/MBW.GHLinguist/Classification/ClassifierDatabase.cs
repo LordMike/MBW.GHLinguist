@@ -7,8 +7,7 @@ namespace MBW.GHLinguist.Classification;
 
 /// <summary>Linguist's trained classifier (<c>vocabulary</c>, <c>icf</c> and <c>centroids</c>) in flat arrays.</summary>
 /// <remarks>
-/// Loaded from <c>ghlinguist/classifier.json</c>, which the native build writes from the same <c>samples_data.rb</c>
-/// data Linguist's Ruby classifier loads. Centroids are stored inverted: for each vocabulary index, the centroids
+/// Loaded from <c>lib/linguist/samples.json</c>, the same file Linguist's Ruby classifier loads in the native bundle. Centroids are stored inverted: for each vocabulary index, the centroids
 /// that contain it, in centroid order.
 /// </remarks>
 internal sealed class ClassifierDatabase
@@ -45,7 +44,7 @@ internal sealed class ClassifierDatabase
 
     internal static ClassifierDatabase Load(string path) => Parse(File.ReadAllBytes(path));
 
-    /// <summary>Reads <c>{"vocabulary": {term: index}, "icf": [..], "centroids": {name: {"index": value}}}</c>.</summary>
+    /// <summary>Reads <c>{"vocabulary": {term: index}, "icf": [..], "centroids": {name: {"index": value}}}</c>, skipping other keys.</summary>
     /// <remarks>Ruby writes these from Hashes, so no object repeats a key.</remarks>
     internal static ClassifierDatabase Parse(ReadOnlySpan<byte> json)
     {
