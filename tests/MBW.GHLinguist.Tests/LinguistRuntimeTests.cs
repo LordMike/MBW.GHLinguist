@@ -39,6 +39,7 @@ public sealed class LinguistRuntimeTests
         Assert.Throws<ObjectDisposedException>(() => runtime.FindByInterpreter("ruby"));
         Assert.Throws<ObjectDisposedException>(() => runtime.Analyze([]));
         Assert.Throws<ObjectDisposedException>(() => runtime.Classify([]));
+        Assert.Throws<ObjectDisposedException>(() => runtime.ClassifyDotNet([]));
     }
 
     [Fact]
@@ -67,12 +68,14 @@ public sealed class LinguistRuntimeTests
         IReadOnlyList<LinguistLanguage> languages = runtime.Languages;
         BlobAnalysis analysis = runtime.Analyze("puts 'Hello'\n"u8, new BlobInput { Name = "hello.rb" });
         ClassificationResults classification = runtime.Classify("puts 'Hello'\n"u8);
+        ClassificationResults managedClassification = runtime.ClassifyDotNet("puts 'Hello'\n"u8);
         runtime.Dispose();
 
         Assert.Equal("9.6.0", version.LinguistVersion);
         Assert.Equal("Ruby", Assert.Single(languages).Name);
         Assert.Equal("Ruby", analysis.Language?.Name);
         Assert.Equal("Ruby", Assert.Single(classification.Results).Language.Name);
+        Assert.Equal("Ruby", Assert.Single(managedClassification.Results).Language.Name);
     }
 
     [Fact]

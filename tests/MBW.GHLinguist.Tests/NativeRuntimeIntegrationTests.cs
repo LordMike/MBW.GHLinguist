@@ -188,7 +188,7 @@ public sealed class NativeRuntimeIntegrationTests
         Assert.True(lfsPointer.IsLfsPointer);
         Assert.False(lfsPointer.IsIncludedInLanguageStatistics);
 
-        ClassificationResults classification = runtime.Classify(
+        ClassificationResults classification = ClassifyWithBoth(runtime, 
             source,
             new ClassificationOptions { CandidateLanguageIds = [ruby.Id] });
         Assert.Equal(source.Length, classification.ConsideredBytes);
@@ -197,7 +197,7 @@ public sealed class NativeRuntimeIntegrationTests
         byte[] classifierSource = Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat(
             "class Greeter\n  def initialize(name)\n    @name = name\n  end\n  def hello\n    puts \"Hello #{@name}\"\n  end\nend\n",
             20)));
-        ClassificationResults ranked = runtime.Classify(
+        ClassificationResults ranked = ClassifyWithBoth(runtime, 
             classifierSource,
             new ClassificationOptions { CandidateLanguageIds = [ruby.Id, python.Id] });
         Assert.Equal(classifierSource.Length, ranked.ConsideredBytes);
@@ -231,7 +231,7 @@ public sealed class NativeRuntimeIntegrationTests
         foreach ((LinguistLanguage expected, string sample) in contentCases)
         {
             byte[] repeatedSource = Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat(sample, 8)));
-            ClassificationResults contentClassification = runtime.Classify(
+            ClassificationResults contentClassification = ClassifyWithBoth(runtime, 
                 repeatedSource,
                 new ClassificationOptions { CandidateLanguageIds = contentCandidateIds });
             Assert.Equal(expected, contentClassification.Results[0].Language);
@@ -249,20 +249,20 @@ public sealed class NativeRuntimeIntegrationTests
         foreach ((LanguageTypeMask mask, LinguistLanguage expected, string sample) in typeCases)
         {
             byte[] repeatedSource = Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat(sample, 10)));
-            ClassificationResults filtered = runtime.Classify(
+            ClassificationResults filtered = ClassifyWithBoth(runtime, 
                 repeatedSource,
                 new ClassificationOptions { AllowedTypes = mask, CandidateLanguageIds = typeCandidateIds });
             Assert.Equal(expected, Assert.Single(filtered.Results).Language);
         }
 
-        ClassificationResults noCandidates = runtime.Classify(
+        ClassificationResults noCandidates = ClassifyWithBoth(runtime, 
             source,
             new ClassificationOptions { CandidateLanguageIds = [] });
         Assert.Equal(0, noCandidates.ConsideredBytes);
         Assert.Empty(noCandidates.Results);
 
         byte[] oversizedSource = Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat("puts 'Hello'\n", 5000)));
-        ClassificationResults bounded = runtime.Classify(
+        ClassificationResults bounded = ClassifyWithBoth(runtime, 
             oversizedSource,
             new ClassificationOptions { CandidateLanguageIds = [ruby.Id] });
         Assert.Equal(ClassificationOptions.MaximumAllowedBytes, bounded.ConsideredBytes);
@@ -300,5 +300,20 @@ public sealed class NativeRuntimeIntegrationTests
         Assert.Throws<ArgumentException>(() => runtime.Classify(
             source,
             new ClassificationOptions { CandidateLanguageIds = [ulong.MaxValue - 1] }));
+        Assert.Throws<ArgumentException>(() => runtime.ClassifyDotNet(
+            source,
+            new ClassificationOptions { CandidateLanguageIds = [ulong.MaxValue - 1] }));
+    }
+
+    /// <summary>Runs <see cref="LinguistRuntime.Classify" /> and <see cref="LinguistRuntime.ClassifyDotNet" />, requires identical results, and returns them.</summary>
+    private static ClassificationResults ClassifyWithBoth(LinguistRuntime runtime, ReadOnlySpan<byte> data, ClassificationOptions options)
+    {
+        ClassificationResults ruby = runtime.Classify(data, options);
+        ClassificationResults managed = runtime.ClassifyDotNet(data, options);
+        Assert.Equal(ruby.ConsideredBytes, managed.ConsideredBytes);
+        Assert.Equal(
+            ruby.Results.Select(result => (result.Language.Id, BitConverter.DoubleToInt64Bits(result.Score))),
+            managed.Results.Select(result => (result.Language.Id, BitConverter.DoubleToInt64Bits(result.Score))));
+        return ruby;
     }
 }

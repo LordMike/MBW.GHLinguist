@@ -108,7 +108,7 @@ public sealed class ManagedClassifierParityTests
         }
     }
 
-    /// <summary>Edge cases, then every fourth file of Linguist's own samples when the submodule is checked out.</summary>
+    /// <summary>Edge cases, then every file of Linguist's own samples when the submodule is checked out.</summary>
     private static IEnumerable<byte[]> Samples()
     {
         foreach (string edgeCase in EdgeCases)
@@ -124,7 +124,7 @@ public sealed class ManagedClassifierParityTests
 
         string[] files = Directory.GetFiles(root, "*", SearchOption.AllDirectories);
         Array.Sort(files, StringComparer.Ordinal);
-        for (int index = 0; index < files.Length; index += 4)
+        for (int index = 0; index < files.Length; index++)
         {
             yield return File.ReadAllBytes(files[index]);
         }
