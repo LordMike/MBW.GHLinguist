@@ -363,7 +363,7 @@ ClassificationResults rubyOnly = runtime.Classify(
 
 `ClassifyDotNet` takes the same options and returns the same results, scores
 included bit for bit. It tokenizes and scores in .NET against the classifier
-database Linguist itself loads (`lib/linguist/samples.bin`), so
+database Linguist itself loads (`lib/linguist/samples.tsv`), so
 it does not take the process-wide Ruby lock and is far cheaper per call. The
 first call parses the database.
 

@@ -28,7 +28,7 @@ require_path "$linguist_root/ext/linguist/extconf.rb" "Linguist tokenizer source
 bridge_source="$repo_root/src/MBW.GHLinguist.Native/ruby/ghlinguist/bridge.rb"
 require_path "$bridge_source" "GHLinguist Ruby bridge"
 samples_loader_source="$repo_root/src/MBW.GHLinguist.Native/ruby/linguist/samples_data.rb"
-require_path "$samples_loader_source" "samples.bin loader"
+require_path "$samples_loader_source" "samples.tsv loader"
 
 manifest_value() {
   ruby -rjson -e 'value = ARGV.shift.split(".").reduce(JSON.parse(File.read(ARGV.shift))) { |item, key| item.fetch(key) }; puts value' "$1" "$manifest_path"
@@ -201,10 +201,10 @@ cp -a "$tokenizer_source/linguist.so" "$native_asset_root/lib/linguist/linguist.
 cp -a "$samples_loader_source" "$native_asset_root/lib/linguist/samples_data.rb"
 cp -a "$linguist_root/samples" "$native_asset_root/samples"
 RUBYLIB="$native_asset_root/lib" GEM_HOME="$gem_home" GEM_PATH="$gem_home" \
-  "$native_asset_root/bin/ruby" "$script_dir/generate-samples.rb" "$native_asset_root/lib/linguist/samples.bin" \
-  "$native_asset_root/ghlinguist/languages.bin"
+  "$native_asset_root/bin/ruby" "$script_dir/generate-samples.rb" "$native_asset_root/lib/linguist/samples.tsv" \
+  "$native_asset_root/ghlinguist/languages.tsv"
 rm -rf "$native_asset_root/samples"
-classifier_sha256="$(ruby -rdigest -e 'print Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$native_asset_root/lib/linguist/samples.bin")"
+classifier_sha256="$(ruby -rdigest -e 'print Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$native_asset_root/lib/linguist/samples.tsv")"
 [[ "$classifier_sha256" == "$(manifest_value linguist.classifierSha256)" ]] || fail "Expected classifier SHA-256 $(manifest_value linguist.classifierSha256), found $classifier_sha256."
 
 bridge_build="$build_root/bridge"

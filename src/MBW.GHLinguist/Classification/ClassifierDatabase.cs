@@ -5,7 +5,7 @@ namespace MBW.GHLinguist.Classification;
 
 /// <summary>Linguist's trained classifier (<c>vocabulary</c>, <c>icf</c> and <c>centroids</c>) in flat arrays.</summary>
 /// <remarks>
-/// Loaded from <c>lib/linguist/samples.bin</c>, the same file Linguist's Ruby classifier loads in the native bundle. Centroids are stored inverted: for each vocabulary index, the centroids
+/// Loaded from <c>lib/linguist/samples.tsv</c>, the same file Linguist's Ruby classifier loads in the native bundle. Centroids are stored inverted: for each vocabulary index, the centroids
 /// that contain it, in centroid order.
 /// </remarks>
 internal sealed class ClassifierDatabase
@@ -42,59 +42,66 @@ internal sealed class ClassifierDatabase
 
     internal static ClassifierDatabase Load(string path) => Parse(File.ReadAllBytes(path));
 
-    /// <summary>Reads <c>samples.bin</c>; its layout is described in <c>ruby/linguist/samples_data.rb</c>.</summary>
-    internal static ClassifierDatabase Parse(ReadOnlySpan<byte> bytes)
+    /// <summary>Reads <c>samples.tsv</c>; its layout is described in <c>ruby/linguist/samples_data.rb</c>.</summary>
+    internal static ClassifierDatabase Parse(ReadOnlySpan<byte> text)
     {
-        BinaryCursor reader = new(bytes, "GHLS"u8, "classifier database");
-        for (int section = 0; section < 3; section++)
+        TabSeparatedReader reader = new(text, "classifier database");
+        List<(byte[] Term, int Index)> vocabulary = [];
+        List<double> icf = [];
+        List<string> centroidNames = [];
+        List<int> centroidEnds = [];
+        List<int> entryTerms = [];
+        List<double> entryValues = [];
+        while (reader.NextLine(out ReadOnlySpan<byte> kind))
         {
-            // extnames, interpreters and filenames, which only Linguist's language registry uses.
-            for (int entry = reader.ReadCount(); entry > 0; entry--)
+            if (kind.SequenceEqual("vocabulary"u8))
             {
-                reader.SkipString();
-                for (int value = reader.ReadCount(); value > 0; value--)
+                vocabulary.Add((reader.Field().ToArray(), reader.Int32()));
+                reader.ExpectEndOfLine();
+            }
+            else if (kind.SequenceEqual("icf"u8))
+            {
+                while (reader.TryField(out ReadOnlySpan<byte> value))
                 {
-                    reader.SkipString();
+                    icf.Add(reader.ParseDouble(value));
                 }
+            }
+            else if (kind.SequenceEqual("centroid"u8))
+            {
+                centroidNames.Add(reader.String());
+                while (reader.TryField(out ReadOnlySpan<byte> term))
+                {
+                    entryTerms.Add(reader.ParseInt32(term));
+                    entryValues.Add(reader.Double());
+                }
+
+                centroidEnds.Add(entryTerms.Count);
+            }
+            else if (!kind.SequenceEqual("extnames"u8) && !kind.SequenceEqual("interpreters"u8) &&
+                !kind.SequenceEqual("filenames"u8) && !kind.SequenceEqual("sha256"u8))
+            {
+                // extnames, interpreters, filenames and sha256 are for Linguist's Ruby side only.
+                throw reader.Error("unknown line kind");
             }
         }
 
-        int termCount = reader.ReadCount();
-        (byte[] Term, int Index)[] vocabulary = new (byte[], int)[termCount];
-        for (int term = 0; term < termCount; term++)
+        int termCount = vocabulary.Count;
+        if (icf.Count != termCount)
         {
-            vocabulary[term] = (reader.ReadBytes(), reader.ReadCount());
+            throw new FormatException($"The classifier database has {termCount} vocabulary terms but {icf.Count} icf values.");
         }
 
-        if (reader.ReadCount() != termCount)
-        {
-            throw new FormatException("The classifier database has a different number of icf values than vocabulary terms.");
-        }
-
-        double[] icf = reader.ReadDoubles(termCount);
-        string[] centroidNames = new string[reader.ReadCount()];
-        int[][] centroidTerms = new int[centroidNames.Length][];
-        double[][] centroidValues = new double[centroidNames.Length][];
         int[] postingStarts = new int[termCount + 1];
-        for (int centroid = 0; centroid < centroidNames.Length; centroid++)
+        foreach (int term in entryTerms)
         {
-            centroidNames[centroid] = reader.ReadString();
-            int count = reader.ReadCount();
-            centroidTerms[centroid] = reader.ReadInt32s(count);
-            centroidValues[centroid] = reader.ReadDoubles(count);
-            foreach (int term in centroidTerms[centroid])
+            if ((uint)term >= (uint)termCount)
             {
-                if ((uint)term >= (uint)termCount)
-                {
-                    throw new FormatException($"A centroid references vocabulary index {term}, outside 0..{termCount - 1}.");
-                }
-
-                postingStarts[term + 1]++;
+                throw new FormatException($"A centroid references vocabulary index {term}, outside 0..{termCount - 1}.");
             }
+
+            postingStarts[term + 1]++;
         }
 
-        reader.SkipString();
-        reader.ExpectEnd();
         for (int term = 0; term < termCount; term++)
         {
             postingStarts[term + 1] += postingStarts[term];
@@ -102,22 +109,22 @@ internal sealed class ClassifierDatabase
 
         // Invert to per-term postings; walking centroids in order keeps each term's postings in centroid order.
         int[] cursor = postingStarts[..termCount];
-        int[] postingCentroids = new int[postingStarts[termCount]];
-        double[] postingValues = new double[postingStarts[termCount]];
-        for (int centroid = 0; centroid < centroidNames.Length; centroid++)
+        int[] postingCentroids = new int[entryTerms.Count];
+        double[] postingValues = new double[entryTerms.Count];
+        for (int centroid = 0, entry = 0; centroid < centroidEnds.Count; centroid++)
         {
-            for (int entry = 0; entry < centroidTerms[centroid].Length; entry++)
+            for (; entry < centroidEnds[centroid]; entry++)
             {
-                int position = cursor[centroidTerms[centroid][entry]]++;
+                int position = cursor[entryTerms[entry]]++;
                 postingCentroids[position] = centroid;
-                postingValues[position] = centroidValues[centroid][entry];
+                postingValues[position] = entryValues[entry];
             }
         }
 
         return new ClassifierDatabase(
             new VocabularyTable(vocabulary),
-            icf,
-            centroidNames,
+            [.. icf],
+            [.. centroidNames],
             postingStarts,
             postingCentroids,
             postingValues);

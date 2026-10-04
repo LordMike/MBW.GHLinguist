@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
         version.abi_major != GHL_ABI_VERSION_MAJOR || version.abi_minor != GHL_ABI_VERSION_MINOR ||
         !view_equals(version.ruby_version, "4.0.6") || !view_equals(version.linguist_version, "9.6.0") ||
         !view_equals(version.linguist_revision, "196b2a14418cab005065c72c9759370934c184bc") ||
-        !view_equals(version.classifier_sha256, "67206e2ddb5c850d15405c56eb09453ebf2f34ef8c1e2910c29cafc17bf2ab4c")) {
+        !view_equals(version.classifier_sha256, "01fc90cd4339dad1fb0797c9eeb1abac82e288f2d4af71383e96c725e701e2af")) {
         std::fprintf(stderr, "Runtime version projection did not match the locked release inputs.\n");
         ghl_runtime_release(runtime);
         return 1;

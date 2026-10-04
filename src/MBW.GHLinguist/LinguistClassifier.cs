@@ -1,3 +1,4 @@
+using System.Text;
 using MBW.GHLinguist.Classification;
 
 namespace MBW.GHLinguist;
@@ -17,8 +18,8 @@ namespace MBW.GHLinguist;
 /// </example>
 public sealed class LinguistClassifier
 {
-    private const string LanguagesPath = "ghlinguist/languages.bin";
-    private const string ClassifierPath = "lib/linguist/samples.bin";
+    private const string LanguagesPath = "ghlinguist/languages.tsv";
+    private const string ClassifierPath = "lib/linguist/samples.tsv";
     private static readonly Dictionary<string, LinguistClassifier> Loaded = new(StringComparer.Ordinal);
 
     private readonly LinguistContentClassifier _classifier;
@@ -110,44 +111,68 @@ public sealed class LinguistClassifier
         }
     }
 
-    /// <summary>Reads <c>languages.bin</c>, which eng/linguist/generate-samples.rb writes from <c>Linguist::Language.all</c>.</summary>
+    /// <summary>Reads <c>languages.tsv</c>, which eng/linguist/generate-samples.rb writes from <c>Linguist::Language.all</c>.</summary>
     /// <remarks>
-    /// After the header: u32 count, then per language: u64 id, u64 group id (<c>ulong.MaxValue</c> for none), u8 type,
-    /// u8 flags (1 popular, 2 wrap), strings name, fs_name?, color?, tm_scope, ace_mode?, codemirror_mode?,
-    /// codemirror_mime_type?, then string lists aliases, extensions, interpreters and filenames.
+    /// Each language is a line <c>language id group-id? type? popular wrap name fs_name? color? tm_scope ace_mode?
+    /// codemirror_mode? codemirror_mime_type?</c> (<c>?</c> fields are empty for nil), followed by the lines
+    /// <c>aliases</c>, <c>extensions</c>, <c>interpreters</c> and <c>filenames</c>, each listing its values.
     /// </remarks>
-    internal static IReadOnlyList<LinguistLanguage> ReadLanguages(ReadOnlySpan<byte> bytes)
+    internal static IReadOnlyList<LinguistLanguage> ReadLanguages(ReadOnlySpan<byte> text)
     {
-        BinaryCursor reader = new(bytes, "GHLL"u8, "language registry");
-        LinguistLanguage[] languages = new LinguistLanguage[reader.ReadCount()];
-        for (int index = 0; index < languages.Length; index++)
+        TabSeparatedReader reader = new(text, "language registry");
+        List<LinguistLanguage> languages = [];
+        while (reader.NextLine(out ReadOnlySpan<byte> kind))
         {
-            ulong id = reader.ReadUInt64();
-            ulong groupId = reader.ReadUInt64();
-            LanguageType type = (LanguageType)reader.ReadByte();
-            byte flags = reader.ReadByte();
-            languages[index] = new LinguistLanguage
+            if (!kind.SequenceEqual("language"u8))
+            {
+                throw reader.Error("expected a language line");
+            }
+
+            ulong id = reader.OptionalUInt64() ?? throw reader.Error("the language ID is empty");
+            ulong? groupId = reader.OptionalUInt64();
+            LanguageType type = reader.OptionalString() switch
+            {
+                null => LanguageType.Unknown,
+                "data" => LanguageType.Data,
+                "markup" => LanguageType.Markup,
+                "programming" => LanguageType.Programming,
+                "prose" => LanguageType.Prose,
+                _ => throw reader.Error("unknown language type"),
+            };
+            bool popular = reader.Int32() != 0;
+            bool wrap = reader.Int32() != 0;
+            LinguistLanguage language = new()
             {
                 Id = id,
-                GroupLanguageId = groupId == ulong.MaxValue ? null : groupId,
-                Type = type is >= LanguageType.Unknown and <= LanguageType.Prose ? type : throw new FormatException($"Language {id} has unknown type {type}."),
-                IsPopular = (flags & 1) != 0,
-                WrapLines = (flags & 2) != 0,
-                Name = reader.ReadString(),
-                FileSystemName = reader.ReadOptionalString(),
-                Color = reader.ReadOptionalString(),
-                TextMateScope = reader.ReadString(),
-                AceMode = reader.ReadOptionalString(),
-                CodeMirrorMode = reader.ReadOptionalString(),
-                CodeMirrorMimeType = reader.ReadOptionalString(),
-                Aliases = reader.ReadStrings(),
-                Extensions = reader.ReadStrings(),
-                Interpreters = reader.ReadStrings(),
-                Filenames = reader.ReadStrings(),
+                GroupLanguageId = groupId,
+                Type = type,
+                IsPopular = popular,
+                WrapLines = wrap,
+                Name = reader.String(),
+                FileSystemName = reader.OptionalString(),
+                Color = reader.OptionalString(),
+                TextMateScope = reader.String(),
+                AceMode = reader.OptionalString(),
+                CodeMirrorMode = reader.OptionalString(),
+                CodeMirrorMimeType = reader.OptionalString(),
+                Aliases = List(ref reader, "aliases"u8),
+                Extensions = List(ref reader, "extensions"u8),
+                Interpreters = List(ref reader, "interpreters"u8),
+                Filenames = List(ref reader, "filenames"u8),
             };
+            languages.Add(language);
         }
 
-        reader.ExpectEnd();
-        return Array.AsReadOnly(languages);
+        return languages.AsReadOnly();
+
+        static string[] List(ref TabSeparatedReader reader, ReadOnlySpan<byte> expectedKind)
+        {
+            if (!reader.NextLine(out ReadOnlySpan<byte> kind) || !kind.SequenceEqual(expectedKind))
+            {
+                throw reader.Error($"expected a {Encoding.ASCII.GetString(expectedKind)} line");
+            }
+
+            return reader.RemainingStrings();
+        }
     }
 }
