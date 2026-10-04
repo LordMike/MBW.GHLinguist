@@ -52,11 +52,12 @@ classifier_samples = [
   "#include <stdio.h>\nint main(void) { printf(\"hi\\n\"); return 0; }\n",
   "<?xml version=\"1.0\"?>\n<root><item key=\"a\">1</item></root>\n",
   "{\n  \"name\": \"example\",\n  \"values\": [1, 2, 3]\n}\n",
-  "zzqqxx"
+  "zzqqxx",
+  ""
 ]
 classifier_languages = Linguist::Language.all.select { |language| Linguist::Samples.cache.fetch("centroids").key?(language.fs_name || language.name) }
 classifier_samples.each do |sample|
-  [nil, classifier_languages.first(40).map(&:language_id).reverse * 2].each do |candidate_ids|
+  [nil, [], classifier_languages.first(40).map(&:language_id).reverse * 2].each do |candidate_ids|
     languages = candidate_ids ? candidate_ids.map { |id| Linguist::Language.find_by_id(id) } : classifier_languages
     expected = Linguist::Classifier.classify(Linguist::Samples.cache, sample, languages.map(&:name).uniq)
       .map { |name, score| [Linguist::Language[name].language_id, score] }
