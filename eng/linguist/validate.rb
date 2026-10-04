@@ -46,23 +46,40 @@ CharlockHolmes::EncodingDetector.detect("plain text")
 analysis = GHLinguist::Bridge.analyze("sample.rb", "sample.rb", "puts :ok\n", 0, 0, 0xff)
 abort "The staged GHLinguist bridge did not identify a Ruby source file" if analysis[0].zero?
 
-# The bridge scores Classify calls with its own inverted index; it must reproduce Linguist's classifier exactly.
+# The bridge scores Classify calls with its own inverted index; it must reproduce Linguist's classifier exactly,
+# including type filtering, candidate order and duplicates, empty candidate lists and inputs without known tokens.
 classifier_samples = [
   "class Example\n  def value = 42\nend\n",
   "#include <stdio.h>\nint main(void) { printf(\"hi\\n\"); return 0; }\n",
   "<?xml version=\"1.0\"?>\n<root><item key=\"a\">1</item></root>\n",
   "{\n  \"name\": \"example\",\n  \"values\": [1, 2, 3]\n}\n",
+  "# Title\n\nSome *prose* with a [link](https://example.com).\n",
   "zzqqxx",
   ""
 ]
-classifier_languages = Linguist::Language.all.select { |language| Linguist::Samples.cache.fetch("centroids").key?(language.fs_name || language.name) }
+centroids = Linguist::Samples.cache.fetch("centroids")
+classifier_languages = Linguist::Language.all.select { |language| centroids.key?(language.fs_name || language.name) }
+type_masks = { data: 1, markup: 2, programming: 4, prose: 8 }
+candidate_lists = [
+  nil,
+  [],
+  classifier_languages.first(40).map(&:language_id).reverse * 2,
+  Linguist::Language.all.map(&:language_id).shuffle(random: Random.new(1))
+]
 classifier_samples.each do |sample|
-  [nil, [], classifier_languages.first(40).map(&:language_id).reverse * 2].each do |candidate_ids|
-    languages = candidate_ids ? candidate_ids.map { |id| Linguist::Language.find_by_id(id) } : classifier_languages
-    expected = Linguist::Classifier.classify(Linguist::Samples.cache, sample, languages.map(&:name).uniq)
-      .map { |name, score| [Linguist::Language[name].language_id, score] }
-    actual = GHLinguist::Bridge.classify(sample, 0, 0x0f, candidate_ids)[1]
-    abort "The bridge classifier diverged from Linguist's classifier" unless actual == expected
+  (0..15).each do |allowed_types|
+    candidate_lists.each do |candidate_ids|
+      languages = candidate_ids ? candidate_ids.map { |id| Linguist::Language.find_by_id(id) } : Linguist::Language.all
+      names = languages.select { |language| (allowed_types & type_masks.fetch(language.type)) != 0 }
+        .select { |language| centroids.key?(language.fs_name || language.name) }.map(&:name).uniq
+      expected = Linguist::Classifier.classify(Linguist::Samples.cache, sample, names)
+        .map { |name, score| [Linguist::Language[name].language_id, score] }
+      actual = GHLinguist::Bridge.classify(sample, 0, allowed_types, candidate_ids)[1]
+      next if actual == expected
+
+      abort "The bridge classifier diverged from Linguist's classifier (types #{allowed_types}, " \
+        "#{candidate_ids.nil? ? "all" : candidate_ids.length} candidates, #{sample.bytesize}-byte input)"
+    end
   end
 end
 

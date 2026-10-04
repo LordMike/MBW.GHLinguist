@@ -213,3 +213,7 @@ module GHLinguist
     end
   end
 end
+
+# Build the classifier index while the native worker starts, so the first Classify call does not pay for loading
+# Linguist's samples and indexing them.
+GHLinguist::ClassifierIndex.build

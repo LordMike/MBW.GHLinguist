@@ -112,6 +112,30 @@ public sealed partial class ManagedClassifierTests
         Assert.False(classifier.Score("c"u8, scores));
     }
 
+    // Linguist's own samples score up to 4 ULPs above 1 against their language's centroid.
+    [Theory]
+    [InlineData(1.0000000000000002)]
+    [InlineData(1.0000000000000004)]
+    [InlineData(1.0000000000000007)]
+    [InlineData(1.0000000000000009)]
+    [InlineData(1 + ClassifierScore.Tolerance)]
+    public void ScoresRoundedJustAboveOneAreClampedToOne(double score) => Assert.Equal(1.0, ClassifierScore.Normalize(score));
+
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(0.5)]
+    [InlineData(double.Epsilon)]
+    public void ScoresWithinRangeAreKept(double score) => Assert.Equal(score, ClassifierScore.Normalize(score));
+
+    [Theory]
+    [InlineData(1.000000000002)]
+    [InlineData(2.0)]
+    [InlineData(0.0)]
+    [InlineData(-0.5)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void InvalidScoresAreRejected(double score) => Assert.Throws<LinguistException>(() => ClassifierScore.Normalize(score));
+
     [Fact]
     public void VocabularyNeverMatchesNonAsciiTokens()
     {

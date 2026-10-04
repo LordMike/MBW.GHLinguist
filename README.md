@@ -364,9 +364,13 @@ ClassificationResults rubyOnly = runtime.Classify(
 included bit for bit. It tokenizes and scores in .NET against the classifier
 database Linguist itself loads (`lib/linguist/samples_data.rb`), so it does not
 take the process-wide Ruby lock and is far cheaper per call. The first call
-parses the database. One difference: Linguist sometimes scores a perfect match
-as `1.0000000000000002`; `Classify` rejects that with a `LinguistException`,
-while `ClassifyDotNet` returns the score as computed.
+parses the database.
+
+Scores are similarities between 0 and 1. Linguist's floating-point arithmetic
+can return a score a few units in the last place above 1 (such as
+`1.0000000000000002`) for an input identical to a language's only sample; both
+methods clamp those to `1.0`, and reject anything further out of range with a
+`LinguistException`.
 
 ```csharp
 ClassificationResults results = runtime.ClassifyDotNet(source);

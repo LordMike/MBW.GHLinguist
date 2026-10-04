@@ -83,7 +83,7 @@ internal sealed class LinguistContentClassifier
         ClassificationResult[] results = new ClassificationResult[ranked.Count];
         for (int index = 0; index < results.Length; index++)
         {
-            results[index] = new ClassificationResult { Language = ranked[index].Language, Score = ranked[index].Score };
+            results[index] = new ClassificationResult { Language = ranked[index].Language, Score = ClassifierScore.Normalize(ranked[index].Score) };
         }
 
         return new ClassificationResults { ConsideredBytes = consideredBytes, Results = results };

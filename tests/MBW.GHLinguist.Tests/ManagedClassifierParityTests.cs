@@ -92,23 +92,8 @@ public sealed class ManagedClassifierParityTests
         })));
     }
 
-    private static void AssertSameClassification(LinguistRuntime runtime, byte[] sample, ClassificationOptions options)
-    {
-        ClassificationResults actual = runtime.ClassifyDotNet(sample, options);
-        ClassificationResults expected;
-        try
-        {
-            expected = runtime.Classify(sample, options);
-        }
-        catch (LinguistException) when (actual.Results.Count > 0 && actual.Results[0].Score > 1.0)
-        {
-            // Linguist scores a perfect match as 1.0000000000000002 at times, which Classify rejects; ClassifyDotNet
-            // returns it as computed.
-            return;
-        }
-
-        AssertSame(expected, actual);
-    }
+    private static void AssertSameClassification(LinguistRuntime runtime, byte[] sample, ClassificationOptions options) =>
+        AssertSame(runtime.Classify(sample, options), runtime.ClassifyDotNet(sample, options));
 
     private static void AssertSame(ClassificationResults expected, ClassificationResults actual)
     {

@@ -264,12 +264,7 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
                 ulong languageId = 0;
                 double score = 0;
                 ThrowForStatus(NativeMethods.ClassificationResult(handle, (nuint)index, &languageId, &score), 0);
-                if (!double.IsFinite(score) || score <= 0 || score > 1)
-                {
-                    throw new LinguistException($"The native runtime returned invalid classifier score {score}.");
-                }
-
-                results[index] = new ClassificationResult { Language = GetLanguage(languageId), Score = score };
+                results[index] = new ClassificationResult { Language = GetLanguage(languageId), Score = ClassifierScore.Normalize(score) };
             }
 
             return new ClassificationResults

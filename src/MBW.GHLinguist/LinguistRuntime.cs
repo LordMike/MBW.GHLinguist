@@ -324,8 +324,7 @@ public sealed class LinguistRuntime : ILinguistRuntime, IDisposable
     /// database Linguist loads (<c>lib/linguist/samples_data.rb</c>), performing every floating-point operation in
     /// Linguist's order, so rankings and scores match <see cref="Classify" /> bit for bit. It does not enter Ruby:
     /// calls take a fraction of a millisecond and concurrent calls run in parallel. The first call parses the
-    /// classifier database. Unlike <see cref="Classify" />, a score that rounds to just above 1 for a perfect match
-    /// is returned as Linguist computes it rather than rejected.
+    /// classifier database.
     /// </remarks>
     /// <param name="data">Source bytes. At most the configured leading 50 KiB are considered.</param>
     /// <param name="options">Optional classifier filters and byte limit; <see langword="null" /> uses Linguist defaults.</param>
