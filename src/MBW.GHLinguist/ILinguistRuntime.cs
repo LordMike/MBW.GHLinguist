@@ -54,4 +54,7 @@ public interface ILinguistRuntime
 
     /// <inheritdoc cref="LinguistRuntime.Classify(ReadOnlySpan{byte}, ClassificationOptions?)" />
     ClassificationResults Classify(ReadOnlySpan<byte> data, ClassificationOptions? options = null);
+
+    /// <inheritdoc cref="LinguistRuntime.ClassifyDotNet(ReadOnlySpan{byte}, ClassificationOptions?)" />
+    ClassificationResults ClassifyDotNet(ReadOnlySpan<byte> data, ClassificationOptions? options = null);
 }

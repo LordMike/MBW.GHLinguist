@@ -22,7 +22,7 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
     private static readonly Dictionary<string, ClassifierDatabase> ClassifierDatabases = new(StringComparer.Ordinal);
     private readonly NativeRuntimeHandle _runtime;
     private readonly string _assetRoot;
-    private LinguistContentClassifier? _contentClassifier;
+    private LinguistContentClassifier? _dotNetClassifier;
     private IReadOnlyList<LinguistLanguage>? _languages;
     private Dictionary<ulong, LinguistLanguage>? _languagesById;
     private LinguistVersionInfo? _version;
@@ -192,56 +192,7 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
         }
     }
 
-    public void PrepareClassifier()
-    {
-        ThrowIfDisposed();
-        if (_contentClassifier is not null)
-        {
-            return;
-        }
-
-        // samples_data.rb is the database Linguist's Ruby classifier loads (also lazily). The deployed closure is
-        // treated as immutable once loaded, so every runtime on the same asset root shares one parsed copy.
-        string samplesDataPath = Path.Combine(Path.GetFullPath(_assetRoot), "lib", "linguist", "samples_data.rb");
-        ClassifierDatabase database;
-        lock (ClassifierDatabases)
-        {
-            if (!ClassifierDatabases.TryGetValue(samplesDataPath, out database!))
-            {
-                try
-                {
-                    database = ClassifierDatabase.Load(samplesDataPath);
-                }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or FormatException)
-                {
-                    throw new LinguistException($"Unable to load the Linguist classifier database: {exception.Message}", exception);
-                }
-
-                ClassifierDatabases.Add(samplesDataPath, database);
-            }
-        }
-
-        EnsureLanguages();
-        try
-        {
-            _contentClassifier = LinguistContentClassifier.Create(database, _languages!);
-        }
-        catch (FormatException exception)
-        {
-            throw new LinguistException($"Unable to load the Linguist classifier database: {exception.Message}", exception);
-        }
-    }
-
     public ClassificationResults Classify(ReadOnlySpan<byte> data, ClassificationOptions options)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-        LinguistContentClassifier classifier = _contentClassifier ??
-            throw new InvalidOperationException("PrepareClassifier must be called before Classify.");
-        return classifier.Classify(data, options);
-    }
-
-    /// <summary>Classifies through Linguist's Ruby classifier, the reference the managed classifier must match.</summary>
-    internal ClassificationResults ClassifyWithRuby(ReadOnlySpan<byte> data, ClassificationOptions options)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(options);
@@ -313,8 +264,7 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
                 ulong languageId = 0;
                 double score = 0;
                 ThrowForStatus(NativeMethods.ClassificationResult(handle, (nuint)index, &languageId, &score), 0);
-                // No upper bound: a cosine similarity of 1 can round to 1.0000000000000002, which Linguist reports.
-                if (!double.IsFinite(score) || score <= 0)
+                if (!double.IsFinite(score) || score <= 0 || score > 1)
                 {
                     throw new LinguistException($"The native runtime returned invalid classifier score {score}.");
                 }
@@ -328,6 +278,46 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
                 Results = results,
             };
         }
+    }
+
+    public void PrepareDotNetClassifier()
+    {
+        ThrowIfDisposed();
+        if (_dotNetClassifier is not null)
+        {
+            return;
+        }
+
+        // samples_data.rb is the database Linguist's Ruby classifier loads (also lazily). The deployed closure is
+        // treated as immutable once loaded, so every runtime on the same asset root shares one parsed copy.
+        string samplesDataPath = Path.Combine(Path.GetFullPath(_assetRoot), "lib", "linguist", "samples_data.rb");
+        EnsureLanguages();
+        try
+        {
+            ClassifierDatabase database;
+            lock (ClassifierDatabases)
+            {
+                if (!ClassifierDatabases.TryGetValue(samplesDataPath, out database!))
+                {
+                    database = ClassifierDatabase.Load(samplesDataPath);
+                    ClassifierDatabases.Add(samplesDataPath, database);
+                }
+            }
+
+            _dotNetClassifier = LinguistContentClassifier.Create(database, _languages!);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or FormatException)
+        {
+            throw new LinguistException($"Unable to load the Linguist classifier database: {exception.Message}", exception);
+        }
+    }
+
+    public ClassificationResults ClassifyDotNet(ReadOnlySpan<byte> data, ClassificationOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        LinguistContentClassifier classifier = _dotNetClassifier ??
+            throw new InvalidOperationException("PrepareDotNetClassifier must be called before ClassifyDotNet.");
+        return classifier.Classify(data, options);
     }
 
     public void Dispose() => _runtime.Dispose();

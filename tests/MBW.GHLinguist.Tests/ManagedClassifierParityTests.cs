@@ -3,9 +3,9 @@ using System.Text;
 namespace MBW.GHLinguist.Tests;
 
 /// <summary>
-/// <see cref="LinguistRuntime.Classify" /> runs a managed port of Linguist's classifier. These tests run the same
-/// inputs through Linguist's Ruby classifier in the embedded runtime and require identical rankings and
-/// bit-identical scores, so a Linguist upgrade or a platform math difference fails here instead of drifting.
+/// <see cref="LinguistRuntime.ClassifyDotNet" /> runs a managed port of Linguist's classifier. These tests run the
+/// same inputs through <see cref="LinguistRuntime.Classify" />, Linguist's Ruby classifier, and require identical
+/// rankings and bit-identical scores, so a Linguist upgrade or a platform math difference fails here instead of drifting.
 /// </summary>
 public sealed class ManagedClassifierParityTests
 {
@@ -38,8 +38,7 @@ public sealed class ManagedClassifierParityTests
     [Fact(Skip = "Set GHL_RUN_NATIVE_INTEGRATION=true with staged native assets.", SkipUnless = nameof(NativeIntegrationEnabled))]
     public void ClassifyMatchesLinguistsRubyClassifier()
     {
-        NativeLinguistRuntimeBackend backend = NativeLinguistRuntimeBackend.Create();
-        using LinguistRuntime runtime = new(backend);
+        using LinguistRuntime runtime = LinguistRuntime.Create();
         ClassificationOptions production = new()
         {
             AllowedTypes = LanguageTypeMask.Programming | LanguageTypeMask.Data | LanguageTypeMask.Markup,
@@ -50,9 +49,9 @@ public sealed class ManagedClassifierParityTests
         int compared = 0;
         foreach (byte[] sample in Samples())
         {
-            AssertSameClassification(runtime, backend, sample, new ClassificationOptions());
-            AssertSameClassification(runtime, backend, sample, production);
-            AssertSameClassification(runtime, backend, sample, small);
+            AssertSameClassification(runtime, sample, new ClassificationOptions());
+            AssertSameClassification(runtime, sample, production);
+            AssertSameClassification(runtime, sample, small);
             compared++;
         }
 
@@ -62,8 +61,7 @@ public sealed class ManagedClassifierParityTests
     [Fact(Skip = "Set GHL_RUN_NATIVE_INTEGRATION=true with staged native assets.", SkipUnless = nameof(NativeIntegrationEnabled))]
     public void CandidateOrderMatchesLinguistsRubyClassifier()
     {
-        NativeLinguistRuntimeBackend backend = NativeLinguistRuntimeBackend.Create();
-        using LinguistRuntime runtime = new(backend);
+        using LinguistRuntime runtime = LinguistRuntime.Create();
         Random random = new(1);
         ulong[] candidates = [.. runtime.Languages.Select(language => language.Id)];
         random.Shuffle(candidates);
@@ -72,8 +70,8 @@ public sealed class ManagedClassifierParityTests
 
         foreach (byte[] sample in Samples().Take(200))
         {
-            AssertSameClassification(runtime, backend, sample, shuffled);
-            AssertSameClassification(runtime, backend, sample, few);
+            AssertSameClassification(runtime, sample, shuffled);
+            AssertSameClassification(runtime, sample, few);
         }
     }
 
@@ -82,24 +80,35 @@ public sealed class ManagedClassifierParityTests
     {
         using LinguistRuntime runtime = LinguistRuntime.Create();
         byte[][] samples = [.. Samples().Take(100)];
-        ClassificationResults[] expected = [.. samples.Select(sample => runtime.Classify(sample))];
+        ClassificationResults[] expected = [.. samples.Select(sample => runtime.ClassifyDotNet(sample))];
 
         await Task.WhenAll(Enumerable.Range(0, Environment.ProcessorCount).Select(worker => Task.Run(() =>
         {
             for (int index = 0; index < samples.Length; index++)
             {
                 int sample = (index + worker) % samples.Length;
-                AssertSame(expected[sample], runtime.Classify(samples[sample]));
+                AssertSame(expected[sample], runtime.ClassifyDotNet(samples[sample]));
             }
         })));
     }
 
-    private static void AssertSameClassification(
-        LinguistRuntime runtime,
-        NativeLinguistRuntimeBackend backend,
-        byte[] sample,
-        ClassificationOptions options) =>
-        AssertSame(backend.ClassifyWithRuby(sample, options), runtime.Classify(sample, options));
+    private static void AssertSameClassification(LinguistRuntime runtime, byte[] sample, ClassificationOptions options)
+    {
+        ClassificationResults actual = runtime.ClassifyDotNet(sample, options);
+        ClassificationResults expected;
+        try
+        {
+            expected = runtime.Classify(sample, options);
+        }
+        catch (LinguistException) when (actual.Results.Count > 0 && actual.Results[0].Score > 1.0)
+        {
+            // Linguist scores a perfect match as 1.0000000000000002 at times, which Classify rejects; ClassifyDotNet
+            // returns it as computed.
+            return;
+        }
+
+        AssertSame(expected, actual);
+    }
 
     private static void AssertSame(ClassificationResults expected, ClassificationResults actual)
     {

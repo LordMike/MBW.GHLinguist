@@ -5,9 +5,8 @@ namespace MBW.GHLinguist;
 /// <summary>Owns a native GitHub Linguist runtime and exposes blob analysis and language-registry APIs.</summary>
 /// <remarks>
 /// Calls are synchronous and thread-safe. Ruby work is serialized process-wide, and runtime instances reuse the
-/// same initialized native runtime. <see cref="Classify" /> uses no Ruby, so concurrent classifications run in
-/// parallel. Disposal waits for an active Ruby call to finish; a classification already past its argument checks
-/// completes on managed data. Dispose the runtime when it is no longer needed. Results returned before disposal are immutable managed copies and remain usable afterward.
+/// same initialized native runtime. <see cref="ClassifyDotNet" /> uses no Ruby, so its calls run in parallel.
+/// Disposal waits for an active call to finish. Dispose the runtime when it is no longer needed. Results returned before disposal are immutable managed copies and remain usable afterward.
 /// </remarks>
 /// <example>
 /// <code>
@@ -291,9 +290,7 @@ public sealed class LinguistRuntime : ILinguistRuntime, IDisposable
     /// <summary>Classifies source content directly without path-based detection strategies.</summary>
     /// <remarks>
     /// Use this method for classifier-only ranking. For normal Linguist file detection, including blob checks and
-    /// ordered strategies, use <see cref="Analyze" /> instead. Classification runs a managed port of Linguist's
-    /// tokenizer and classifier over Linguist's own classifier database, with bit-identical scores and ranking, and
-    /// concurrent calls run in parallel rather than queueing for Ruby.
+    /// ordered strategies, use <see cref="Analyze" /> instead.
     /// </remarks>
     /// <param name="data">Source bytes. At most the configured leading 50 KiB are considered.</param>
     /// <param name="options">Optional classifier filters and byte limit; <see langword="null" /> uses Linguist defaults.</param>
@@ -308,34 +305,55 @@ public sealed class LinguistRuntime : ILinguistRuntime, IDisposable
         ReadOnlySpan<byte> data,
         ClassificationOptions? options = null)
     {
+        lock (_gate)
+        {
+            ILinguistRuntimeBackend backend = GetBackend();
+            ClassificationOptions effectiveOptions = options ?? new ClassificationOptions();
+            if (!ValidateClassification(backend, effectiveOptions))
+            {
+                return new ClassificationResults();
+            }
+
+            return backend.Classify(data, effectiveOptions);
+        }
+    }
+
+    /// <summary>Classifies source content like <see cref="Classify" />, using a .NET port of Linguist's classifier instead of Ruby.</summary>
+    /// <remarks>
+    /// The port tokenizes with a transliteration of Linguist's flex tokenizer and scores against the same classifier
+    /// database Linguist loads (<c>lib/linguist/samples_data.rb</c>), performing every floating-point operation in
+    /// Linguist's order, so rankings and scores match <see cref="Classify" /> bit for bit. It does not enter Ruby:
+    /// calls take a fraction of a millisecond and concurrent calls run in parallel. The first call parses the
+    /// classifier database. Unlike <see cref="Classify" />, a score that rounds to just above 1 for a perfect match
+    /// is returned as Linguist computes it rather than rejected.
+    /// </remarks>
+    /// <param name="data">Source bytes. At most the configured leading 50 KiB are considered.</param>
+    /// <param name="options">Optional classifier filters and byte limit; <see langword="null" /> uses Linguist defaults.</param>
+    /// <returns>Matches ordered by descending similarity, identical to <see cref="Classify" />.</returns>
+    /// <exception cref="ObjectDisposedException">The runtime has been disposed.</exception>
+    /// <exception cref="ArgumentException">A candidate language ID is not present in this runtime's registry.</exception>
+    /// <exception cref="LinguistException">The classifier database cannot be loaded.</exception>
+    /// <example><code>ClassificationResults results = runtime.ClassifyDotNet("class Example {}"u8);</code></example>
+    /// <seealso cref="Classify(ReadOnlySpan{byte}, ClassificationOptions?)" />
+    public ClassificationResults ClassifyDotNet(
+        ReadOnlySpan<byte> data,
+        ClassificationOptions? options = null)
+    {
         ILinguistRuntimeBackend backend;
         ClassificationOptions effectiveOptions = options ?? new ClassificationOptions();
         lock (_gate)
         {
             backend = GetBackend();
-            if (effectiveOptions.CandidateLanguageIds is { Count: 0 })
+            if (!ValidateClassification(backend, effectiveOptions))
             {
                 return new ClassificationResults();
             }
 
-            if (effectiveOptions.CandidateLanguageIds is { } candidateLanguageIds)
-            {
-                foreach (ulong languageId in candidateLanguageIds)
-                {
-                    if (backend.FindById(languageId) is null)
-                    {
-                        throw new ArgumentException(
-                            $"Candidate language ID {languageId} does not exist in the loaded Linguist registry.",
-                            nameof(ClassificationOptions.CandidateLanguageIds));
-                    }
-                }
-            }
-
-            backend.PrepareClassifier();
+            backend.PrepareDotNetClassifier();
         }
 
-        // Scoring is managed and reads only immutable tables, so concurrent calls run in parallel.
-        return backend.Classify(data, effectiveOptions);
+        // Scoring reads only immutable managed tables, so it runs outside the gate and in parallel.
+        return backend.ClassifyDotNet(data, effectiveOptions);
     }
 
     /// <summary>Releases this runtime's native handle.</summary>
@@ -353,6 +371,30 @@ public sealed class LinguistRuntime : ILinguistRuntime, IDisposable
             _backend = null;
             backend?.Dispose();
         }
+    }
+
+    // Returns false when an empty candidate list means there is nothing to classify.
+    private static bool ValidateClassification(ILinguistRuntimeBackend backend, ClassificationOptions options)
+    {
+        if (options.CandidateLanguageIds is { Count: 0 })
+        {
+            return false;
+        }
+
+        if (options.CandidateLanguageIds is { } candidateLanguageIds)
+        {
+            foreach (ulong languageId in candidateLanguageIds)
+            {
+                if (backend.FindById(languageId) is null)
+                {
+                    throw new ArgumentException(
+                        $"Candidate language ID {languageId} does not exist in the loaded Linguist registry.",
+                        nameof(ClassificationOptions.CandidateLanguageIds));
+                }
+            }
+        }
+
+        return true;
     }
 
     private ILinguistRuntimeBackend GetBackend() =>
@@ -379,9 +421,11 @@ internal interface ILinguistRuntimeBackend : IDisposable
 
     BlobAnalysis Analyze(ReadOnlySpan<byte> data, BlobInput input, BlobAnalysisOptions options);
 
-    /// <summary>Loads what <see cref="Classify" /> needs; called under the runtime gate before each classification.</summary>
-    void PrepareClassifier();
-
-    /// <summary>Classifies without the runtime gate, after <see cref="PrepareClassifier" />; must be thread-safe.</summary>
     ClassificationResults Classify(ReadOnlySpan<byte> data, ClassificationOptions options);
+
+    /// <summary>Loads what <see cref="ClassifyDotNet" /> needs; called under the runtime gate before each call.</summary>
+    void PrepareDotNetClassifier();
+
+    /// <summary>Classifies without the runtime gate, after <see cref="PrepareDotNetClassifier" />; must be thread-safe.</summary>
+    ClassificationResults ClassifyDotNet(ReadOnlySpan<byte> data, ClassificationOptions options);
 }
