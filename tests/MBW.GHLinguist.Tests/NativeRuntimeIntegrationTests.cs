@@ -214,6 +214,17 @@ public sealed class NativeRuntimeIntegrationTests
                 Assert.Equal(0.15510731503460715, result.Score, 12);
             });
 
+        // The native classifier must reproduce Linguist::Classifier.classify bit for bit; these values come from it.
+        ClassificationResults unrestricted = runtime.Classify(classifierSource);
+        Assert.Equal(708, unrestricted.Results.Count);
+        Assert.Equal<(ulong, double)>(
+            [(253, 0.36033627727818324), (326, 0.35462628853032), (899227493, 0.27732965590156344)],
+            unrestricted.Results.Take(3).Select(result => (result.Language.Id, result.Score)));
+
+        (ulong, double)[][] concurrentClassifications = await Task.WhenAll(Enumerable.Range(0, 16)
+            .Select(_ => Task.Run(() => runtime.Classify(classifierSource).Results.Select(result => (result.Language.Id, result.Score)).ToArray())));
+        Assert.All(concurrentClassifications, results => Assert.Equal(unrestricted.Results.Select(result => (result.Language.Id, result.Score)), results));
+
         LinguistLanguage javascript = Assert.IsType<LinguistLanguage>(runtime.FindByName("JavaScript"));
         LinguistLanguage json = Assert.IsType<LinguistLanguage>(runtime.FindByName("JSON"));
         LinguistLanguage yaml = Assert.IsType<LinguistLanguage>(runtime.FindByName("YAML"));

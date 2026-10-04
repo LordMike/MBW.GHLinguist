@@ -26,10 +26,9 @@ ruby benchmarks\linguist_benchmark.rb --linguist-root <linguist-root> --rounds 9
 ```
 
 The result records Ruby/platform metadata, SHA-256 hashes of the bridge and classifier, medians, min/max
-spread, allocation counts, GC activity, and a deterministic equivalence digest. `--candidate-ids` accepts a
-comma-separated language-ID cache to test candidate-filtered classifier calls without changing registry order.
+spread, allocation counts, GC activity, and a deterministic equivalence digest.
 `--warmup`, `--rounds`, and `--iterations` control sampling. Startup is measured by a child process before the
-in-process tests. The normal suite covers unrestricted and filtered classification, normal/generated JS/generated
+in-process tests. The normal suite covers normal/generated JS/generated
 CSS analysis, line-count and trace toggles, tiny and large blobs, and registry lookup.
 
 External corpus discovery is opt-in. It inspects extensionless ZIP/NuGet-like files without modifying the source:

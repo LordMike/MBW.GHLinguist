@@ -55,13 +55,6 @@ module GHLinguist
       [8, 1 << 7, Linguist::Classifier]
     ].freeze
 
-    TYPE_MASKS = {
-      data: 1 << 0,
-      markup: 1 << 1,
-      programming: 1 << 2,
-      prose: 1 << 3
-    }.freeze
-
     FLAG_METHODS = [
       [1 << 0, :likely_binary?],
       [1 << 1, :binary?],
@@ -127,23 +120,6 @@ module GHLinguist
         include_lines ? blob.sloc : 0,
         trace
       ]
-    end
-
-    def classify(data, maximum_bytes, allowed_types, candidate_ids)
-      considered = [data.bytesize, maximum_bytes.zero? ? 50 * 1024 : maximum_bytes].min
-      prefix = data.byteslice(0, considered)
-      languages = candidate_ids&.map { |id| Linguist::Language.find_by_id(id) }
-      raise ArgumentError, "candidate language ID does not exist" if languages&.any?(&:nil?)
-
-      languages ||= Linguist::Language.all
-      languages = languages.select { |language| (allowed_types & TYPE_MASKS.fetch(language.type)) != 0 }
-      centroids = Linguist::Samples.cache.fetch("centroids")
-      names = languages.filter_map do |language|
-        key = language.fs_name || language.name
-        language.name if centroids.key?(key)
-      end
-      results = Linguist::Classifier.classify(Linguist::Samples.cache, prefix, names)
-      [considered, results.map { |name, score| [Linguist::Language[name].language_id, score] }]
     end
   end
 end

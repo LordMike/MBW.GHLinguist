@@ -16,7 +16,6 @@ OptionParser.new do |parser|
   parser.on("--bridge PATH", "Bridge source to measure; runtime-root still supplies its Ruby and Linguist assets") { |v| options[:bridge] = v }
   parser.on("--linguist-root PATH", "Linguist checkout or lib directory") { |v| options[:linguist_root] = v }
   parser.on("--fixture-root PATH", "Locally extracted corpus fixtures (opt-in)") { |v| options[:fixture_root] = v }
-  parser.on("--candidate-ids IDS", "Comma-separated cached language IDs") { |v| options[:candidate_ids] = v.split(",").map(&:to_i) }
   parser.on("--warmup N", Integer) { |v| options[:warmup] = v }
   parser.on("--rounds N", Integer) { |v| options[:rounds] = v }
   parser.on("--iterations N", Integer) { |v| options[:iterations] = v }
@@ -87,13 +86,9 @@ def measure(name, warmup, rounds, iterations)
   { "name" => name, "median_ns_per_call" => ordered[ordered.length / 2], "min_ns_per_call" => ordered.first, "max_ns_per_call" => ordered.last, "spread_percent" => ((ordered.last - ordered.first) * 100 / ordered[ordered.length / 2]).round(2), "median_allocated_objects_per_call" => samples.map { |s| s["allocated_objects_per_call"] }.sort[samples.length / 2], "gc_runs" => samples.sum { |s| s["gc_runs"] }, "equivalence_digest" => Digest::SHA256.hexdigest(samples.map { |s| s["digest"] }.join(",")) }
 end
 
-all_types = GHLinguist::Bridge::TYPE_MASKS.values.sum
 data = fixtures(options[:fixture_root])
 normal = data.fetch("normal.cs")
-candidate_ids = options[:candidate_ids] || [GHLinguist::Bridge.analyze("a.cs", "a.cs", normal, 0, 0, 0xff).first]
 operations = [
-  ["classify.unrestricted", -> { GHLinguist::Bridge.classify(normal, 0, all_types, nil) }],
-  ["classify.filtered", -> { GHLinguist::Bridge.classify(normal, 16 * 1024, all_types, candidate_ids) }],
   ["analyze.normal", -> { GHLinguist::Bridge.analyze("src/Example.cs", "Example.cs", normal, 0, 0, 0xff) }],
   ["analyze.generated_js", -> { GHLinguist::Bridge.analyze("dist/app.min.js", "app.min.js", data.fetch("generated.js"), 0, 0, 0xff) }],
   ["analyze.generated_css", -> { GHLinguist::Bridge.analyze("dist/site.min.css", "site.min.css", data.fetch("generated.css"), 0, 0, 0xff) }],
@@ -106,7 +101,7 @@ operations = [
 operations.concat(data.filter { |name, _| name.start_with?("corpus/") }.map { |name, bytes| ["analyze.#{name}", -> { GHLinguist::Bridge.analyze(name, File.basename(name), bytes, 0, 0, 0xff) }] })
 
 startup_load_path = root && File.join(root, "lib")
-startup_code = "$LOAD_PATH.unshift(#{startup_load_path.inspect}) if #{(!startup_load_path.nil?).inspect}; require #{bridge.inspect}; GHLinguist::Bridge.classify('class X {}'.b, 0, 15, nil)"
+startup_code = "$LOAD_PATH.unshift(#{startup_load_path.inspect}) if #{(!startup_load_path.nil?).inspect}; require #{bridge.inspect}; GHLinguist::Bridge.analyze('x.cs', 'x.cs', 'class X {}'.b, 0, 0, 0xff)"
 startup = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 _, status = Open3.capture2e(RbConfig.ruby, "-e", startup_code)
 abort "startup child failed" unless status.success?

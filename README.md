@@ -378,8 +378,10 @@ inspect `ClassificationResults.ConsideredBytes` when input truncation matters.
 - Runtime creation is synchronous and loads the embedded CRuby and Linguist
   environment. Create it during application startup when possible.
 - A runtime is thread-safe, but calls through one instance are mutually
-  exclusive, and all runtime instances ultimately share one process-wide Ruby
-  worker. Concurrent work queues rather than running Ruby in parallel.
+  exclusive. `Analyze` and the other Ruby-backed calls of all runtime instances
+  share one process-wide Ruby worker, so concurrent work queues rather than
+  running Ruby in parallel. `Classify` runs natively on the calling thread
+  without CRuby, so separate runtime instances classify in parallel.
 - There is no asynchronous or cancellation API. A caller and `Dispose` wait for
   the active native operation to finish.
 - `Dispose` waits for an active call and for the native handle release to finish.
@@ -498,9 +500,12 @@ For hostile or untrusted workloads, enforce hard per-blob and total in-flight
 byte limits and consider a separate worker process that the application can
 terminate.
 
-Because all Ruby work is serialized, adding concurrent callers increases queue
-depth rather than Linguist throughput. If this becomes a bottleneck, scale with
-separate processes, not additional `LinguistRuntime` instances in one process.
+Because all Ruby work is serialized, adding concurrent `Analyze` callers
+increases queue depth rather than Linguist throughput. If this becomes a
+bottleneck, scale with separate processes, not additional `LinguistRuntime`
+instances in one process. `Classify` is the exception: it reproduces
+Linguist's classifier natively, with identical scores and ranking, and scales
+with one runtime instance per concurrent caller.
 Thread-safe means serialized, not parallel, bounded, fair, or guaranteed to
 finish within a particular time. Preliminary synthetic Ruby-only benchmark results
 are documented in [benchmarks/README.md](benchmarks/README.md); measure startup,

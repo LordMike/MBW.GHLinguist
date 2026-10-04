@@ -1,4 +1,5 @@
 #include "ghlinguist.h"
+#include "classifier.h"
 
 #include <condition_variable>
 #include <algorithm>
@@ -67,6 +68,7 @@ struct ghl_runtime {
     std::string linguist_version;
     std::shared_ptr<const LanguageRegistry> languages;
     bool bridge_loaded = false;
+    std::shared_ptr<const ClassifierModel> classifier;
 };
 struct NativeStrategyTrace {
     ghl_strategy strategy = GHL_STRATEGY_NONE;
@@ -103,9 +105,6 @@ namespace {
 constexpr uint32_t kRuntimeMagic = 0x47484C31u;
 constexpr uint32_t kDefaultClassifyMaximumBytes = 50 * 1024;
 constexpr size_t kMaxClassifyCandidateCount = 4096;
-constexpr size_t kMaxQueuedClassifications = 16;
-constexpr size_t kMaxQueuedClassificationBytes = kMaxQueuedClassifications *
-    (kDefaultClassifyMaximumBytes + kMaxClassifyCandidateCount * sizeof(uint64_t));
 #if defined(GHL_WRAPPER_REVISION)
 constexpr char kWrapperVersion[] = GHL_WRAPPER_REVISION;
 #else
@@ -280,7 +279,7 @@ struct WorkerResult {
     std::shared_ptr<const LanguageRegistry> languages;
     bool bridge_loaded = false;
     std::shared_ptr<ghl_analysis> analysis;
-    std::shared_ptr<ghl_classification> classification;
+    std::shared_ptr<const ClassifierModel> classifier;
 };
 
 struct AnalysisRequest {
@@ -290,14 +289,6 @@ struct AnalysisRequest {
     std::optional<std::string> path;
     std::optional<std::string> name;
     std::string data;
-};
-
-struct ClassifyRequest {
-    uint32_t maximum_bytes = 0;
-    uint32_t allowed_types = 0;
-    bool has_candidates = false;
-    std::string data;
-    std::vector<uint64_t> candidate_ids;
 };
 
 #if defined(GHL_RUBY_EMBEDDING)
@@ -372,6 +363,7 @@ struct RubyStartupContext {
     std::string ruby_version;
     std::string linguist_version;
     std::shared_ptr<LanguageRegistry> languages;
+    std::shared_ptr<ClassifierModel> classifier;
     bool bridge_loaded = false;
 };
 
@@ -412,6 +404,89 @@ std::shared_ptr<LanguageRegistry> project_languages() {
         registry->languages.push_back(std::move(native));
     }
     return registry;
+}
+
+uint32_t language_type_mask(ghl_language_type type) {
+    switch (type) {
+    case GHL_LANGUAGE_TYPE_DATA: return GHL_LANGUAGE_MASK_DATA;
+    case GHL_LANGUAGE_TYPE_MARKUP: return GHL_LANGUAGE_MASK_MARKUP;
+    case GHL_LANGUAGE_TYPE_PROGRAMMING: return GHL_LANGUAGE_MASK_PROGRAMMING;
+    case GHL_LANGUAGE_TYPE_PROSE: return GHL_LANGUAGE_MASK_PROSE;
+    default: return 0;
+    }
+}
+
+struct CentroidEntry { uint32_t term; uint32_t centroid; double weight; };
+struct ClassifierProjection { ClassifierModel* model; std::vector<CentroidEntry>* entries; uint32_t centroid; };
+
+uint32_t classifier_term(VALUE value, const ClassifierModel& model) {
+    const unsigned long long term = NUM2ULL(value);
+    if (term >= model.icf.size()) rb_raise(rb_eRangeError, "Linguist classifier term index is out of range.");
+    return static_cast<uint32_t>(term);
+}
+
+int project_vocabulary_term(VALUE key, VALUE value, VALUE opaque) {
+    ClassifierModel& model = *reinterpret_cast<ClassifierProjection*>(opaque)->model;
+    if (!RB_TYPE_P(key, T_STRING)) rb_raise(rb_eTypeError, "Linguist classifier vocabulary has a non-string term.");
+    model.vocabulary.emplace(ruby_string(key), classifier_term(value, model));
+    return ST_CONTINUE;
+}
+
+int project_centroid_entry(VALUE key, VALUE value, VALUE opaque) {
+    auto* projection = reinterpret_cast<ClassifierProjection*>(opaque);
+    projection->entries->push_back({classifier_term(key, *projection->model), projection->centroid, NUM2DBL(value)});
+    return ST_CONTINUE;
+}
+
+std::shared_ptr<ClassifierModel> project_classifier(const LanguageRegistry& registry) {
+    rb_require("linguist/samples");
+    const VALUE samples = rb_funcall(rb_path2class("Linguist::Samples"), rb_intern("cache"), 0);
+    const VALUE icf = rb_hash_fetch(samples, rb_str_new_cstr("icf"));
+    const VALUE vocabulary = rb_hash_fetch(samples, rb_str_new_cstr("vocabulary"));
+    const VALUE centroids = rb_hash_fetch(samples, rb_str_new_cstr("centroids"));
+    if (!RB_TYPE_P(icf, T_ARRAY) || !RB_TYPE_P(vocabulary, T_HASH) || !RB_TYPE_P(centroids, T_HASH)) {
+        rb_raise(rb_eTypeError, "Linguist classifier data has an unexpected shape.");
+    }
+
+    auto model = std::make_shared<ClassifierModel>();
+    std::vector<CentroidEntry> entries;
+    ClassifierProjection projection{model.get(), &entries, 0};
+    model->icf.reserve(static_cast<size_t>(RARRAY_LEN(icf)));
+    for (long index = 0; index < RARRAY_LEN(icf); ++index) model->icf.push_back(NUM2DBL(rb_ary_entry(icf, index)));
+    rb_hash_foreach(vocabulary, project_vocabulary_term, reinterpret_cast<VALUE>(&projection));
+
+    std::unordered_map<std::string, uint32_t> centroid_keys;
+    const VALUE keys = rb_funcall(centroids, rb_intern("keys"), 0);
+    for (long index = 0; index < RARRAY_LEN(keys); ++index) {
+        const VALUE key = rb_ary_entry(keys, index);
+        const VALUE centroid = rb_hash_aref(centroids, key);
+        if (!RB_TYPE_P(key, T_STRING) || !RB_TYPE_P(centroid, T_HASH)) rb_raise(rb_eTypeError, "Linguist classifier centroid is invalid.");
+        projection.centroid = static_cast<uint32_t>(index);
+        centroid_keys.emplace(ruby_string(key), projection.centroid);
+        rb_hash_foreach(centroid, project_centroid_entry, reinterpret_cast<VALUE>(&projection));
+    }
+    model->centroid_count = static_cast<uint32_t>(RARRAY_LEN(keys));
+
+    model->posting_starts.assign(model->icf.size() + 1, 0);
+    for (const CentroidEntry& entry : entries) ++model->posting_starts[entry.term + 1];
+    for (size_t term = 0; term < model->icf.size(); ++term) model->posting_starts[term + 1] += model->posting_starts[term];
+    model->posting_centroids.resize(entries.size());
+    model->posting_weights.resize(entries.size());
+    std::vector<uint32_t> next(model->posting_starts.begin(), model->posting_starts.end() - 1);
+    for (const CentroidEntry& entry : entries) {
+        const uint32_t posting = next[entry.term]++;
+        model->posting_centroids[posting] = entry.centroid;
+        model->posting_weights[posting] = entry.weight;
+    }
+
+    // Linguist scores a language by its centroid under fs_name, else name.
+    model->languages.reserve(registry.languages.size());
+    for (const NativeLanguage& language : registry.languages) {
+        const auto centroid = centroid_keys.find(language.fs_name ? *language.fs_name : language.name);
+        model->languages.push_back({language.id, language_type_mask(language.type),
+            centroid == centroid_keys.end() ? ClassifierModel::kNoCentroid : centroid->second});
+    }
+    return model;
 }
 
 void configure_runtime_load_path(RubyStartupContext* context) {
@@ -482,6 +557,7 @@ VALUE load_runtime_assets(VALUE opaque) {
     if (state != 0) rb_jump_tag(state);
     context->linguist_version = ruby_string(linguist_version);
     context->languages = project_languages();
+    context->classifier = project_classifier(*context->languages);
     context->bridge_loaded = true;
     return Qnil;
 }
@@ -549,31 +625,6 @@ VALUE marshal_analysis(VALUE opaque) {
     return Qnil;
 }
 
-struct RubyClassifyContext { const ClassifyRequest* request; std::shared_ptr<ghl_classification>* result; };
-
-VALUE marshal_classification(VALUE opaque) {
-    const auto* context = reinterpret_cast<RubyClassifyContext*>(opaque);
-    const ClassifyRequest& request = *context->request;
-    VALUE candidates = Qnil;
-    if (request.has_candidates) {
-        candidates = rb_ary_new_capa(static_cast<long>(request.candidate_ids.size()));
-        for (uint64_t id : request.candidate_ids) rb_ary_push(candidates, ULL2NUM(id));
-    }
-    const VALUE result = rb_funcall(ruby_bridge(), rb_intern("classify"), 4,
-        rb_str_new(request.data.data(), static_cast<long>(request.data.size())), UINT2NUM(request.maximum_bytes),
-        UINT2NUM(request.allowed_types), candidates);
-    auto classification = std::make_shared<ghl_classification>();
-    classification->considered_bytes = NUM2UINT(required_array_entry(result, 0));
-    const VALUE ruby_results = required_array_entry(result, 1);
-    if (!RB_TYPE_P(ruby_results, T_ARRAY)) rb_raise(rb_eTypeError, "GHLinguist::Bridge returned invalid classification results.");
-    classification->results.reserve(static_cast<size_t>(RARRAY_LEN(ruby_results)));
-    for (long index = 0; index < RARRAY_LEN(ruby_results); ++index) {
-        const VALUE ruby_result = rb_ary_entry(ruby_results, index);
-        classification->results.emplace_back(NUM2ULL(required_array_entry(ruby_result, 0)), NUM2DBL(required_array_entry(ruby_result, 1)));
-    }
-    *context->result = std::move(classification);
-    return Qnil;
-}
 #endif
 
 #if defined(GHL_RUBY_EMBEDDING) && !defined(_WIN32)
@@ -621,32 +672,15 @@ public:
         return invoke([this, request = std::move(request)] { return analyze_on_worker(request); });
     }
 
-    WorkerResult classify(ClassifyRequest request) {
-        const size_t request_bytes = request.data.size() + request.candidate_ids.size() * sizeof(uint64_t);
-        return invoke([this, request = std::move(request)] { return classify_on_worker(request); }, request_bytes, true);
-    }
-
 private:
-    struct QueuedJob {
-        std::function<void()> operation;
-        size_t classification_bytes = 0;
-        bool is_classification = false;
-    };
-
     template <typename F>
-    WorkerResult invoke(F&& operation, size_t classification_bytes = 0, bool is_classification = false) {
+    WorkerResult invoke(F&& operation) {
         auto completion = std::make_shared<std::promise<WorkerResult>>();
         std::future<WorkerResult> result = completion->get_future();
         try {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                if (is_classification && (queued_classifications_ >= kMaxQueuedClassifications ||
-                    classification_bytes > kMaxQueuedClassificationBytes - queued_classification_bytes_)) {
-                    return {GHL_STATUS_NATIVE_FAILURE,
-                        "Too many Classify calls are queued on the process-wide Linguist worker. Reuse one LinguistRuntime "
-                        "or limit concurrent Classify calls.", {}, {}, {}, {}};
-                }
-                jobs_.push({[operation = std::forward<F>(operation), completion]() mutable {
+                jobs_.emplace([operation = std::forward<F>(operation), completion]() mutable {
                     try {
                         completion->set_value(operation());
                     } catch (const std::exception& exception) {
@@ -654,11 +688,7 @@ private:
                     } catch (...) {
                         completion->set_value({GHL_STATUS_NATIVE_FAILURE, "Ruby worker failed unexpectedly.", {}, {}, {}, {}});
                     }
-                }, classification_bytes, is_classification});
-                if (is_classification) {
-                    ++queued_classifications_;
-                    queued_classification_bytes_ += classification_bytes;
-                }
+                });
             }
             wake_.notify_one();
             return result.get();
@@ -719,6 +749,7 @@ private:
                 std::move(details.ruby_class), std::move(details.ruby_backtrace), {}, {}, {}};
         } else {
             initialization_result_ = {GHL_STATUS_OK, {}, {}, {}, std::move(context.ruby_version), std::move(context.linguist_version), std::move(context.languages), context.bridge_loaded};
+            initialization_result_.classifier = std::move(context.classifier);
         }
 #else
         initialization_result_ = {GHL_STATUS_UNSUPPORTED, kUnsupported, {}, {}, {}, {}, {}};
@@ -745,47 +776,22 @@ private:
 #endif
     }
 
-    WorkerResult classify_on_worker(const ClassifyRequest& request) {
-#if defined(GHL_RUBY_EMBEDDING)
-        if (initialization_result_.status != GHL_STATUS_OK) return initialization_result_;
-        if (!initialization_result_.bridge_loaded) return {GHL_STATUS_UNSUPPORTED, "GHLinguist::Bridge is not available.", {}, {}, {}, {}};
-        std::shared_ptr<ghl_classification> classification;
-        RubyClassifyContext context{&request, &classification};
-        int state = 0;
-        rb_protect(marshal_classification, reinterpret_cast<VALUE>(&context), &state);
-        if (state != 0) {
-            RubyErrorDetails details = ruby_error_details();
-            return {GHL_STATUS_RUBY_EXCEPTION, std::move(details.message), std::move(details.ruby_class), std::move(details.ruby_backtrace), {}, {}};
-        }
-        return {GHL_STATUS_OK, {}, {}, {}, {}, {}, {}, false, {}, std::move(classification)};
-#else
-        (void)request;
-        return {GHL_STATUS_UNSUPPORTED, kUnsupported, {}, {}, {}, {}};
-#endif
-    }
-
     void run() {
         for (;;) {
-            QueuedJob job;
+            std::function<void()> job;
             {
                 std::unique_lock<std::mutex> lock(mutex_);
                 wake_.wait(lock, [this] { return !jobs_.empty(); });
                 job = std::move(jobs_.front());
                 jobs_.pop();
-                if (job.is_classification) {
-                    --queued_classifications_;
-                    queued_classification_bytes_ -= job.classification_bytes;
-                }
             }
-            job.operation();
+            job();
         }
     }
 
     std::mutex mutex_;
     std::condition_variable wake_;
-    std::queue<QueuedJob> jobs_;
-    size_t queued_classifications_ = 0;
-    size_t queued_classification_bytes_ = 0;
+    std::queue<std::function<void()>> jobs_;
     std::thread thread_;
     bool initialization_attempted_ = false;
     std::string asset_root_;
@@ -890,7 +896,7 @@ ghl_status GHL_CALL ghl_runtime_create(const ghl_runtime_options* options, ghl_r
             std::move(worker.ruby_class), std::move(worker.ruby_backtrace));
     }
 
-    ghl_runtime* runtime = new (std::nothrow) ghl_runtime{kRuntimeMagic, std::move(worker.ruby_version), std::move(worker.linguist_version), std::move(worker.languages), worker.bridge_loaded};
+    ghl_runtime* runtime = new (std::nothrow) ghl_runtime{kRuntimeMagic, std::move(worker.ruby_version), std::move(worker.linguist_version), std::move(worker.languages), worker.bridge_loaded, std::move(worker.classifier)};
     if (runtime == nullptr) return fail(GHL_STATUS_OUT_OF_MEMORY, "Unable to allocate runtime handle.", out_error);
     *out_runtime = runtime;
     return GHL_STATUS_OK;
@@ -1016,30 +1022,28 @@ ghl_status GHL_CALL ghl_runtime_classify(const ghl_runtime* runtime, ghl_bytes_v
     clear_error(out_error);
     if (out_classification == nullptr || !valid_runtime(runtime) || !valid_bytes(data) || !valid_classify_options(options)) return invalid("classification arguments are invalid or use an incompatible layout.", out_error);
     *out_classification = nullptr;
-    if (!runtime->bridge_loaded) return unsupported(out_error);
+    if (!runtime->bridge_loaded || !runtime->classifier) return unsupported(out_error);
     try {
-        ClassifyRequest request;
-        request.maximum_bytes = options->maximum_bytes;
-        request.allowed_types = options->allowed_types;
-        request.has_candidates = options->candidate_language_ids != nullptr;
+        std::vector<size_t> candidates;
+        const bool has_candidates = options->candidate_language_ids != nullptr;
+        candidates.reserve(options->candidate_language_count);
+        for (size_t i = 0; i < options->candidate_language_count; ++i) {
+            const auto language = runtime->languages->by_id.find(options->candidate_language_ids[i]);
+            if (language == runtime->languages->by_id.end()) return invalid("candidate language ID does not exist.", out_error);
+            candidates.push_back(language->second);
+        }
         const size_t maximum_input_bytes = options->maximum_bytes == 0 ? kDefaultClassifyMaximumBytes : options->maximum_bytes;
-        const size_t copied_input_bytes = std::min(data.length, maximum_input_bytes);
-        if (copied_input_bytes != 0) request.data.assign(reinterpret_cast<const char*>(data.data), copied_input_bytes);
-        if (options->candidate_language_count != 0) {
-            request.candidate_ids.assign(options->candidate_language_ids, options->candidate_language_ids + options->candidate_language_count);
+        const size_t considered_bytes = std::min(data.length, maximum_input_bytes);
+        auto classification = std::make_unique<ghl_classification>();
+        classification->considered_bytes = static_cast<uint32_t>(considered_bytes);
+        if (!has_candidates || !candidates.empty()) {
+            classification->results = classify_content(*runtime->classifier, reinterpret_cast<const char*>(data.data),
+                considered_bytes, has_candidates ? candidates.data() : nullptr, candidates.size(), options->allowed_types);
         }
-        WorkerResult worker = ruby_worker().classify(std::move(request));
-        if (worker.status != GHL_STATUS_OK || !worker.classification) {
-            return fail(worker.status == GHL_STATUS_OK ? GHL_STATUS_NATIVE_FAILURE : worker.status,
-                worker.message.empty() ? "Ruby classification failed." : worker.message, out_error,
-                std::move(worker.ruby_class), std::move(worker.ruby_backtrace));
-        }
-        ghl_classification* classification = new (std::nothrow) ghl_classification(std::move(*worker.classification));
-        if (classification == nullptr) return fail(GHL_STATUS_OUT_OF_MEMORY, "Unable to allocate classification result.", out_error);
-        *out_classification = classification;
+        *out_classification = classification.release();
         return GHL_STATUS_OK;
     } catch (const std::bad_alloc&) {
-        return fail(GHL_STATUS_OUT_OF_MEMORY, "Unable to allocate classification request.", out_error);
+        return fail(GHL_STATUS_OUT_OF_MEMORY, "Unable to allocate classification result.", out_error);
     } catch (const std::exception& exception) {
         return fail(GHL_STATUS_NATIVE_FAILURE, exception.what(), out_error);
     } catch (...) {

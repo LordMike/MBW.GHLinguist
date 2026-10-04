@@ -379,7 +379,7 @@ if ($classifierSha256 -ne $manifest.linguist.classifierSha256) {
 
 $bridgeBuild = Join-Path $buildRoot 'bridge'
 Invoke-Checked cmake '-S' (Join-Path $repoRoot 'src/MBW.GHLinguist.Native') '-B' $bridgeBuild '-G' 'Ninja' `
-  "-DGHL_RUBY_ROOT=$RubyRoot" '-DGHL_BUILD_SMOKE=ON' "-DGHL_SMOKE_ASSET_ROOT=$nativeAssetRoot" `
+  "-DGHL_RUBY_ROOT=$RubyRoot" '-DGHL_BUILD_SMOKE=ON' "-DGHL_SMOKE_ASSET_ROOT=$nativeAssetRoot" "-DGHL_LINGUIST_ROOT=$LinguistRoot" `
   "-DGHL_WRAPPER_REVISION=$wrapperRevision" "-DGHL_LINGUIST_REVISION=$actualLinguistRevision" "-DGHL_CLASSIFIER_SHA256=$classifierSha256"
 Invoke-Checked cmake '--build' $bridgeBuild '--parallel' '2'
 $bridge = Get-ChildItem -LiteralPath $bridgeBuild -Filter 'ghlinguist.dll' -File -Recurse | Select-Object -First 1

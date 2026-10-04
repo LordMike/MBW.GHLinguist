@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(MBW.GHLinguist.Native VERSION 0.1.0 LANGUAGES CXX)
+project(MBW.GHLinguist.Native VERSION 0.1.0 LANGUAGES C CXX)
+
+# The build scripts configure without a build type, which would leave the bridge and classifier unoptimized.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
 
 set(GHL_RUBY_ROOT "" CACHE PATH "Ruby installation prefix used to embed CRuby")
 set(GHL_RUBY_INCLUDE_DIR "" CACHE PATH "Directory containing ruby.h")
@@ -12,7 +17,9 @@ set(GHL_CLASSIFIER_SHA256 "" CACHE STRING "SHA-256 of the generated Linguist cla
 option(GHL_ENABLE_RUBY_EMBEDDING "Build the CRuby embedding runtime" OFF)
 option(GHL_BUILD_SMOKE "Build the native runtime smoke executable" OFF)
 set(GHL_SMOKE_ASSET_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../extern/linguist" CACHE PATH "Full GitHub Linguist asset root used by the runtime smoke test")
+set(GHL_LINGUIST_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../extern/linguist" CACHE PATH "GitHub Linguist source root whose tokenizer the classifier compiles")
 set(GHL_BUNDLED_BRIDGE "${CMAKE_CURRENT_SOURCE_DIR}/ruby/ghlinguist/bridge.rb")
+set(GHL_LINGUIST_TOKENIZER "${GHL_LINGUIST_ROOT}/ext/linguist/lex.linguist_yy.c")
 
 if(NOT EXISTS "${GHL_BUNDLED_BRIDGE}")
     message(FATAL_ERROR "The bundled GHLinguist Ruby bridge is missing: ${GHL_BUNDLED_BRIDGE}")
@@ -26,8 +33,25 @@ if(GHL_ENABLE_RUBY_EMBEDDING AND MSVC)
     message(FATAL_ERROR "RubyInstaller's x64-ucrt headers require its UCRT MinGW toolchain. Configure with a MinGW C++ compiler, not MSVC.")
 endif()
 
+if(NOT EXISTS "${GHL_LINGUIST_TOKENIZER}")
+    message(FATAL_ERROR "The GitHub Linguist tokenizer source is missing: ${GHL_LINGUIST_TOKENIZER}")
+endif()
+
 add_library(ghlinguist SHARED
-    src/ghlinguist.cpp)
+    src/ghlinguist.cpp
+    src/classifier.cpp
+    "${GHL_LINGUIST_TOKENIZER}")
+
+# Linguist's generated scanner includes "ruby.h" only for its token macros; the shim routes them to the classifier.
+# Its own -I outranks the -isystem CRuby headers, and the scanner keeps upstream's code, so its warnings are silenced.
+set_source_files_properties("${GHL_LINGUIST_TOKENIZER}" PROPERTIES
+    INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/tokenizer"
+    COMPILE_OPTIONS "$<IF:$<C_COMPILER_ID:MSVC>,/w,-w>")
+
+# Classifier scores must repeat CRuby's floating-point operations exactly, so multiply-adds are never fused.
+if(NOT MSVC)
+    set_source_files_properties(src/classifier.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
 
 target_compile_features(ghlinguist PRIVATE cxx_std_17)
 target_include_directories(ghlinguist
@@ -106,6 +130,7 @@ if(MSVC)
 else()
     target_compile_options(ghlinguist PRIVATE -Wall -Wextra -Wpedantic)
     set_target_properties(ghlinguist PROPERTIES
+        C_VISIBILITY_PRESET hidden
         CXX_VISIBILITY_PRESET hidden
         VISIBILITY_INLINES_HIDDEN YES)
 endif()

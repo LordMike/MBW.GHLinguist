@@ -211,6 +211,7 @@ cmake -S "$repo_root/src/MBW.GHLinguist.Native" -B "$bridge_build" \
   -DGHL_RUBY_INCLUDE_DIR="$ruby_include_dir" \
   -DGHL_RUBY_ARCH_INCLUDE_DIR="$ruby_arch_include_dir" \
   -DGHL_RUBY_LIBRARY="$ruby_shared_library" \
+  -DGHL_LINGUIST_ROOT="$linguist_root" \
   -DGHL_WRAPPER_REVISION="$wrapper_revision" \
   -DGHL_LINGUIST_REVISION="$linguist_revision" \
   -DGHL_CLASSIFIER_SHA256="$classifier_sha256"
