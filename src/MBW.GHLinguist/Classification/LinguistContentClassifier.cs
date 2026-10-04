@@ -83,6 +83,7 @@ internal sealed class LinguistContentClassifier
         ClassificationResult[] results = new ClassificationResult[ranked.Count];
         for (int index = 0; index < results.Length; index++)
         {
+            // Clamp after ranking, as Classify does, so the order stays Linguist's; see ClassifierScore.Normalize.
             results[index] = new ClassificationResult { Language = ranked[index].Language, Score = ClassifierScore.Normalize(ranked[index].Score) };
         }
 

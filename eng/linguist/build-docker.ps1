@@ -36,7 +36,9 @@ if ($actualRevision -ne $manifest.linguist.revision) {
 }
 
 $imageTag = 'ghlinguist-build:linux-x64'
-& docker build --build-arg "RUBY_IMAGE=$($manifest.ruby.dockerImage)" --tag $imageTag $scriptRoot
+# Pass through https_proxy/no_proxy and add the SSL_CERT_FILE CAs to the image trust store, for intercepting proxies.
+$caBuild = if ($env:SSL_CERT_FILE) { @('--secret', "id=ca-bundle,src=$env:SSL_CERT_FILE") } else { @() }
+& docker build --network host --build-arg https_proxy --build-arg no_proxy @caBuild --build-arg "RUBY_IMAGE=$($manifest.ruby.dockerImage)" --tag $imageTag $scriptRoot
 if ($LASTEXITCODE -ne 0) {
   throw 'Failed to build the Linguist build image.'
 }
@@ -44,6 +46,9 @@ if ($LASTEXITCODE -ne 0) {
 $dockerArguments = @(
   'run'
   '--rm'
+  '--network', 'host'
+  '--env', 'https_proxy'
+  '--env', 'no_proxy'
   '--env', "LINGUIST_REVISION=$actualRevision"
   '--mount', "type=bind,source=$repoRoot,target=/workspace"
 )

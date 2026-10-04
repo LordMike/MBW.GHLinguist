@@ -264,6 +264,7 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
                 ulong languageId = 0;
                 double score = 0;
                 ThrowForStatus(NativeMethods.ClassificationResult(handle, (nuint)index, &languageId, &score), 0);
+                // Ruby Linguist can return a few ULPs above 1; see ClassifierScore.Normalize.
                 results[index] = new ClassificationResult { Language = GetLanguage(languageId), Score = ClassifierScore.Normalize(score) };
             }
 
