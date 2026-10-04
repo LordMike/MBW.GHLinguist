@@ -186,7 +186,7 @@ objects. They remain usable after the runtime is disposed.
 | Goal | API | Behavior |
 |---|---|---|
 | Run Linguist's embedded single-blob detection pipeline | `Analyze` | Uses complete bytes, filename/path metadata, binary checks, and the ordered detection strategies |
-| Rank languages using only source content | `Classify` | Uses Linguist's classifier and at most the configured leading 50 KiB |
+| Rank languages using only source content | `Classify` | Uses Linguist's classifier and at most the configured leading 50 KiB; runs in managed code, in parallel |
 | Inspect every known language | `Languages` | Returns the registry in Linguist's registry order |
 | Resolve registry metadata | `FindBy...` | Follows the corresponding Linguist lookup behavior and return shapes |
 
@@ -198,6 +198,13 @@ XML, or heuristic strategy selection.
 `Analyze` still performs blob checks and runs the enabled detection strategies;
 it simply has no path or filename metadata. `Classify` performs classifier-only
 ranking.
+
+`Classify` does not call into Ruby. It runs a managed port of Linguist's
+tokenizer and classifier over the same classifier database
+(`lib/linguist/samples_data.rb` in the native closure), performing every
+floating-point operation in Linguist's order, so rankings and scores are
+bit-identical to Linguist's own classifier. Calls take well under a
+millisecond and run in parallel on any number of threads.
 
 ## Linguist feature coverage
 
@@ -218,7 +225,7 @@ pipeline used by GitHub.com.
 | Fetching Git LFS objects | Not supported; `IsLfsTracked` is caller-supplied metadata |
 | Syntax highlighting or TextMate grammar execution | Not supported; scope metadata is returned only |
 | Streaming inputs, asynchronous calls, or cancellation | Not supported |
-| Parallel Ruby workers | Not supported; all Ruby work is process-wide and serialized |
+| Parallel Ruby workers | Not supported; all Ruby work is process-wide and serialized. `Classify` uses no Ruby and runs in parallel |
 
 The `IsIncludedInLanguageStatistics` result is a decision for one supplied blob.
 It does not aggregate byte counts or reproduce GitHub's repository language bar.
@@ -380,6 +387,8 @@ inspect `ClassificationResults.ConsideredBytes` when input truncation matters.
 - A runtime is thread-safe, but calls through one instance are mutually
   exclusive, and all runtime instances ultimately share one process-wide Ruby
   worker. Concurrent work queues rather than running Ruby in parallel.
+  `Classify` is the exception: it runs in managed code and concurrent calls
+  run in parallel.
 - There is no asynchronous or cancellation API. A caller and `Dispose` wait for
   the active native operation to finish.
 - `Dispose` waits for an active call and for the native handle release to finish.
@@ -499,7 +508,8 @@ byte limits and consider a separate worker process that the application can
 terminate.
 
 Because all Ruby work is serialized, adding concurrent callers increases queue
-depth rather than Linguist throughput. If this becomes a bottleneck, scale with
+depth rather than Linguist throughput (except for `Classify`, which uses no
+Ruby). If this becomes a bottleneck, scale with
 separate processes, not additional `LinguistRuntime` instances in one process.
 Thread-safe means serialized, not parallel, bounded, fair, or guaranteed to
 finish within a particular time. Preliminary synthetic Ruby-only benchmark results

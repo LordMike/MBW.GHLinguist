@@ -499,6 +499,10 @@ public sealed class LinguistRuntimeTests
             return Analysis;
         }
 
+        public void PrepareClassifier()
+        {
+        }
+
         public ClassificationResults Classify(ReadOnlySpan<byte> data, ClassificationOptions options)
         {
             ClassifyCount++;

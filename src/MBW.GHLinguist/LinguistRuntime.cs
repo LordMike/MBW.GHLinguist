@@ -5,7 +5,7 @@ namespace MBW.GHLinguist;
 /// <summary>Owns a native GitHub Linguist runtime and exposes blob analysis and language-registry APIs.</summary>
 /// <remarks>
 /// Calls are synchronous and thread-safe. Ruby work is serialized process-wide, and runtime instances reuse the
-/// same initialized native runtime. Disposal waits for an active call to finish. Dispose the runtime when it is no
+/// same initialized native runtime. <see cref="Classify" /> uses no Ruby, so concurrent classifications run in parallel. Disposal waits for an active call to finish. Dispose the runtime when it is no
 /// longer needed. Results returned before disposal are immutable managed copies and remain usable afterward.
 /// </remarks>
 /// <example>
@@ -290,7 +290,9 @@ public sealed class LinguistRuntime : ILinguistRuntime, IDisposable
     /// <summary>Classifies source content directly without path-based detection strategies.</summary>
     /// <remarks>
     /// Use this method for classifier-only ranking. For normal Linguist file detection, including blob checks and
-    /// ordered strategies, use <see cref="Analyze" /> instead.
+    /// ordered strategies, use <see cref="Analyze" /> instead. Classification runs a managed port of Linguist's
+    /// tokenizer and classifier over Linguist's own classifier database, with bit-identical scores and ranking, and
+    /// concurrent calls run in parallel rather than queueing for Ruby.
     /// </remarks>
     /// <param name="data">Source bytes. At most the configured leading 50 KiB are considered.</param>
     /// <param name="options">Optional classifier filters and byte limit; <see langword="null" /> uses Linguist defaults.</param>
@@ -305,10 +307,11 @@ public sealed class LinguistRuntime : ILinguistRuntime, IDisposable
         ReadOnlySpan<byte> data,
         ClassificationOptions? options = null)
     {
+        ILinguistRuntimeBackend backend;
+        ClassificationOptions effectiveOptions = options ?? new ClassificationOptions();
         lock (_gate)
         {
-            ILinguistRuntimeBackend backend = GetBackend();
-            ClassificationOptions effectiveOptions = options ?? new ClassificationOptions();
+            backend = GetBackend();
             if (effectiveOptions.CandidateLanguageIds is { Count: 0 })
             {
                 return new ClassificationResults();
@@ -327,8 +330,11 @@ public sealed class LinguistRuntime : ILinguistRuntime, IDisposable
                 }
             }
 
-            return backend.Classify(data, effectiveOptions);
+            backend.PrepareClassifier();
         }
+
+        // Scoring is managed and reads only immutable tables, so concurrent calls run in parallel.
+        return backend.Classify(data, effectiveOptions);
     }
 
     /// <summary>Releases this runtime's native handle.</summary>
@@ -372,5 +378,9 @@ internal interface ILinguistRuntimeBackend : IDisposable
 
     BlobAnalysis Analyze(ReadOnlySpan<byte> data, BlobInput input, BlobAnalysisOptions options);
 
+    /// <summary>Loads what <see cref="Classify" /> needs; called under the runtime gate before each classification.</summary>
+    void PrepareClassifier();
+
+    /// <summary>Classifies without the runtime gate, after <see cref="PrepareClassifier" />; must be thread-safe.</summary>
     ClassificationResults Classify(ReadOnlySpan<byte> data, ClassificationOptions options);
 }

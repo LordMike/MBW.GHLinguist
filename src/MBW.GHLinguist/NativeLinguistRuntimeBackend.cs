@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Reflection;
 using System.Text;
+using MBW.GHLinguist.Classification;
 using Microsoft.Win32.SafeHandles;
 
 namespace MBW.GHLinguist;
@@ -18,7 +19,10 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
     private const string NativeAssetDirectoryName = "MBW.GHLinguist";
     private const string NativeLibraryName = "ghlinguist";
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+    private static readonly Dictionary<string, ClassifierDatabase> ClassifierDatabases = new(StringComparer.Ordinal);
     private readonly NativeRuntimeHandle _runtime;
+    private readonly string _assetRoot;
+    private LinguistContentClassifier? _contentClassifier;
     private IReadOnlyList<LinguistLanguage>? _languages;
     private Dictionary<ulong, LinguistLanguage>? _languagesById;
     private LinguistVersionInfo? _version;
@@ -28,9 +32,10 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
         NativeLibrary.SetDllImportResolver(typeof(NativeLinguistRuntimeBackend).Assembly, ResolveNativeLibrary);
     }
 
-    private NativeLinguistRuntimeBackend(NativeRuntimeHandle runtime)
+    private NativeLinguistRuntimeBackend(NativeRuntimeHandle runtime, string assetRoot)
     {
         _runtime = runtime;
+        _assetRoot = assetRoot;
     }
 
     internal static NativeLinguistRuntimeBackend Create()
@@ -77,7 +82,7 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
             throw new LinguistException("The native runtime succeeded without returning a runtime handle.");
         }
 
-        var backend = new NativeLinguistRuntimeBackend(new NativeRuntimeHandle(runtime));
+        var backend = new NativeLinguistRuntimeBackend(new NativeRuntimeHandle(runtime), assetRoot);
         try
         {
             backend.ValidateCapabilities();
@@ -187,7 +192,49 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
         }
     }
 
+    public void PrepareClassifier()
+    {
+        ThrowIfDisposed();
+        if (_contentClassifier is not null)
+        {
+            return;
+        }
+
+        // The integrity-checked samples_data.rb is the database Linguist's Ruby classifier loads. It is immutable
+        // for the process lifetime, so every runtime on the same asset root shares one parsed copy.
+        string samplesDataPath = Path.Combine(Path.GetFullPath(_assetRoot), "lib", "linguist", "samples_data.rb");
+        ClassifierDatabase database;
+        lock (ClassifierDatabases)
+        {
+            if (!ClassifierDatabases.TryGetValue(samplesDataPath, out database!))
+            {
+                try
+                {
+                    database = ClassifierDatabase.Load(samplesDataPath);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or FormatException)
+                {
+                    throw new LinguistException($"Unable to load the Linguist classifier database: {exception.Message}", exception);
+                }
+
+                ClassifierDatabases.Add(samplesDataPath, database);
+            }
+        }
+
+        EnsureLanguages();
+        _contentClassifier = LinguistContentClassifier.Create(database, _languages!);
+    }
+
     public ClassificationResults Classify(ReadOnlySpan<byte> data, ClassificationOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        LinguistContentClassifier classifier = _contentClassifier ??
+            throw new InvalidOperationException("PrepareClassifier must be called before Classify.");
+        return classifier.Classify(data, options);
+    }
+
+    /// <summary>Classifies through Linguist's Ruby classifier, the reference the managed classifier must match.</summary>
+    internal ClassificationResults ClassifyWithRuby(ReadOnlySpan<byte> data, ClassificationOptions options)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(options);
@@ -259,7 +306,8 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
                 ulong languageId = 0;
                 double score = 0;
                 ThrowForStatus(NativeMethods.ClassificationResult(handle, (nuint)index, &languageId, &score), 0);
-                if (!double.IsFinite(score) || score <= 0 || score > 1)
+                // No upper bound: a cosine similarity of 1 can round to 1.0000000000000002, which Linguist reports.
+                if (!double.IsFinite(score) || score <= 0)
                 {
                     throw new LinguistException($"The native runtime returned invalid classifier score {score}.");
                 }
