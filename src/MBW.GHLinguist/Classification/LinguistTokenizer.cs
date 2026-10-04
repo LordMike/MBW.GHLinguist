@@ -181,9 +181,8 @@ internal static class LinguistTokenizer
                     case 22: sink.Add("COMMENT.ig"u8); Begin(StateRoffComment); return true;
                     case 23: sink.Add("COMMENT/-"u8); Begin(StateLeanComment); return true;
                     case 24: sink.Add("COMMENT/-"u8); Begin(StateLeanComment); return true;
-                    case 25: break;
+                    case 25 or 34 or 37 or 81: break;
                     case >= 26 and <= 33: Begin(StateInitial); break;
-                    case 34: break;
                     case 35:
                         if (!EatUntilUnescaped((byte)'"'))
                         {
@@ -198,11 +197,9 @@ internal static class LinguistTokenizer
                         }
 
                         break;
-                    case 37: break;
                     case >= 38 and <= 80:
                         sink.Add(buffer.AsSpan(_textPtr, Math.Min(leng, MaximumTokenLength)));
                         return true;
-                    case 81: break;
                     case 82: throw new InvalidOperationException("flex scanner jammed");
                     case LinguistTokenizerTables.EndOfBufferAction:
                     {

@@ -6,6 +6,9 @@
 source_path = ARGV.fetch(0, File.expand_path("../../extern/linguist/ext/linguist/lex.linguist_yy.c", __dir__))
 output_path = ARGV.fetch(1, File.expand_path("../../src/MBW.GHLinguist/Classification/LinguistTokenizerTables.g.cs", __dir__))
 source = File.read(source_path)
+require "digest"
+rules_path = File.join(File.dirname(source_path), "tokenizer.l")
+rules_sha256 = Digest::SHA256.hexdigest(File.binread(rules_path).gsub("\r\n", "\n"))
 
 def table(source, name)
   match = source.match(/static const \w+ #{name}\[(\d+)\] =\s*\{(.*?)\}\s*;/m) or abort("#{name} not found")
@@ -41,6 +44,8 @@ File.open(output_path, "w", newline: :lf) do |output|
   output.puts
   output.puts "internal static class LinguistTokenizerTables"
   output.puts "{"
+  output.puts "    // LinguistTokenizer's action switch is hand-ported from this tokenizer.l; review it when the hash changes."
+  output.puts "    internal const string RulesSha256 = \"#{rules_sha256}\";"
   output.puts "    internal const int EndOfBufferAction = #{define(source, 'YY_END_OF_BUFFER')};"
   output.puts "    internal const int JamState = #{jam_state};"
   output.puts "    internal const int MetaThreshold = #{meta_threshold};"

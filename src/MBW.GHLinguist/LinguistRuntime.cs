@@ -5,8 +5,9 @@ namespace MBW.GHLinguist;
 /// <summary>Owns a native GitHub Linguist runtime and exposes blob analysis and language-registry APIs.</summary>
 /// <remarks>
 /// Calls are synchronous and thread-safe. Ruby work is serialized process-wide, and runtime instances reuse the
-/// same initialized native runtime. <see cref="Classify" /> uses no Ruby, so concurrent classifications run in parallel. Disposal waits for an active call to finish. Dispose the runtime when it is no
-/// longer needed. Results returned before disposal are immutable managed copies and remain usable afterward.
+/// same initialized native runtime. <see cref="Classify" /> uses no Ruby, so concurrent classifications run in
+/// parallel. Disposal waits for an active Ruby call to finish; a classification already past its argument checks
+/// completes on managed data. Dispose the runtime when it is no longer needed. Results returned before disposal are immutable managed copies and remain usable afterward.
 /// </remarks>
 /// <example>
 /// <code>

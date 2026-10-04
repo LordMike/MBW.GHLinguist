@@ -21,7 +21,7 @@ internal sealed class ContentClassifier
         _database = database;
     }
 
-    internal ClassifierDatabase Database => _database;
+    internal int CentroidCount => _database.CentroidNames.Length;
 
     /// <summary>Scores <paramref name="data" /> against every centroid.</summary>
     /// <param name="data">The already truncated sample.</param>

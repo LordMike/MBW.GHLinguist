@@ -174,11 +174,17 @@ internal sealed class ClassifierDatabase
             string name = reader.ReadString();
             reader.ExpectArrow();
             List<(int, double)> values = [];
+            HashSet<int> seen = [];
             reader.Expect((byte)'{');
             while (!reader.TryConsume((byte)'}'))
             {
                 int index = reader.ReadInteger();
                 reader.ExpectArrow();
+                if (!seen.Add(index))
+                {
+                    throw new FormatException($"The centroid '{name}' repeats vocabulary index {index}.");
+                }
+
                 values.Add((index, reader.ReadFloat()));
                 reader.TryConsume((byte)',');
             }
@@ -193,6 +199,8 @@ internal sealed class ClassifierDatabase
     /// <summary>Reads the subset of Ruby literal syntax that <c>PP.pp</c> emits for the samples database.</summary>
     private ref struct RubyLiteralReader(ReadOnlySpan<byte> source)
     {
+        private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+
         private readonly ReadOnlySpan<byte> _source = source;
         private int _position;
 
@@ -331,7 +339,7 @@ internal sealed class ClassifierDatabase
                         _position++;
                     }
 
-                    builder.Append(new UTF8Encoding(false, true).GetString(_source[start.._position]));
+                    builder.Append(StrictUtf8.GetString(_source[start.._position]));
                     continue;
                 }
 
@@ -388,7 +396,7 @@ internal sealed class ClassifierDatabase
             int digits = 0;
             while (digits < maximumDigits && _position < _source.Length && char.IsAsciiHexDigit((char)_source[_position]))
             {
-                value = (value * 16) + Convert.ToInt32(((char)_source[_position]).ToString(), 16);
+                value = (value * 16) + HexValue(_source[_position]);
                 _position++;
                 digits++;
             }
@@ -401,6 +409,8 @@ internal sealed class ClassifierDatabase
 
             return value;
         }
+
+        private static int HexValue(byte digit) => digit <= (byte)'9' ? digit - '0' : (digit | 0x20) - 'a' + 10;
 
         private bool TryConsumeRaw(byte value)
         {

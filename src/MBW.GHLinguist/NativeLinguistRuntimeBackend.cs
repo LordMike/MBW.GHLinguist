@@ -200,8 +200,8 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
             return;
         }
 
-        // The integrity-checked samples_data.rb is the database Linguist's Ruby classifier loads. It is immutable
-        // for the process lifetime, so every runtime on the same asset root shares one parsed copy.
+        // samples_data.rb is the database Linguist's Ruby classifier loads (also lazily). The deployed closure is
+        // treated as immutable once loaded, so every runtime on the same asset root shares one parsed copy.
         string samplesDataPath = Path.Combine(Path.GetFullPath(_assetRoot), "lib", "linguist", "samples_data.rb");
         ClassifierDatabase database;
         lock (ClassifierDatabases)
@@ -222,7 +222,14 @@ internal sealed unsafe class NativeLinguistRuntimeBackend : ILinguistRuntimeBack
         }
 
         EnsureLanguages();
-        _contentClassifier = LinguistContentClassifier.Create(database, _languages!);
+        try
+        {
+            _contentClassifier = LinguistContentClassifier.Create(database, _languages!);
+        }
+        catch (FormatException exception)
+        {
+            throw new LinguistException($"Unable to load the Linguist classifier database: {exception.Message}", exception);
+        }
     }
 
     public ClassificationResults Classify(ReadOnlySpan<byte> data, ClassificationOptions options)

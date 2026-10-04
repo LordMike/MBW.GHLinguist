@@ -52,6 +52,10 @@ public sealed partial class ManagedClassifierTests
         Assert.Equal(Table(source, "yy_def"), ToInts(LinguistTokenizerTables.Default));
         Assert.Equal(Table(source, "yy_nxt"), ToInts(LinguistTokenizerTables.Next));
         Assert.Equal(Table(source, "yy_chk"), ToInts(LinguistTokenizerTables.Check));
+        string rules = Path.Combine(Path.GetDirectoryName(scanner!)!, "tokenizer.l");
+        Assert.Equal(
+            LinguistTokenizerTables.RulesSha256,
+            Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(File.ReadAllText(rules).ReplaceLineEndings("\n")))));
         Assert.Contains($"#define YY_END_OF_BUFFER {LinguistTokenizerTables.EndOfBufferAction}\n", source, StringComparison.Ordinal);
         Assert.Contains($"while ( yy_current_state != {LinguistTokenizerTables.JamState} );", source, StringComparison.Ordinal);
         Assert.Contains($"if ( yy_current_state >= {LinguistTokenizerTables.MetaThreshold} )", source, StringComparison.Ordinal);

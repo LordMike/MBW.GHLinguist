@@ -25,7 +25,10 @@ internal sealed class LinguistContentClassifier
         Dictionary<string, int> centroids = new(StringComparer.Ordinal);
         for (int index = 0; index < database.CentroidNames.Length; index++)
         {
-            centroids.Add(database.CentroidNames[index], index);
+            if (!centroids.TryAdd(database.CentroidNames[index], index))
+            {
+                throw new FormatException($"The classifier database repeats the centroid '{database.CentroidNames[index]}'.");
+            }
         }
 
         ClassificationLanguage[] entries = new ClassificationLanguage[languages.Count];
@@ -45,7 +48,10 @@ internal sealed class LinguistContentClassifier
     internal ClassificationResults Classify(ReadOnlySpan<byte> data, ClassificationOptions options)
     {
         int consideredBytes = Math.Min(data.Length, options.MaximumBytes);
-        double[] scores = t_scores ??= new double[_classifier.Database.CentroidNames.Length];
+        int centroidCount = _classifier.CentroidCount;
+        double[] scores = t_scores is { } buffer && buffer.Length == centroidCount
+            ? buffer
+            : t_scores = new double[centroidCount];
         if (!_classifier.Score(data[..consideredBytes], scores))
         {
             return new ClassificationResults { ConsideredBytes = consideredBytes };
@@ -53,9 +59,10 @@ internal sealed class LinguistContentClassifier
 
         // Ruby inserts scores in the order of its language list (the registry, or the caller's candidates), then
         // sorts with sort_by { -score }. CRuby's sort uses the C library's qsort_r, which glibc implements as a
-        // stable merge sort, so equal scores keep that list order.
+        // stable merge sort, so equal scores keep that list order. A Ruby built on another C library could order
+        // exact ties differently; no two centroids share a weight, and no tie occurs in the test corpora.
         LanguageTypeMask allowedTypes = options.AllowedTypes;
-        List<(double Score, int Order, LinguistLanguage Language)> ranked = new(_languages.Length);
+        List<(double Score, int Order, LinguistLanguage Language)> ranked = [];
         if (options.CandidateLanguageIds is { } candidates)
         {
             for (int order = 0; order < candidates.Count; order++)

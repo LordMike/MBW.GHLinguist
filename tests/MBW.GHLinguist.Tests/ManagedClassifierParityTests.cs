@@ -26,6 +26,13 @@ public sealed class ManagedClassifierParityTests
         "é ü 中文 ÿþ",
         "SELECT * FROM t WHERE a <= 1 AND b != 2; -- comment\n",
         "<?php echo $x; ?>\n<div class=\"a\">&nbsp;</div>",
+        "\"a\\",
+        "\"\0",
+        "\"a\\\0",
+        "#!",
+        "#!/usr/bin/env A=\0 ruby\nputs 1",
+        ".ig\nunterminated roff",
+        "int main() { return 0; }\0",
     ];
 
     [Fact(Skip = "Set GHL_RUN_NATIVE_INTEGRATION=true with staged native assets.", SkipUnless = nameof(NativeIntegrationEnabled))]

@@ -7,6 +7,8 @@ namespace MBW.GHLinguist.Classification;
 
 internal static class LinguistTokenizerTables
 {
+    // LinguistTokenizer's action switch is hand-ported from this tokenizer.l; review it when the hash changes.
+    internal const string RulesSha256 = "c695567d233d335683084c39ebcf516d56a4e7096e91bb7a1a41c0c8ed372fda";
     internal const int EndOfBufferAction = 83;
     internal const int JamState = 260;
     internal const int MetaThreshold = 261;
