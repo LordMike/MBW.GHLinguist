@@ -1,7 +1,7 @@
 ARG RUBY_IMAGE=ruby:4.0.6-bookworm@sha256:b4aa7093ffca123d849e79b3e2bc582064f6dd9c22940e69c08bc47d74e355db
 FROM ${RUBY_IMAGE}
 
-RUN sed -i 's#http://#https://#g' /etc/apt/sources.list.d/*
+RUN find /etc/apt/sources.list* -type f -exec sed -i 's#http://#https://#g' {} +
 
 COPY native-dependencies.json /tmp/native-dependencies.json
 COPY install-linux-prerequisites.sh /usr/local/bin/install-linux-prerequisites
