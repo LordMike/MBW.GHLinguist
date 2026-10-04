@@ -310,6 +310,11 @@ internal static class Corpus
         Array.Sort(files, StringComparer.Ordinal);
         foreach (string file in files)
         {
+            if (Path.GetFileName(file).StartsWith('.'))
+            {
+                continue; // .gitattributes
+            }
+
             yield return (Path.GetFileName(file), File.ReadAllBytes(file));
         }
     }
