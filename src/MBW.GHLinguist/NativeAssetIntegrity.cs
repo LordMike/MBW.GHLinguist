@@ -50,11 +50,25 @@ internal static class NativeAssetIntegrity
         }
     }
 
-    internal static void ValidateUncached(string assetRoot, string expectedRuntimeIdentifier)
+    /// <summary>Validates only <paramref name="relativePaths" />, for callers that read data files and load no native code.</summary>
+    internal static void ValidateFiles(string assetRoot, string expectedRuntimeIdentifier, params string[] relativePaths)
+    {
+        lock (CacheGate)
+        {
+            if (ValidatedRoots.Contains((Path.GetFullPath(assetRoot), expectedRuntimeIdentifier)))
+            {
+                return;
+            }
+        }
+
+        ValidateUncached(assetRoot, expectedRuntimeIdentifier, relativePaths);
+    }
+
+    internal static void ValidateUncached(string assetRoot, string expectedRuntimeIdentifier, string[]? onlyPaths = null)
     {
         try
         {
-            ValidateCore(assetRoot, expectedRuntimeIdentifier);
+            ValidateCore(assetRoot, expectedRuntimeIdentifier, onlyPaths);
         }
         catch (LinguistException)
         {
@@ -68,7 +82,7 @@ internal static class NativeAssetIntegrity
         }
     }
 
-    private static void ValidateCore(string assetRoot, string expectedRuntimeIdentifier)
+    private static void ValidateCore(string assetRoot, string expectedRuntimeIdentifier, string[]? onlyPaths)
     {
         string canonicalRoot = Path.GetFullPath(assetRoot);
         string provenancePath = Path.Combine(canonicalRoot, "provenance.json");
@@ -153,6 +167,11 @@ internal static class NativeAssetIntegrity
                 throw Failure($"provenance.json asset path '{normalizedPath}' escapes the deployed native asset directory.");
             }
 
+            if (onlyPaths is not null && !onlyPaths.Contains(normalizedPath, StringComparer.Ordinal))
+            {
+                continue;
+            }
+
             if (!File.Exists(assetPath))
             {
                 throw Failure($"the deployed native asset '{normalizedPath}' is missing.");
@@ -163,6 +182,14 @@ internal static class NativeAssetIntegrity
             if (!string.Equals(actualSha256, expectedSha256, StringComparison.Ordinal))
             {
                 throw Failure($"the deployed native asset '{normalizedPath}' does not match its recorded SHA-256.");
+            }
+        }
+
+        foreach (string path in onlyPaths ?? [])
+        {
+            if (!validatedPaths.Contains(path))
+            {
+                throw Failure($"provenance.json does not describe '{path}'.");
             }
         }
     }

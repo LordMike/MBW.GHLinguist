@@ -194,7 +194,9 @@ if ($actualLinguistVersion -ne $manifest.linguist.version) {
 }
 
 $bridgeSource = Join-Path $repoRoot 'src/MBW.GHLinguist.Native/ruby/ghlinguist/bridge.rb'
+$samplesLoaderSource = Join-Path $repoRoot 'src/MBW.GHLinguist.Native/ruby/linguist/samples_data.rb'
 Require-Path $bridgeSource 'GHLinguist Ruby bridge'
+Require-Path $samplesLoaderSource 'samples.tsv loader'
 
 $msysBin = Join-Path $RubyRoot 'msys64/ucrt64/bin'
 $msysUsrBin = Join-Path $RubyRoot 'msys64/usr/bin'
@@ -358,13 +360,14 @@ if (-not $tokenizer) {
 }
 New-Item -ItemType Directory -Path (Join-Path $nativeAssetRoot 'lib/linguist') -Force | Out-Null
 Copy-Item -LiteralPath $tokenizer.FullName -Destination (Join-Path $nativeAssetRoot "lib/linguist/$($tokenizer.Name)") -Force
+Copy-Item -LiteralPath $samplesLoaderSource -Destination (Join-Path $nativeAssetRoot 'lib/linguist/samples_data.rb') -Force
 Copy-RequiredDirectory (Join-Path $LinguistRoot 'samples') (Join-Path $nativeAssetRoot 'samples') 'Linguist classifier samples'
 $previousRubyLibForSamples, $previousGemHomeForSamples, $previousGemPathForSamples = $env:RUBYLIB, $env:GEM_HOME, $env:GEM_PATH
 try {
   $env:RUBYLIB = Join-Path $nativeAssetRoot 'lib'
   $env:GEM_HOME = $gemHome
   $env:GEM_PATH = $gemHome
-  Invoke-Checked $ruby (Join-Path $scriptRoot 'generate-samples.rb') (Join-Path $nativeAssetRoot 'lib/linguist/samples_data.rb')
+  Invoke-Checked $ruby (Join-Path $scriptRoot 'generate-samples.rb') (Join-Path $nativeAssetRoot 'lib/linguist/samples.tsv') (Join-Path $nativeAssetRoot 'ghlinguist/languages.tsv')
 }
 finally {
   $env:RUBYLIB = $previousRubyLibForSamples
@@ -372,7 +375,7 @@ finally {
   $env:GEM_PATH = $previousGemPathForSamples
   Remove-Item -LiteralPath (Join-Path $nativeAssetRoot 'samples') -Recurse -Force
 }
-$classifierSha256 = (Get-FileHash -LiteralPath (Join-Path $nativeAssetRoot 'lib/linguist/samples_data.rb') -Algorithm SHA256).Hash.ToLowerInvariant()
+$classifierSha256 = (Get-FileHash -LiteralPath (Join-Path $nativeAssetRoot 'lib/linguist/samples.tsv') -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($classifierSha256 -ne $manifest.linguist.classifierSha256) {
   throw "Expected classifier SHA-256 $($manifest.linguist.classifierSha256), found $classifierSha256."
 }

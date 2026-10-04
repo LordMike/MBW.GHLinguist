@@ -188,6 +188,7 @@ objects. They remain usable after the runtime is disposed.
 | Run Linguist's embedded single-blob detection pipeline | `Analyze` | Uses complete bytes, filename/path metadata, binary checks, and the ordered detection strategies |
 | Rank languages using only source content | `Classify` | Uses Linguist's classifier and at most the configured leading 50 KiB |
 | Same ranking without entering Ruby | `ClassifyDotNet` | A .NET port of Linguist's classifier with bit-identical results; calls run in parallel |
+| Same ranking without starting Ruby at all | `LinguistClassifier` | `ClassifyDotNet` without a runtime: no CRuby startup or memory |
 | Inspect every known language | `Languages` | Returns the registry in Linguist's registry order |
 | Resolve registry metadata | `FindBy...` | Follows the corresponding Linguist lookup behavior and return shapes |
 
@@ -362,9 +363,19 @@ ClassificationResults rubyOnly = runtime.Classify(
 
 `ClassifyDotNet` takes the same options and returns the same results, scores
 included bit for bit. It tokenizes and scores in .NET against the classifier
-database Linguist itself loads (`lib/linguist/samples_data.rb`), so it does not
-take the process-wide Ruby lock and is far cheaper per call. The first call
-parses the database.
+database Linguist itself loads (`lib/linguist/samples.tsv`), so
+it does not take the process-wide Ruby lock and is far cheaper per call. The
+first call parses the database.
+
+When classification is all you need, `LinguistClassifier` gives the same
+results without creating a `LinguistRuntime`, so Ruby never starts. It reads the
+language registry and classifier database from the same deployed asset
+directory:
+
+```csharp
+LinguistClassifier classifier = LinguistClassifier.Create();
+ClassificationResults results = classifier.Classify(source);
+```
 
 Scores are similarities between 0 and 1. Linguist's floating-point arithmetic
 can return a score a few units in the last place above 1 (such as

@@ -6,6 +6,7 @@ namespace MBW.GHLinguist.Tests;
 /// <see cref="LinguistRuntime.ClassifyDotNet" /> runs a managed port of Linguist's classifier. These tests run the
 /// same inputs through <see cref="LinguistRuntime.Classify" />, Linguist's Ruby classifier, and require identical
 /// rankings and bit-identical scores, so a Linguist upgrade or a platform math difference fails here instead of drifting.
+/// <see cref="LinguistClassifier" /> runs the same port without Ruby and is held to the same results.
 /// </summary>
 public sealed class ManagedClassifierParityTests
 {
@@ -92,8 +93,46 @@ public sealed class ManagedClassifierParityTests
         })));
     }
 
-    private static void AssertSameClassification(LinguistRuntime runtime, byte[] sample, ClassificationOptions options) =>
-        AssertSame(runtime.Classify(sample, options), runtime.ClassifyDotNet(sample, options));
+    [Fact(Skip = "Set GHL_RUN_NATIVE_INTEGRATION=true with staged native assets.", SkipUnless = nameof(NativeIntegrationEnabled))]
+    public void ClassifierLanguagesMatchTheRuntimeRegistry()
+    {
+        using LinguistRuntime runtime = LinguistRuntime.Create();
+        LinguistClassifier classifier = LinguistClassifier.Create();
+
+        Assert.Same(classifier, LinguistClassifier.Create());
+        Assert.Equal(runtime.Languages.Count, classifier.Languages.Count);
+        for (int index = 0; index < runtime.Languages.Count; index++)
+        {
+            LinguistLanguage expected = runtime.Languages[index];
+            LinguistLanguage actual = classifier.Languages[index];
+            Assert.Equal(
+                (expected.Id, expected.GroupLanguageId, expected.Name, expected.FileSystemName, expected.Type, expected.IsPopular, expected.WrapLines),
+                (actual.Id, actual.GroupLanguageId, actual.Name, actual.FileSystemName, actual.Type, actual.IsPopular, actual.WrapLines));
+            Assert.Equal(
+                (expected.Color, expected.TextMateScope, expected.AceMode, expected.CodeMirrorMode, expected.CodeMirrorMimeType),
+                (actual.Color, actual.TextMateScope, actual.AceMode, actual.CodeMirrorMode, actual.CodeMirrorMimeType));
+            Assert.Equal(expected.Aliases, actual.Aliases);
+            Assert.Equal(expected.Extensions, actual.Extensions);
+            Assert.Equal(expected.Interpreters, actual.Interpreters);
+            Assert.Equal(expected.Filenames, actual.Filenames);
+        }
+    }
+
+    [Fact(Skip = "Set GHL_RUN_NATIVE_INTEGRATION=true with staged native assets.", SkipUnless = nameof(NativeIntegrationEnabled))]
+    public void ClassifierValidatesCandidatesLikeTheRuntime()
+    {
+        LinguistClassifier classifier = LinguistClassifier.Create();
+
+        Assert.Empty(classifier.Classify("int x;"u8, new ClassificationOptions { CandidateLanguageIds = [] }).Results);
+        Assert.Throws<ArgumentException>(() => classifier.Classify("int x;"u8, new ClassificationOptions { CandidateLanguageIds = [ulong.MaxValue - 1] }));
+    }
+
+    private static void AssertSameClassification(LinguistRuntime runtime, byte[] sample, ClassificationOptions options)
+    {
+        ClassificationResults expected = runtime.Classify(sample, options);
+        AssertSame(expected, runtime.ClassifyDotNet(sample, options));
+        AssertSame(expected, LinguistClassifier.Create().Classify(sample, options));
+    }
 
     private static void AssertSame(ClassificationResults expected, ClassificationResults actual)
     {

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using MBW.GHLinguist.Classification;
@@ -62,18 +63,12 @@ public sealed partial class ManagedClassifierTests
     }
 
     [Fact]
-    public void DatabaseReadsPrettyPrintedRubyLiterals()
+    public void DatabaseReadsTheGeneratedFile()
     {
-        ClassifierDatabase database = ClassifierDatabase.Parse("""
-            # frozen_string_literal: true
-            DATA = {"extnames" => {"C" => [".c", ".h"]},
-             "vocabulary" => {"\"" => 1, "\\" => 2, "\#{" => 0, "x" => 3},
-             "icf" => [1.5, 2.0, 1.0e-05, 3.25],
-             "centroids" =>
-              {"A" => {0 => 0.5, 3 => 0.25},
-               "B" => {3 => 0.125}},
-             "sha256" => "abc"}
-            """u8);
+        ClassifierDatabase database = ClassifierDatabase.Parse(SamplesTsv(
+            [("#{", 0), ("\"", 1), ("\\", 2), ("x", 3)],
+            [1.5, 2.0, 1.0e-05, 3.25],
+            [("A", [(0, 0.5), (3, 0.25)]), ("B", [(3, 0.125)])]));
 
         Assert.Equal(0, database.Vocabulary.Find("#{"u8));
         Assert.Equal(1, database.Vocabulary.Find("\""u8));
@@ -92,11 +87,10 @@ public sealed partial class ManagedClassifierTests
     [Fact]
     public void ScoresFollowLinguistsArithmetic()
     {
-        ClassifierDatabase database = ClassifierDatabase.Parse("""
-            DATA = {"vocabulary" => {"a" => 0, "b" => 1},
-             "icf" => [1.5, 2.5],
-             "centroids" => {"A" => {0 => 0.6, 1 => 0.8}, "B" => {1 => 1.0}, "C" => {}}}
-            """u8);
+        ClassifierDatabase database = ClassifierDatabase.Parse(SamplesTsv(
+            [("a", 0), ("b", 1)],
+            [1.5, 2.5],
+            [("A", [(0, 0.6), (1, 0.8)]), ("B", [(1, 1.0)]), ("C", [])]));
         ContentClassifier classifier = new(database);
         double[] scores = new double[3];
 
@@ -140,9 +134,45 @@ public sealed partial class ManagedClassifierTests
     public void VocabularyNeverMatchesNonAsciiTokens()
     {
         // Linguist's tokens are binary Ruby strings; Hash#key? only matches them against UTF-8 keys when ASCII-only.
-        ClassifierDatabase database = ClassifierDatabase.Parse("DATA = {\"vocabulary\" => {\"é\" => 0}, \"icf\" => [1.0], \"centroids\" => {}}"u8);
+        ClassifierDatabase database = ClassifierDatabase.Parse(SamplesTsv([("é", 0)], [1.0], []));
 
         Assert.Equal(-1, database.Vocabulary.Find("é"u8));
+    }
+
+    [Fact]
+    public void DatabaseRejectsMalformedLines()
+    {
+        Assert.Throws<FormatException>(() => ClassifierDatabase.Parse("vocabulary\ta\t0"u8));
+        Assert.Throws<FormatException>(() => ClassifierDatabase.Parse("vocabulary\ta\t0\textra\nicf\t1.0\n"u8));
+        Assert.Throws<FormatException>(() => ClassifierDatabase.Parse("vocabulary\ta\t0\nicf\tx\n"u8));
+        Assert.Throws<FormatException>(() => ClassifierDatabase.Parse("unknown\n"u8));
+    }
+
+    /// <summary>Writes samples.tsv the way eng/linguist/generate-samples.rb does.</summary>
+    private static byte[] SamplesTsv(
+        (string Term, int Index)[] vocabulary,
+        double[] icf,
+        (string Name, (int Term, double Value)[] Entries)[] centroids)
+    {
+        StringBuilder text = new("extnames\tC\t.c\ninterpreters\tC\tcc\n");
+        foreach ((string term, int index) in vocabulary)
+        {
+            text.Append($"vocabulary\t{term}\t{index}\n");
+        }
+
+        text.Append("icf").AppendJoin("", icf.Select(value => "\t" + value.ToString("R", CultureInfo.InvariantCulture))).Append('\n');
+        foreach ((string name, (int Term, double Value)[] entries) in centroids)
+        {
+            text.Append($"centroid\t{name}");
+            foreach ((int term, double value) in entries)
+            {
+                text.Append(CultureInfo.InvariantCulture, $"\t{term}\t{value:R}");
+            }
+
+            text.Append('\n');
+        }
+
+        return Encoding.UTF8.GetBytes(text.Append("sha256\tabc\n").ToString());
     }
 
     private static int[] ToInts(ReadOnlySpan<short> values)

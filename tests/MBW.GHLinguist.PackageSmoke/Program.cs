@@ -1,7 +1,7 @@
 using MBW.GHLinguist;
 
 const string expectedRevision = "196b2a14418cab005065c72c9759370934c184bc";
-const string expectedClassifierSha256 = "24af803786a1157cb36a59feb5b4f2f3341a034ef7b5edd5b762a6d6ccb5d95d";
+const string expectedClassifierSha256 = "01fc90cd4339dad1fb0797c9eeb1abac82e288f2d4af71383e96c725e701e2af";
 string nativeLibrary = OperatingSystem.IsWindows() ? "ghlinguist.dll" : "ghlinguist.so";
 string nativeAssetRoot = Path.Combine(AppContext.BaseDirectory, "MBW.GHLinguist");
 

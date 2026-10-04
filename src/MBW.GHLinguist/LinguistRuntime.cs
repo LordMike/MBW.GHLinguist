@@ -321,10 +321,10 @@ public sealed class LinguistRuntime : ILinguistRuntime, IDisposable
     /// <summary>Classifies source content like <see cref="Classify" />, using a .NET port of Linguist's classifier instead of Ruby.</summary>
     /// <remarks>
     /// The port tokenizes with a transliteration of Linguist's flex tokenizer and scores against the same classifier
-    /// database Linguist loads (<c>lib/linguist/samples_data.rb</c>), performing every floating-point operation in
-    /// Linguist's order, so rankings and scores match <see cref="Classify" /> bit for bit. It does not enter Ruby:
-    /// calls take a fraction of a millisecond and concurrent calls run in parallel. The first call parses the
-    /// classifier database.
+    /// database Linguist loads, performing every floating-point operation in Linguist's order, so rankings and scores
+    /// match <see cref="Classify" /> bit for bit. It does not enter Ruby: calls take a fraction of a millisecond and
+    /// concurrent calls run in parallel. The first call parses the classifier database. To classify without starting
+    /// Ruby at all, use <see cref="LinguistClassifier" />.
     /// </remarks>
     /// <param name="data">Source bytes. At most the configured leading 50 KiB are considered.</param>
     /// <param name="options">Optional classifier filters and byte limit; <see langword="null" /> uses Linguist defaults.</param>

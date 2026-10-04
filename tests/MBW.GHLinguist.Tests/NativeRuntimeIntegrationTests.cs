@@ -5,7 +5,7 @@ namespace MBW.GHLinguist.Tests;
 public sealed class NativeRuntimeIntegrationTests
 {
     private const string LinguistRevision = "196b2a14418cab005065c72c9759370934c184bc";
-    private const string ClassifierSha256 = "24af803786a1157cb36a59feb5b4f2f3341a034ef7b5edd5b762a6d6ccb5d95d";
+    private const string ClassifierSha256 = "01fc90cd4339dad1fb0797c9eeb1abac82e288f2d4af71383e96c725e701e2af";
 
     public static bool NativeIntegrationEnabled =>
         string.Equals(Environment.GetEnvironmentVariable("GHL_RUN_NATIVE_INTEGRATION"), "true", StringComparison.OrdinalIgnoreCase);
