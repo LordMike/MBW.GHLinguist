@@ -46,4 +46,23 @@ CharlockHolmes::EncodingDetector.detect("plain text")
 analysis = GHLinguist::Bridge.analyze("sample.rb", "sample.rb", "puts :ok\n", 0, 0, 0xff)
 abort "The staged GHLinguist bridge did not identify a Ruby source file" if analysis[0].zero?
 
+# The bridge scores Classify calls with its own inverted index; it must reproduce Linguist's classifier exactly.
+classifier_samples = [
+  "class Example\n  def value = 42\nend\n",
+  "#include <stdio.h>\nint main(void) { printf(\"hi\\n\"); return 0; }\n",
+  "<?xml version=\"1.0\"?>\n<root><item key=\"a\">1</item></root>\n",
+  "{\n  \"name\": \"example\",\n  \"values\": [1, 2, 3]\n}\n",
+  "zzqqxx"
+]
+classifier_languages = Linguist::Language.all.select { |language| Linguist::Samples.cache.fetch("centroids").key?(language.fs_name || language.name) }
+classifier_samples.each do |sample|
+  [nil, classifier_languages.first(40).map(&:language_id).reverse * 2].each do |candidate_ids|
+    languages = candidate_ids ? candidate_ids.map { |id| Linguist::Language.find_by_id(id) } : classifier_languages
+    expected = Linguist::Classifier.classify(Linguist::Samples.cache, sample, languages.map(&:name).uniq)
+      .map { |name, score| [Linguist::Language[name].language_id, score] }
+    actual = GHLinguist::Bridge.classify(sample, 0, 0x0f, candidate_ids)[1]
+    abort "The bridge classifier diverged from Linguist's classifier" unless actual == expected
+  end
+end
+
 puts "Validated Linguist #{Linguist::VERSION} tokenizer (#{tokens.length} tokens)"
