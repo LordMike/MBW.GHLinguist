@@ -318,6 +318,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.package_context.outputs.version }}
+      package-names: ${{ steps.package_names.outputs.package-names }}
       release-tag: ${{ steps.context.outputs.release-tag }}
       is-release: ${{ steps.context.outputs.is-release }}
       is-prerelease: ${{ steps.context.outputs.is-prerelease }}
@@ -495,6 +496,13 @@ jobs:
           ./eng/nuget/verify-package.ps1 -Package $linux.File.FullName -ExpectedVersion $managed.Version -ExpectedCommit $env:GITHUB_SHA -Kind runtime -RuntimeIdentifier linux-x64
           $version = $managed.Version
           "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Collect validated NuGet package IDs
+        id: package_names
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/actions/collect_publishables/collect-nuget-package-names.py >> "$GITHUB_OUTPUT"
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
@@ -728,3 +736,39 @@ jobs:
       release-tag: ${{ needs.package.outputs.release-tag }}
       version: ${{ needs.package.outputs.version }}
       is-prerelease: ${{ needs.package.outputs.is-prerelease }}
+
+  prune_nuget:
+    name: Prune NuGet versions (${{ matrix.package }})
+    needs:
+      - package
+      - publish_github_packages
+      - publish_nuget_org
+      - github_release
+    if: >-
+      always() && !cancelled() &&
+      needs.publish_github_packages.result == 'success' &&
+      needs.package.outputs.package-names != '' &&
+      needs.package.outputs.package-names != '[]'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        package: ${{ fromJSON(needs.package.outputs.package-names || '[]') }}
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Prune published package
+        uses: ./.github/actions/prune_nuget
+        with:
+          package-name: ${{ matrix.package }}
+          keep-versions: ${{ vars.NUGET_VERSIONS_TO_KEEP || '3' }}
+          token: ${{ github.token }}
